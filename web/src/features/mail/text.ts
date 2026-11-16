@@ -572,3 +572,91 @@ export function twinName(name: string, parent: string): string {
 export function moreMarks(count: number): string {
   return `+${formatCount(count)}`;
 }
+
+// Making labels (DESIGN.md "Sidebar").
+export const newLabelName = "New label";
+export const createText = "Create";
+export const createAndMoveText = "Create and move";
+export const creatingText = "Creating...";
+export const cancelLabelText = "Cancel";
+export const labelNameLabel = "Name";
+export const nestUnderLabel = "Nest under";
+export const atTheTop = "Nothing, at the top";
+export const labelAccountLabel = "Account";
+
+// newLabelIn titles New label for one account, named.
+export function newLabelIn(account: string): string {
+  return `New label in ${account}`;
+}
+
+// noLabelsToMake says the account named has no labels yet, where the
+// member can make one by typing its name.
+export function noLabelsToMake(account: string): string {
+  return `No labels in ${account} yet. Type a name to make one.`;
+}
+export const noLabelsInTheseToMake = "These accounts have no labels yet. Type a name to make one.";
+
+// noLabelsYetToMake says the accounts named have no labels yet, beside
+// others that do, where the member can make one by typing its name.
+export function noLabelsYetToMake(accounts: readonly string[]): string {
+  return `No labels in ${names.format(accounts)} yet. Type a name to make one.`;
+}
+
+// newLabelNamed names a picker's item that opens New label for the name
+// typed.
+export function newLabelNamed(typed: string): string {
+  return opensPicker(`New label "${typed}"`);
+}
+
+// The page of a label the member doesn't have (LabelGone).
+export const labelGoneTitle = "This label doesn't exist";
+export const labelGoneBody =
+  "It may have been deleted, in inbok or in Gmail, or its account disconnected.";
+export const openInbox = "Open Inbox";
+
+// Editing and deleting labels (DESIGN.md "Sidebar"). The provider is
+// named, as the change happens there too.
+export const editItem = "Edit";
+export const deleteLabelItem = "Delete label";
+export const editLabelName = "Edit label";
+export const saveLabelText = "Save";
+export const savingLabelText = "Saving...";
+export const alsoDeleted = "Also deleted";
+export const deletingText = "Deleting...";
+export const halfDeleted = "Some labels weren't deleted. Delete again to finish.";
+
+// labelActionsName names a sidebar label's menu of what can be done to the
+// label at path.
+export function labelActionsName(path: string): string {
+  return `Actions for ${path}`;
+}
+
+// deleteLabelTitle asks before deleting the label at path.
+export function deleteLabelTitle(path: string): string {
+  return `Delete ${path}?`;
+}
+
+// deleteLabelBody says what deleting the label name, with inside labels
+// nested in it, does, and what it leaves.
+export function deleteLabelBody(name: string, inside: number): string {
+  if (inside === 0) {
+    return "The label is deleted in Gmail too, and this can't be undone. Your mail stays: its conversations keep their other labels and stay in All mail.";
+  }
+  const them = inside === 1 ? "the label" : `the ${formatCount(inside)} labels`;
+  return `${name} and ${them} inside it are deleted in Gmail too, and this can't be undone. Your mail stays: their conversations keep their other labels and stay in All mail.`;
+}
+
+// andMore ends a list cut short, saying how many more it holds.
+export function andMore(count: number): string {
+  return `and ${formatCount(count)} more`;
+}
+
+// deleteLabelAction names the button that deletes the label name.
+export function deleteLabelAction(name: string): string {
+  return `Delete ${name}`;
+}
+
+// labelDeleted says the label name is gone, for screen readers.
+export function labelDeleted(name: string): string {
+  return `${name} deleted.`;
+}

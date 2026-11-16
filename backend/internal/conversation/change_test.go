@@ -279,7 +279,7 @@ func TestApplyChangesInvalid(t *testing.T) {
 		{"none", nil, ErrInvalidIDs},
 		{"twice", []Change{{IDs: []uuid.UUID{idA}, Add: []Place{inInbox}}, {IDs: []uuid.UUID{idA}, Starred: MarkSet}}, ErrInvalidIDs},
 		{"empty", []Change{{IDs: []uuid.UUID{idA}}}, ErrEmptyChange},
-		{"another account's label", []Change{{IDs: []uuid.UUID{idA}, Add: []Place{labelWork}}}, ErrPlaceNotFound},
+		{"another account's label", []Change{{IDs: []uuid.UUID{idA}, Add: []Place{labelWork}}}, ErrLabelNotFound},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := actions.ApplyChanges(t.Context(), 42, c.changes)

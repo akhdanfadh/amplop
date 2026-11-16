@@ -422,7 +422,7 @@ func TestSearchLabelNotFound(t *testing.T) {
 
 			_, err := s.searcher.Search(t.Context(), asha, r)
 
-			require.ErrorIs(t, err, conversation.ErrPlaceNotFound)
+			require.ErrorIs(t, err, conversation.ErrLabelNotFound)
 		})
 	}
 }

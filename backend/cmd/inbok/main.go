@@ -21,6 +21,7 @@ import (
 	"inbok/internal/emailverification"
 	"inbok/internal/google"
 	"inbok/internal/httpapi"
+	"inbok/internal/label"
 	"inbok/internal/logging"
 	"inbok/internal/mailsync"
 	"inbok/internal/meilisearch"
@@ -202,6 +203,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		fetcher := messagecontent.NewFetcher(messagecontent.NewContents(content, db), db, client, access, time.Now, logger)
 		services.MessageContent = messagecontent.NewReader(content, db, fetcher)
 		services.ConversationActions = conversation.NewActionService(db, access, client, logger)
+		services.Labels = label.NewService(db, access, client, logger)
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {

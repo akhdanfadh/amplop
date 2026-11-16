@@ -36,7 +36,7 @@ var readOnly = pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadO
 // ListConversations returns up to query.Limit of userID's conversations in
 // query.Place, newest first, then by ID descending, each older than
 // query.Before. It returns [conversation.ErrAccountNotFound] when userID has
-// no account query.Account, and [conversation.ErrPlaceNotFound] when userID
+// no account query.Account, and [conversation.ErrLabelNotFound] when userID
 // has no mailbox query.Place.Mailbox.
 func (db *DB) ListConversations(ctx context.Context, userID int64, query conversation.Query) ([]conversation.Conversation, error) {
 	before := newest
@@ -227,7 +227,7 @@ func placeScope(ctx context.Context, queries *sqlc.Queries, userID int64, place 
 	if place.View == "" {
 		owner, err := queries.ReadMemberLabelAccount(ctx, sqlc.ReadMemberLabelAccountParams{ID: place.Mailbox, UserID: userID})
 		if errors.Is(err, pgx.ErrNoRows) {
-			return scope{}, conversation.ErrPlaceNotFound
+			return scope{}, conversation.ErrLabelNotFound
 		}
 		if err != nil {
 			return scope{}, fmt.Errorf("read mailbox: %w", err)

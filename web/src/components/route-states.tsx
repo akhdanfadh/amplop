@@ -32,8 +32,14 @@ export const StateRegion = createContext<"page" | "pane">("page");
 
 // StatePage is the body of a state that replaces a page, or a pane in one:
 // title as the tab's title and as a heading that takes focus, then
-// children.
-function StatePage({ title, children }: { title: string; children: ReactNode }): ReactElement {
+// children, e.g. a feature's own not found, such as a label gone.
+export function StatePage({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}): ReactElement {
   const region = use(StateRegion);
   const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);

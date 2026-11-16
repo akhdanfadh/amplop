@@ -1,3 +1,4 @@
+import * as z from "zod";
 import { RenameConnectedAccountBody } from "@/api/generated/model/renameConnectedAccountBody.zod";
 import {
   ConversationActionBody,
@@ -22,7 +23,7 @@ export function listedAccount(id: number, email: string, color = id): ListedAcco
     needsReconnectSince: null,
     provider: "gmail",
     status: "usable",
-    allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
+    allowedActions: ["sync", "send", "change-mail", "reconnect", "rename", "disconnect"],
     sync: {
       status: "complete",
       failure: null,
@@ -79,7 +80,11 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // PostgreSQL no longer holds its hits, or answers failSearch's status,
 // with Retry-After when it is 429 or 503. requests records every path and
 // search it was asked; actions every action body, and changes every
-// change body's changes.
+// change body's changes. Label writes change places as Gmail would, and
+// labelWrites records each, method and path; refuseLabel, while set,
+// refuses the next as a 422 at body.name, or with a status alone, and
+// deleteOnly, while set, deletes that many labels of a delete before it
+// fails, as a delete Gmail stopped part way does.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
@@ -99,6 +104,9 @@ export type MailApi = {
   failSearch: number | undefined;
   searchShift: number;
   searchDropped: number[];
+  labelWrites: string[];
+  refuseLabel: string | number | undefined;
+  deleteOnly: number | undefined;
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -123,6 +131,9 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     failSearch: undefined,
     searchShift: 0,
     searchDropped: [],
+    labelWrites: [],
+    refuseLabel: undefined,
+    deleteOnly: undefined,
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
@@ -207,6 +218,9 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         account.name = name.trim() === "" ? null : name.trim();
         return Response.json({ data: { account } });
       }
+      if (path === "/api/v0/labels" || path.startsWith("/api/v0/labels/")) {
+        return answerLabel(api, init?.method ?? "GET", path, init?.body);
+      }
       // The root asks whether inbok still needs its first administrator.
       if (path === "/api/v0/setup") {
         return Response.json({ data: { status: "done" } });
@@ -235,6 +249,74 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     },
   };
   return api;
+}
+
+// answerLabel answers a label write, method at path with body, on api's
+// places and conversations, as the server and Gmail would.
+function answerLabel(api: MailApi, method: string, path: string, body: unknown): Response {
+  api.labelWrites.push(`${method} ${path}`);
+  const refusal = api.refuseLabel;
+  if (refusal !== undefined) {
+    api.refuseLabel = undefined;
+    if (typeof refusal === "number") return problem(refusal);
+    return Response.json(
+      {
+        type: "/api/v0/problems/validation-error",
+        status: 422,
+        title: "Unprocessable Entity",
+        detail: "Check the values you entered.",
+        errors: [{ location: "body.name", message: refusal }],
+      },
+      { status: 422, headers: { "Content-Type": "application/problem+json" } },
+    );
+  }
+  const sent = LabelWrite.parse(JSON.parse(typeof body === "string" ? body : "{}"));
+  const id = path.slice("/api/v0/labels/".length);
+  const found = api.places.find((p) => p.place === id && p.name !== null);
+  if (method === "POST") {
+    const made = {
+      accountId: sent.accountId ?? 0,
+      place: crypto.randomUUID(),
+      name: sent.name ?? "",
+      parent: sent.parent ?? null,
+      unread: 0,
+    };
+    api.places = [...api.places, made];
+    return Response.json({ data: labelResource(made) }, { status: 201 });
+  }
+  if (!found) return problem(notFound, "/api/v0/problems/label-not-found");
+  if (method === "PATCH") {
+    const edited = { ...found, name: sent.name ?? found.name, parent: sent.parent ?? null };
+    api.places = api.places.map((p) => (p === found ? edited : p));
+    return Response.json({ data: labelResource(edited) });
+  }
+  // Deepest first, the label itself last, as Gmail's code deletes.
+  const tree = [found.place];
+  for (let i = 0; i < tree.length; i++) {
+    for (const p of api.places) if (p.parent === tree[i] && p.name !== null) tree.push(p.place);
+  }
+  const deepestFirst: string[] = [];
+  for (let i = tree.length - 1; i >= 0; i--) deepestFirst.push(tree[i]);
+  const deleted = deepestFirst.slice(0, api.deleteOnly ?? tree.length);
+  api.places = api.places.filter((p) => !deleted.includes(p.place));
+  for (const c of api.conversations) c.labelIds = c.labelIds.filter((l) => !deleted.includes(l));
+  if (api.deleteOnly !== undefined) {
+    api.deleteOnly = undefined;
+    return problem(503, "/api/v0/problems/mail-provider-busy", { "Retry-After": "30" });
+  }
+  return Response.json({ data: { deleted } });
+}
+
+// What a label write may send, as the contract has it.
+const LabelWrite = z.object({
+  accountId: z.number().optional(),
+  name: z.string().optional(),
+  parent: z.string().nullable().optional(),
+});
+
+// labelResource returns place as the API answers a label.
+function labelResource(place: PlaceCount) {
+  return { id: place.place, accountId: place.accountId, name: place.name, parent: place.parent };
 }
 
 // The flags each action leaves on a row, as the server's rows show them.

@@ -304,7 +304,7 @@ func searchProblem(err error) error {
 	switch {
 	case errors.Is(err, search.ErrAccountNotFound):
 		return placeProblem(conversation.ErrAccountNotFound)
-	case errors.Is(err, conversation.ErrPlaceNotFound):
+	case errors.Is(err, conversation.ErrLabelNotFound):
 		return placeProblem(err)
 	case errors.Is(err, search.ErrBadRange):
 		return badRangeProblem()

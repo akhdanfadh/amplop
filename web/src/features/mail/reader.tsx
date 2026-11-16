@@ -225,6 +225,11 @@ export function Reader({
                 const owner = accounts.data?.data.accounts.find((a) => a.id === id);
                 return owner ? accountName(owner) : "";
               }}
+              canChange={(id) =>
+                accounts.data?.data.accounts.some(
+                  (a) => a.id === id && a.allowedActions.includes("change-mail"),
+                ) ?? false
+              }
               onAction={onAction}
             />
           )

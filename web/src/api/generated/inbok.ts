@@ -34,11 +34,13 @@ import {
   ResponseConversationPage,
   ResponseConversationSearchPage,
   ResponseCurrentSession,
+  ResponseDeletedLabels,
   ResponseDisconnectedAccount,
   ResponseEmailVerificationResult,
   ResponseEndedSessions,
   ResponseFirstAdmin,
   ResponseHealthStatus,
+  ResponseLabelResource,
   ResponseListedMembers,
   ResponseListedSessions,
   ResponseMessageContent,
@@ -70,6 +72,8 @@ import type {
   ConversationChangesBody,
   CountNewConversationsParams,
   EmailVerificationSecret,
+  LabelCreateInputBody,
+  LabelEditInputBody,
   ListConversationsParams,
   MessageEdits,
   NewCodeSession,
@@ -1604,6 +1608,263 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
 
 
 
+
+export const getCreateLabelUrl = () => {
+
+
+
+
+  return `/api/v0/labels`
+}
+
+/**
+ * Makes a label in one of the signed-in account's connected accounts, at its provider, and returns it as the provider saved it. inbok then lists the account's labels at the provider and saves them, as a sync does.
+ * @summary Create Label
+ */
+export const createLabel = async (labelCreateInputBody: LabelCreateInputBody, options?: Parameters<typeof transport>[1]): Promise<ResponseLabelResource> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseLabelResource>(getCreateLabelUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(labelCreateInputBody),
+    schema: ResponseLabelResource
+  }
+);}
+
+
+
+
+
+export const getCreateLabelMutationKey = () => ['createLabel'] as const;
+
+export const getCreateLabelMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLabel>>, TError,CreateLabelMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLabel>>, TError,CreateLabelMutationVariables, TContext> => {
+
+const mutationKey = getCreateLabelMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLabel>>, CreateLabelMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createLabel(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLabelMutationResult = NonNullable<Awaited<ReturnType<typeof createLabel>>>
+    export type CreateLabelMutationBody = LabelCreateInputBody
+    export type CreateLabelMutationError = ErrorType<Problem>
+    export type CreateLabelMutationVariables = {data: LabelCreateInputBody}
+
+    /**
+ * @summary Create Label
+ */
+export const useCreateLabel = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLabel>>, TError,CreateLabelMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createLabel>>,
+        TError,
+        CreateLabelMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateLabelMutationOptions(options), queryClient);
+    }
+
+export const getDeleteLabelUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/labels/${id}`
+}
+
+/**
+ * Deletes a label and every label inside it at its provider, the deepest first, and never their mail: their conversations keep their other places and stay in All mail. A label already gone at the provider counts as deleted, so a delete that failed part way finishes when asked again.
+ * @summary Delete Label
+ */
+export const deleteLabel = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseDeletedLabels> => {
+
+  return transport<ResponseDeletedLabels>(getDeleteLabelUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+    ,
+    schema: ResponseDeletedLabels
+  }
+);}
+
+
+
+
+
+export const getDeleteLabelMutationKey = () => ['deleteLabel'] as const;
+
+export const getDeleteLabelMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLabel>>, TError,DeleteLabelMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLabel>>, TError,DeleteLabelMutationVariables, TContext> => {
+
+const mutationKey = getDeleteLabelMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLabel>>, DeleteLabelMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteLabel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLabelMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLabel>>>
+
+    export type DeleteLabelMutationError = ErrorType<Problem>
+    export type DeleteLabelMutationVariables = {id: string}
+
+    /**
+ * @summary Delete Label
+ */
+export const useDeleteLabel = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLabel>>, TError,DeleteLabelMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLabel>>,
+        TError,
+        DeleteLabelMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteLabelMutationOptions(options), queryClient);
+    }
+
+export const getEditLabelUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/labels/${id}`
+}
+
+/**
+ * Renames a label, moves it under another of its account's labels or to the top, or both, at its provider, and returns it as the provider saved it. The labels inside it follow, keeping their own names; its conversations stay in it. A provider may do it in steps: when one fails, the rest of the change is not made, and List Places shows the labels as the provider has them.
+ * @summary Edit Label
+ */
+export const editLabel = async (id: string,
+    labelEditInputBody: LabelEditInputBody, options?: Parameters<typeof transport>[1]): Promise<ResponseLabelResource> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseLabelResource>(getEditLabelUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(labelEditInputBody),
+    schema: ResponseLabelResource
+  }
+);}
+
+
+
+
+
+export const getEditLabelMutationKey = () => ['editLabel'] as const;
+
+export const getEditLabelMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editLabel>>, TError,EditLabelMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof editLabel>>, TError,EditLabelMutationVariables, TContext> => {
+
+const mutationKey = getEditLabelMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editLabel>>, EditLabelMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  editLabel(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditLabelMutationResult = NonNullable<Awaited<ReturnType<typeof editLabel>>>
+    export type EditLabelMutationBody = LabelEditInputBody
+    export type EditLabelMutationError = ErrorType<Problem>
+    export type EditLabelMutationVariables = {id: string;data: LabelEditInputBody}
+
+    /**
+ * @summary Edit Label
+ */
+export const useEditLabel = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editLabel>>, TError,EditLabelMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof editLabel>>,
+        TError,
+        EditLabelMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEditLabelMutationOptions(options), queryClient);
+    }
 
 export const getListMembersUrl = () => {
 

@@ -159,7 +159,7 @@ func TestListConversationsInvalid(t *testing.T) {
 
 func TestListConversationsNotFound(t *testing.T) {
 	for err, want := range map[error]string{
-		conversation.ErrPlaceNotFound:   placeNotFoundType,
+		conversation.ErrLabelNotFound:   labelNotFoundType,
 		conversation.ErrAccountNotFound: connectedAccountNotFoundType,
 	} {
 		conversations := &fakeConversations{err: err}
@@ -550,12 +550,12 @@ func TestChangeConversationsUndoTaken(t *testing.T) {
 
 // A label not in a conversation's account, e.g. deleted since, is not
 // found.
-func TestChangeConversationsPlaceNotFound(t *testing.T) {
-	api := newActionsAPI(&fakeConversationActions{err: conversation.ErrPlaceNotFound})
+func TestChangeConversationsLabelNotFound(t *testing.T) {
+	api := newActionsAPI(&fakeConversationActions{err: conversation.ErrLabelNotFound})
 
 	response := requestAuthenticated(api, http.MethodPost, "/conversations/changes",
 		`{"changes":[{"ids":["`+reportID.String()+`"],"add":["`+workLabel.String()+`"]}]}`)
 
 	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
-	assert.Equal(t, placeNotFoundType, decodeJSON(t, response.Body.Bytes())["type"])
+	assert.Equal(t, labelNotFoundType, decodeJSON(t, response.Body.Bytes())["type"])
 }

@@ -28,3 +28,20 @@ JOIN connected_accounts ca ON ca.id = mb.connected_account_id
 WHERE ca.user_id = @user_id
     AND (mb.role = ANY (@roles::text[]) OR (mb.role IS NULL AND mb.made_by = 'member'))
 ORDER BY mb.connected_account_id, mb.id;
+
+-- name: ReadMemberAccountExists :one
+SELECT EXISTS (
+    SELECT 1 FROM connected_accounts WHERE id = @connected_account_id AND user_id = @user_id
+);
+
+-- name: ListAccountLabels :many
+-- The account's own labels, those with no role that the member made, by
+-- name, each with the label it nests under: one of the same account's own
+-- labels, else none.
+SELECT mb.id, mb.provider_mailbox_id, mb.name, parent.id AS parent_id
+FROM mailboxes mb
+LEFT JOIN mailboxes parent ON parent.connected_account_id = mb.connected_account_id
+    AND parent.provider_mailbox_id = mb.provider_parent_id
+    AND parent.role IS NULL AND parent.made_by = 'member'
+WHERE mb.connected_account_id = @connected_account_id AND mb.role IS NULL AND mb.made_by = 'member'
+ORDER BY mb.name, mb.id;

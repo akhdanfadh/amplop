@@ -38,7 +38,8 @@ const slots: Partial<Record<Action, string>> = {
 // with Move to… and Labels…, which open their picker under More
 // (LabelPicker, of labels, under their account's name when headings is
 // set), Report spam, and Open in Gmail, providerUrl, in a new tab.
-// onAction runs an action or a change; accountName names an account.
+// onAction runs an action or a change; accountName names an account, and
+// canChange reports whether its labels can change (LabelPicker).
 export function ConversationToolbar({
   conversation,
   list,
@@ -46,6 +47,7 @@ export function ConversationToolbar({
   headings,
   labels,
   accountName,
+  canChange,
   onAction,
 }: {
   conversation: Conversation;
@@ -54,6 +56,7 @@ export function ConversationToolbar({
   headings: boolean;
   labels: readonly Label[];
   accountName: (accountId: number) => string;
+  canChange: (accountId: number) => boolean;
   onAction: (act: Performed) => void;
 }): ReactElement {
   const actions = actionsFor([conversation], list);
@@ -118,6 +121,7 @@ export function ConversationToolbar({
         headings={headings}
         labels={labels}
         accountName={accountName}
+        canChange={canChange}
         onAct={(act) => onAction(act)}
       />
     </>

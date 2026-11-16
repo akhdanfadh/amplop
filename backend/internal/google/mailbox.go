@@ -50,14 +50,29 @@ func (c *Client) Mailboxes(ctx context.Context, token connectedaccount.AccessTok
 	if err != nil {
 		return nil, err
 	}
+	labels, err := c.labels(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	return mailboxesOf(labels), nil
+}
+
+// labels returns the account's labels from labels.list, each with its ID,
+// whole name, and type.
+func (c *Client) labels(ctx context.Context, service *gmail.Service) ([]*gmail.Label, error) {
 	list, err := retry(ctx, c, func() (*gmail.ListLabelsResponse, error) {
 		return service.Users.Labels.List(gmailUser).Fields("labels(id,name,type)").Context(ctx).Do()
 	})
 	if err != nil {
 		return nil, redactGmail(err)
 	}
-	mailboxes := make([]mailsync.Mailbox, 0, len(list.Labels))
-	for _, label := range list.Labels {
+	return list.Labels, nil
+}
+
+// mailboxesOf returns labels as mailboxes, as [Client.Mailboxes] does.
+func mailboxesOf(labels []*gmail.Label) []mailsync.Mailbox {
+	mailboxes := make([]mailsync.Mailbox, 0, len(labels))
+	for _, label := range labels {
 		if label == nil || isFlag(label.Id) {
 			continue
 		}
@@ -69,7 +84,7 @@ func (c *Client) Mailboxes(ctx context.Context, token connectedaccount.AccessTok
 		})
 	}
 	nest(mailboxes)
-	return mailboxes, nil
+	return mailboxes
 }
 
 // labelSeparator nests a Gmail label under another by name: Gmail names a

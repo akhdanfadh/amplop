@@ -254,6 +254,7 @@ text colour of their role.
 | Status                                   | `badge` with tones neutral, info, success, warning, destructive                             |
 | Initials avatars                         | `avatar`, plus the account ring                                                             |
 | Confirmations                            | `alert-dialog`                                                                              |
+| A short form over the page               | `dialog`, e.g. New label: the alert dialog's surface; Escape closes it, a press outside not |
 
 **Toasts** use React Aria's own
 [Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
@@ -380,6 +381,41 @@ last two redirect into settings, so settings can move without the server.
   status in the tooltip; labels show only open. The open place's item is
   the current page; the filtering account's is marked as current too, but
   not as a page.
+- **New label** follows the accounts, a plus and the words, while any
+  account's mail can change (its `allowedActions` has `change-mail`); the
+  rail shows no labels, so it shows none either. It opens the New label
+  dialog: Account (only with several such accounts; the filtering
+  account, else the first), Name, and Nest under (optional, "Nothing, at
+  the top", then that account's labels as the sidebar's tree, each by its
+  own name and heard by its path, which the closed field shows), and
+  Create; while it sends, Escape and Cancel wait. The label made shows at once, its way unfolded. A name the
+  server refuses, e.g. one with "/", one Gmail keeps (Inbox), or one the
+  account has, is said under Name.
+- **A label's menu**: on each label of an account whose mail can change,
+  a ⋮ (`EllipsisVerticalIcon`, as the toolbar's More), named "Actions for
+  <path>", in the count's place: shown on hover, while keyboard focus is
+  in the row, and while its menu is open, the count hidden meanwhile (WCAG
+  1.4.13 asks only that content shown on hover stay; this hides the
+  count, a grey area we accept, as the label's page shows it too); on a
+  touch, always, after the count, 24 px as the chevron, their touch
+  targets meeting between them, never overlapping. While it shows, a
+  long name ends before it, never under it. Its menu: "Edit…", the New label form
+  as Edit label, its Name and Nest under filled, never offering the label
+  or one inside it; and "Delete label…".
+- **Delete** asks first (`ConfirmDialog`): "Delete Clients?"; "Clients
+  and the 3 labels inside it are deleted in Gmail too, and this can't be
+  undone. Your mail stays: their conversations keep their other labels
+  and stay in All mail." (with none inside: "The label is deleted in
+  Gmail too, ...: its conversations ..."); an "Also deleted" list of the
+  labels inside by their paths under it, five, then "and N more"; and
+  "Delete Clients", "Deleting..." while it runs. A delete that stopped
+  part way says "Some labels weren't deleted. Delete again to finish.",
+  the list showing what is left; one already gone counts as done.
+  Once the open label is gone, it or one it is inside deleted, even by a
+  delete that then failed, its account's Inbox opens in its place, the
+  conversation closed; screen readers hear "Clients
+  deleted." from the Undo bar's live region. A rename or move of the open
+  label renames its page.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as
@@ -569,9 +605,18 @@ last two redirect into settings, so settings can move without the server.
   its name wherever the list shows several accounts' mail, even when one
   account's conversations are left. An account with none says so in
   words ("No labels in Work yet. Labels you make in Gmail show
-  here."); beside accounts that have some, a note under the list names
-  it ("No labels in Work yet. ..."), as React Aria drops a section with
-  no items. Names you choose from wrap, never cut: a long name or path
+  here.", or, where labels can be made, "No labels in Work yet. Type a
+  name to make one."); beside accounts that have some, a note under the
+  list names it ("No labels in Work yet. ..."), as React Aria drops a
+  section with no items. Where a label can be made (an account whose
+  `allowedActions` has `change-mail`), typing a name no label shown has,
+  in any case, adds `New label "Clients/Initech"…` last, which opens the
+  New label dialog over the picker (beside it in the page, so Escape
+  closes only the dialog), filled from the name typed split at the
+  longest label path it starts with: Initech under Clients. From Labels,
+  the label made comes back ticked, waiting for Apply; from Move to, the
+  dialog's button reads "Create and move": it makes the label, then moves
+  there, with Move to's Undo, which keeps the label. Names you choose from wrap, never cut: a long name or path
   takes more lines, and one without spaces, e.g. an address, breaks at
   the edge, so two long labels alike at the start can still be told
   apart on a phone, where no tooltip shows. Enter ticks a label, as a
@@ -1290,6 +1335,12 @@ outcome.
   a label by its own name, its parents in the header; "Studio is still
   syncing. Its mail appears here as it is copied."; "No spam"; "Trash is
   empty".
+- **A label gone:** a label's address that names none of the member's
+  labels, an old link or one deleted in inbok or in Gmail, says "This
+  label doesn't exist", "It may have been deleted, in inbok or in Gmail,
+  or its account disconnected.", and Open Inbox; an open label that a
+  sync finds gone turns to it. An address that is no place stays Page
+  not found.
 - **Failure:** what failed, that nothing was lost, Try again, a reference
   for faults. A failed refresh keeps the list and adds a banner ("Couldn't
   refresh. inbok isn't answering; showing mail from 10:42."). A failed

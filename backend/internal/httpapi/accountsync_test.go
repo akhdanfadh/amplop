@@ -137,5 +137,5 @@ func TestListedAccountSchema(t *testing.T) {
 
 	actions := doc.Components.Schemas.Map()["ListedAccount"].Properties["allowedActions"]
 
-	assert.Equal(t, []any{"sync", "send", "reconnect", "rename", "disconnect"}, actions.Items.Enum)
+	assert.Equal(t, []any{"sync", "send", "change-mail", "reconnect", "rename", "disconnect"}, actions.Items.Enum)
 }

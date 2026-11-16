@@ -1294,7 +1294,10 @@ changes emulate where inbok needs Gmail's behavior: it adds
 as the Go client decodes them, lets a seed fix an account's `sub`,
 refuses a code exchanged by another client or with another redirect URI
 than its authorization request's, returns a sent message's other headers,
-e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The
+e.g. `X-Inbok-Message-Id`, matches `metadataHeaders` in any case, and
+refuses a label name as Gmail does: a taken one, in any case, with 409,
+and one Gmail keeps or longer than 225 characters with 400 "Invalid
+label name", after collapsing its white space. The
 install fails if the patch no longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it. Unpatched,
 emulate puts a sent message in the `threadId` it is given, and without one
@@ -1319,6 +1322,8 @@ uses a small `httptest` stub instead:
   its check are tested with stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
+- It takes a label name over 255 bytes, which Gmail fails with a 500;
+  inbok refuses one before calling.
 - It ignores `fields` and answers whole resources, so no test catches a
   field list that leaves out what inbok reads, e.g. history's
   `labelIds`.
@@ -2457,9 +2462,10 @@ keys](#encryption-keys)). `sync` is where the account's
 `lastSyncedAt`, `failure`, and `failedAt`. `allowedActions` is what the
 member can ask of the account now (`connectedaccount.Account.AllowedActions`),
 so a client offers only that: `sync` while Google accepts the token,
-`send` while `status` is `usable`, `reconnect`, and `rename` and
-`disconnect` always; without a Google client, neither `sync`, `send`, nor
-`reconnect`. The handler composes
+`send` and `change-mail` (its conversations and [labels](#labels))
+while `status` is `usable`, `reconnect`, and `rename` and `disconnect`
+always; without a Google client, none of `sync`, `send`, `change-mail`,
+or `reconnect`. The handler composes
 `connectedaccount`'s list with `mailsync`'s reports, since `mailsync`
 depends on `connectedaccount`; an account disconnected between the two
 reads is left out. `syncStopped` is true when no run of
@@ -2884,6 +2890,15 @@ their thread is written again. ADR001 lists the fixes considered, and
 `DEBT.md` holds the planned one: a rules version that `inbok migrate`
 derives every thread again on.
 
+The API names three things apart. A *place* is what a list shows: a
+view, e.g. `inbox`, or a label's ID, wherever either is accepted, e.g.
+List Conversations' `place` and a change's `add`. A *label* is one of
+the member's own mailboxes, with no role, made by the member: a Gmail
+label, later an IMAP folder; [Labels](#labels) change them, and 404
+`label-not-found` names one the member does not have. *Mailbox* stays
+inside inbok: every label or folder the provider has, as
+`mailsync.Mailbox` and the `mailboxes` table hold them (ADR007).
+
 `conversation` reads them for the member, all under `/api/v0` and the
 Conversations tag. Each read first checks that the place's label, the
 account filter, or the conversation is the member's, then reads with the
@@ -2922,7 +2937,7 @@ IDs it found, in one read-only snapshot:
   Gmail's undocumented address from the account's address and the
   thread, in Spam or Trash when the conversation is only there.
 
-A label of another member answers 404 `place-not-found`, an account
+A label of another member answers 404 `label-not-found`, an account
 filter of another member 404 `connected-account-not-found`, and another
 member's conversation 404 `conversation-not-found`. On 20,000 synthetic
 conversations over three accounts (PostgreSQL 18, 2026-11-11) a page
@@ -2992,7 +3007,7 @@ changes here (ADR031, "Labels as built"). It runs as an action does,
 with the same answer, its own `undo` included, which reaches what each
 change names. The service turns each place into the conversation's
 account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
-with 404 `place-not-found` for a label that is not in it, e.g. deleted
+with 404 `label-not-found` for a label that is not in it, e.g. deleted
 since. `google.Client.ModifyThread` makes one `threads.modify` for the
 labels and the marks it clears, then one `messages.modify` for the
 newest message's marks it sets; when that second call fails, the first
@@ -3013,6 +3028,81 @@ the action, which inbok already holds. Opening a conversation marks
 nothing read; the web app sends `read`. Without a Google client the
 operation answers 409 `gmail-not-configured`, and the API server takes
 access tokens itself, as the worker does.
+
+### Labels
+
+`label` creates, renames, moves, and deletes the member's labels at
+their provider, under `/api/v0` and the Labels tag (ADR007, "Changing
+labels"):
+
+- `POST /labels {accountId, name, parent}` makes a label in one of the
+  member's accounts, at the top when `parent` is null, and answers 201
+  with it: `{id, accountId, name, parent}`, as List Places shows it.
+- `PATCH /labels/{id} {name, parent}` renames it, moves it, or both;
+  both fields are required, the current ones for what stays. The labels
+  inside it follow, keeping their own names.
+- `DELETE /labels/{id}` deletes it and every label inside it, never
+  their mail: their conversations keep their other places and stay in
+  All mail. It answers `{deleted}`, the IDs of the labels inbok no
+  longer has.
+
+`label.Service` checks the input (`ValidateName`: not blank, at most
+`MaxNameLength`, 225 characters, Gmail's limit), finds the label and its
+account's labels, refuses a parent that is not one of them, or is the
+label itself or one inside it, then takes an access token and calls the
+`label.Provider` for at most 7 seconds and never into the last 3 of the
+request's 10, as conversation actions do. Whatever the provider did, it
+then lists the account's mailboxes there and saves them with
+`SaveMailboxes`, which writes them as a sync does (`writeMailboxes` in
+`UpdateSyncedMail`, under the sync state's lock, keeping the state): a
+listed mailbox keeps its ID, and one gone is deleted with its
+memberships, so every conversation leaves a deleted label at once. The
+answer is read after that save, so it shows the name as the provider
+saved it, e.g. with Gmail's white space collapsed.
+
+`google.Client` implements the provider. Gmail nests labels by name
+(`Work/Projects`), so the client reads `labels.list` first and works on
+whole names:
+
+- `CreateMailbox` makes `parent/name` with `labels.create`, called once:
+  Gmail may have made the label before failing, and a retry would be
+  refused as taken.
+- `EditMailbox` renames the label with `labels.patch`, then each label
+  whose name starts with its old name and `/`, since Gmail renames only
+  the label patched. Every new name is checked for length before the
+  first call, so a too long name changes nothing. A label whose own name
+  holds `/`, at the top because the member has no label for the level
+  above, keeps that name when moved.
+- `DeleteMailbox` deletes the labels inside, the deepest first, then the
+  label, with `labels.delete`, which takes a label off its messages and
+  deletes none. Gmail's API deletes only the label asked, and its web app
+  deletes those inside too (checked on inbok's test account,
+  2026-11-16); inbok does as the web app does. A label already gone
+  counts as deleted, so asking again finishes a delete that stopped.
+
+The refusals are field errors, 422 `validation-error`, so a form marks
+the field: at `body.name` a name holding `/` (`label.SeparatorError`), a
+whole name over Gmail's 225 characters or 255 bytes with the names
+above it (Gmail answers 400 and 500, so inbok checks first), a name Gmail
+keeps, e.g. `Inbox` or `All Mail` in any case (Gmail's 400 "Invalid
+label name"), and a name the account has in any case (Gmail's 409); at
+`body.parent` a parent that isn't one. A label not the member's answers
+404 `label-not-found`, an account not theirs 404
+`connected-account-not-found`, an account needing a reconnect 409
+`account-needs-reconnect`, no Google client 409 `gmail-not-configured`,
+and Gmail refusing for its limits or taking too long 503
+`mail-provider-busy` with `Retry-After: 30`. The connected account's
+`allowedActions` lists `change-mail` when its labels can change, by the same
+rule the service applies: Gmail offered and the account usable.
+
+Accepted: a sync that read the mailboxes before a label change and saves
+after it shows the old labels until the next sync. A rename that fails
+part way leaves the labels it had not reached at the top under their
+old names, as Gmail shows a label whose parent is gone; the member can
+move them. A large label tree can outlast a request; asking again
+finishes a delete. The search index keeps a deleted label's ID on its
+messages until they change again, which matches nothing, since a search
+first checks the label is the member's.
 
 ## Search index
 
@@ -3177,7 +3267,7 @@ All mail, Spam, and Trash together search everywhere.
 
 1. A search of one account checks it is the member's, and one of a
    label checks it is the member's, so a search of either they no longer
-   have answers 404, `connected-account-not-found` or `place-not-found`
+   have answers 404, `connected-account-not-found` or `label-not-found`
    as for a list, rather than finding nothing.
 2. It looks up the member's mailboxes by role and makes each place a
    scope: Inbox and Sent by their role's mailboxes, a label by its own,
@@ -3526,6 +3616,9 @@ httpapi --> mailsync <-- repository/postgres
 httpapi --> conversation <-- repository/postgres
                          <-- google
             conversation --> mailsync, connectedaccount
+httpapi --> label <-- repository/postgres
+                  <-- google
+            label --> mailsync, connectedaccount
 httpapi --> search <-- meilisearch
                    <-- repository/postgres
             search --> conversation, mailsync, messagecontent
@@ -3576,8 +3669,9 @@ httpapi --> messagecontent <-- s3
   refresh token trade, revocation, and Gmail's `users.getProfile`;
   `outgoingmessage`'s `Provider`: `messages.send` and the check after an
   unanswered send; `mailsync`'s `Provider`, the Gmail reads
-  synchronization makes; and `conversation`'s `ThreadChanger`, the
-  thread calls a member's actions make. It uses `golang.org/x/oauth2`
+  synchronization makes; `conversation`'s `ThreadChanger`, the
+  thread calls a member's actions make; and `label`'s `Provider`, the
+  label writes. It uses `golang.org/x/oauth2`
   and Google's Gmail client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also implements
   `messagecontent`'s `Provider`, a message's content in full format and

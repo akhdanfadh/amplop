@@ -4,8 +4,11 @@
 # another redirect URI, returns a sent message's other headers, e.g.
 # X-Inbok-Message-Id, matches metadataHeaders in any case, answers a
 # label change, trash, or untrash without history IDs, takes SPAM off a
-# trashed message, and untrashes without adding INBOX, as Gmail does
-# (observed on inbok's test account, 2026-11-15). pnpm applies it on
+# trashed message, untrashes without adding INBOX, and refuses a label
+# name as Gmail does: a taken one, in any case, with 409 ABORTED, and one
+# Gmail keeps, e.g. Inbox, or longer than 225 characters with 400
+# "Invalid label name", after collapsing its whitespace (observed on
+# inbok's test account, 2026-11-15 and 2026-11-16). pnpm applies it on
 # install and fails if it no longer applies. To change it: pnpm patch
 # emulate@0.13.0, edit the folder it names (the bundled dist/dist-*.js
 # file), then pnpm patch-commit <folder>. Drop an edit once emulate ships its fix.

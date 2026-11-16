@@ -157,8 +157,11 @@ Put shared code in the folder for its responsibility:
   (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
   member's labels in the sidebar's order and where a move can leave
   (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
-  reading pane's label chips (`label-chips.tsx`), how a row shows its
-  date and people, and the address Back to mail returns to.
+  reading pane's label chips (`label-chips.tsx`), the New label and Edit
+  label dialog (`label-dialog.tsx`), a sidebar label's menu and its
+  delete (`label-actions.tsx`), the page of a label gone
+  (`label-gone.tsx`), how a row shows its date and people, and the
+  address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -432,7 +435,12 @@ the page where its step is done it drops its link.
 A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
 `all`, `spam`, `trash`) or a label's ID from the API's places, and
 `?account=<id>` shows one account's mail. A label the member doesn't
-have is Page not found. On a view `?account=` only filters, so an
+have says the label is gone (its loader throws `notFound` with data the
+route's `notFoundComponent` tells from an address that is no place,
+which stays Page not found). The open label's page follows the member's
+labels as List Places reads them: once its name with its parents' changes,
+or it leaves them, its loader runs again (`useFollowLabel`), renaming the
+page or saying it is gone. On a view `?account=` only filters, so an
 account the member doesn't have shows every account's mail, and one that
 is no ID is dropped; a label opens in its own account, so any other
 `?account=`, or none, becomes the label's. `/mail/<place>/<conversation
@@ -1419,7 +1427,8 @@ closing to the page: `ConfirmDialog` (`src/components/confirm-dialog.tsx`)
 keeps the dialog open while its request runs, with Cancel and Escape
 waiting, closes it on success, and shows a failure inside it, where
 pressing again retries. When the change removed the button that opened
-the dialog, `fallbackFocus` says where focus goes.
+the dialog, `fallbackFocus` says where focus goes. Its children follow
+the description, e.g. a delete's list of what else it takes.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads
@@ -1800,11 +1809,13 @@ const form = useAppForm({
   (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
   none.
 - **Field kinds** are `TextField`, `EmailField`, `PasswordField`,
-  `ChoiceField`, radios with a line about each, and `CodeField`, a
-  one-time code in boxes. Each takes a `label` and an optional
-  `description` shown before the control; all but `ChoiceField` also take
-  `optional` and `labelAction`, a link or button beside the label, e.g.
-  "Forgot password?". `TextField` takes `text="literal"` for a value typed
+  `ChoiceField`, radios with a line about each, `SelectField`, one choice
+  from a list that opens under it, each option stepped in by its
+  `depth`, and `CodeField`, a one-time code in boxes. Each takes a
+  `label` and an optional `description` shown before the control; all
+  but `ChoiceField` also take `optional`, and all but `ChoiceField` and
+  `SelectField` also take `labelAction`, a link or button beside the
+  label, e.g. "Forgot password?". `TextField` takes `text="literal"` for a value typed
   exactly, e.g. a host name, and `inputMode="numeric"` with
   `width="short"` for a number that names something, e.g. a port; the
   form keeps it as typed and the schema turns it into the number the API
@@ -1827,7 +1838,9 @@ const form = useAppForm({
   `withFieldGroup` over the fields each form names.
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
   first form: render the control through `FieldFrame` for a stacked field,
-  or `RowFrame` for a message editor's row; each reads the
+  or `RowFrame` for a message editor's row (a React Aria control that
+  holds its own label, as `ChoiceField`'s radio group and `SelectField`'s
+  select do, builds the same parts in its own `Field`); each reads the
   field from `useFieldContext` and gives the control its id, name, value,
   lock, `aria-invalid`, and `aria-describedby`, and a function that sets
   the value; then add it to

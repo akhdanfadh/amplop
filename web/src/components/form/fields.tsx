@@ -238,6 +238,100 @@ export function ChoiceField({
   );
 }
 
+// SelectOption is one choice of a SelectField: the value the field takes,
+// the words it shows in the list, what goes before them, e.g. an account's
+// mark, and how many steps it sits in, e.g. a label under two others.
+// whole, when given, is the words that name it alone, which screen readers
+// hear and the closed field shows, e.g. a label's path where the list
+// shows its own name under its parent's.
+export type SelectOption = {
+  value: string;
+  label: string;
+  whole?: string;
+  before?: ReactNode;
+  depth?: number;
+};
+
+// SelectField is the current field as one choice from a list that opens
+// under it, e.g. the label a new one nests under. Its value is the chosen
+// option's value.
+export function SelectField({
+  label,
+  description,
+  optional,
+  options,
+}: Omit<FieldProps, "labelAction"> & { options: readonly SelectOption[] }): ReactElement {
+  const field = useFieldContext<string>();
+  const form = useFormContext();
+  const sending = useSelector(form.store, (state) => state.isSubmitting);
+  const id = useId();
+  const errors = messages(field.state.meta.errors);
+  const invalid = errors.length > 0;
+  const descriptionId = `${id}-description`;
+  const errorId = `${id}-error`;
+  const describedBy = [description && descriptionId, invalid && errorId].filter(Boolean).join(" ");
+
+  return (
+    <Field data-invalid={invalid} data-disabled={sending}>
+      <Select
+        name={field.name}
+        className="flex w-full flex-col gap-3"
+        value={field.state.value}
+        onChange={(value) => {
+          // React Aria types the value as a key; keep only an offered one.
+          const option = options.find((offered) => offered.value === value);
+          if (option) field.handleChange(option.value);
+        }}
+        isDisabled={sending}
+        isInvalid={invalid}
+        aria-describedby={describedBy || undefined}
+        onBlur={field.handleBlur}
+      >
+        <FieldLabel>
+          {label}
+          {optional && <span className="font-normal text-muted-foreground">{" (optional)"}</span>}
+        </FieldLabel>
+        {description && <FieldDescription id={descriptionId}>{description}</FieldDescription>}
+        <SelectTrigger className="w-full">
+          <SelectValue className="flex min-w-0 items-center gap-2 truncate">
+            {({ defaultChildren }) => {
+              const chosen = options.find((option) => option.value === field.state.value);
+              if (chosen?.whole === undefined) return defaultChildren;
+              return (
+                <>
+                  {chosen.before}
+                  <span dir="auto" className={optionText}>
+                    {chosen.whole}
+                  </span>
+                </>
+              );
+            }}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem
+              key={option.value}
+              id={option.value}
+              textValue={option.whole ?? option.label}
+              aria-label={option.whole}
+              // Steps in as the sidebar's tree does, in rem so it grows
+              // with the text.
+              style={option.depth ? { paddingLeft: `${0.5 + option.depth * 0.875}rem` } : undefined}
+            >
+              {option.before}
+              <span dir="auto" className={optionText}>
+                {option.label}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {invalid && <ErrorLine id={errorId} errors={errors} />}
+    </Field>
+  );
+}
+
 // CodeField is the current field as a one-time code of length characters
 // in two halves, one box per character, e.g. an authenticator's six digits.
 // pattern is the characters it takes, e.g. input-otp's REGEXP_ONLY_DIGITS,
@@ -313,9 +407,10 @@ const narrowValue = "@max-[24rem]:order-last @max-[24rem]:basis-full";
 // the row's padding, the label, and the gap.
 const underValue = "px-4 pb-2 pl-21 @max-[24rem]:pl-4";
 
-// An account's address or name in From: cut short in the button, whole in
-// the list.
-const accountText =
+// An option's words, e.g. an account's address in From or a label in Nest
+// under: cut short in the button, whole in the list, so two long ones alike
+// at the start can be told apart.
+const optionText =
   "min-w-0 truncate in-data-[slot=select-item]:whitespace-normal in-data-[slot=select-item]:wrap-anywhere";
 
 // What an account option that can't send says after its address.
@@ -400,11 +495,11 @@ export function FromField({
                 {/* In the button both shrink and end with "..." when the row
                     is too narrow; in the open list they wrap, so every
                     account reads in full. */}
-                <span translate="no" className={accountText}>
+                <span translate="no" className={optionText}>
                   {account.email}
                 </span>
                 {account.name !== null && (
-                  <span className={cn(accountText, "text-muted-foreground")}>{account.name}</span>
+                  <span className={cn(optionText, "text-muted-foreground")}>{account.name}</span>
                 )}
                 {account.status !== "usable" && ` ${needsReconnectMark}`}
               </SelectItem>
