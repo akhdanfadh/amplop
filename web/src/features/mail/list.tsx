@@ -4,6 +4,8 @@ import {
   useRef,
   useState,
   type FocusEvent,
+  type KeyboardEvent,
+  type PointerEvent,
   type ReactElement,
   type RefObject,
   type UIEvent,
@@ -12,7 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { linkOptions, useNavigate, useRouter } from "@tanstack/react-router";
 import { useLiveInfiniteQuery } from "@tanstack/react-db";
 import type { HealthNode } from "@tanstack/db";
-import { Collection, Link } from "react-aria-components";
+import { Collection, Link, type Selection } from "react-aria-components";
 import { ArrowUpIcon } from "lucide-react";
 import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
@@ -36,8 +38,9 @@ import {
 import { useToday } from "./dates";
 import { listKey, nextRow, takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
+import type { Picking } from "./picking";
 import type { Place } from "./places";
-import { ConversationRow, createOpenStore, type RowAccount } from "./row";
+import { ConversationRow, PickingContext, createOpenStore, type RowAccount } from "./row";
 import { perform } from "./perform";
 import { placeWhere } from "./rules";
 import {
@@ -79,13 +82,17 @@ const placeholderRows = 10;
 // while the member is scrolled down. openId is the conversation the
 // reading pane shows; placeName names the place in an empty list's words;
 // heading is the place's heading, which takes focus when an action leaves
-// no row to focus. onRetry starts the list again after a page failed.
+// no row to focus. picking holds the picked rows; onRows hears the rows
+// shown and whether the list has reached its end. onRetry starts the list
+// again after a page failed.
 export function ConversationList({
   place,
   placeName,
   account,
   openId,
   heading,
+  picking,
+  onRows,
   onRetry,
 }: {
   place: Place;
@@ -93,6 +100,8 @@ export function ConversationList({
   account: number | undefined;
   openId: string | undefined;
   heading: RefObject<HTMLElement | null>;
+  picking: Picking;
+  onRows: (rows: readonly Conversation[], complete: boolean) => void;
   onRetry: () => void;
 }): ReactElement {
   const client = useQueryClient();
@@ -137,6 +146,8 @@ export function ConversationList({
   );
   const hidden = list.data.length - rows.length;
   const newest = list.data[0]?.dateMs;
+  const complete = !list.hasNextPage;
+  useEffect(() => onRows(rows, complete), [onRows, rows, complete]);
 
   const { size: rowSize, probe } = useRowSize();
   const keepPlace = useKeepPlace(rows, rowSize);
@@ -144,16 +155,19 @@ export function ConversationList({
   // An action in the reading pane that sent the member back to this list
   // asks it, once the pane has closed, to focus the row that took its
   // conversation's place, or that row itself while it stays (ADR031, "Mail
-  // actions as built", checkpoint 7c): scrolled into view first, as only
-  // the rows on screen are drawn. With no row left, the heading takes it,
-  // as focus would fall to the page.
+  // actions as built", checkpoint 7c); the picking bar's action that took
+  // every picked row away asks it at once, as the bar goes: scrolled into
+  // view first, as only the rows on screen are drawn. With no row left,
+  // the heading takes it, as focus would fall to the page.
   const listBox = useRef<HTMLDivElement>(null);
+  // Where the last press on the list began (onSelectionChange).
+  const press = useRef<{ mouse: boolean; text: boolean; id: string | undefined }>(undefined);
   const focusKey = listKey(place, account);
   const focusRequest = useRowFocusRequest(focusKey);
   // Not while the first page loads, which would leave no row to focus.
   const drawn = !list.isLoading && !list.isIdle;
   useEffect(() => {
-    if (!focusRequest || openId !== undefined || !drawn) return;
+    if (!focusRequest || (openId !== undefined && !focusRequest.now) || !drawn) return;
     takeRowFocus(focusKey);
     const index = nextRow(rows, focusRequest);
     const grid = listBox.current?.querySelector<HTMLElement>("[role=grid]");
@@ -271,13 +285,63 @@ export function ConversationList({
   const star = (conversation: Conversation, starred: boolean) => {
     void perform({
       mail: { client, conversations, placeCounts },
-      conversation,
+      conversations: [conversation],
       action: starred ? "star" : "unstar",
       onUnauthorized: () => {
         clearAccountCache(client);
         void navigate({ to: "/sign-in", replace: true });
       },
     });
+  };
+
+  // open opens the conversation id as its row's link does, for a press
+  // React Aria takes as picking once rows are picked; its entry keeps the
+  // picking entry's number, so Back still stops picking (picking.ts).
+  const open = (id: string) => {
+    const replace = openStore.get() !== undefined;
+    void navigate({
+      ...conversationHref(id),
+      replace,
+      state: (left) => ({ fromList: !replace || left.fromList === true, picking: left.picking }),
+    });
+  };
+  const anyPicked = picking.ids.size > 0;
+  // A mouse press on a row's text, without Shift, Ctrl, or Cmd, and Enter,
+  // open the row even while rows are picked; a press on the row's box,
+  // Space, Shift ranges, and a touch tap while picking pick (DESIGN.md
+  // "Message list"). React Aria picks on any press once a row is picked,
+  // so the list notes where each press began.
+  const onPointerDownCapture = (event: PointerEvent) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+    press.current = {
+      mouse: event.pointerType === "mouse",
+      text: plain && target?.closest("[data-slot=pick-box]") === null,
+      id: target?.closest("[data-conversation]")?.getAttribute("data-conversation") ?? undefined,
+    };
+  };
+  const onKeyDownCapture = (event: KeyboardEvent) => {
+    press.current = undefined;
+    const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+    const id =
+      event.target instanceof HTMLElement ? event.target.getAttribute("data-conversation") : null;
+    if (event.key !== "Enter" || !plain || !anyPicked || id === null) return;
+    // Only the row itself: Enter on its star presses the star.
+    event.preventDefault();
+    event.stopPropagation();
+    open(id);
+  };
+  const onSelectionChange = (keys: Selection) => {
+    const pressed = press.current;
+    press.current = undefined;
+    if (pressed?.mouse && pressed.text && pressed.id !== undefined && anyPicked) {
+      open(pressed.id);
+      return;
+    }
+    // Ctrl or Cmd+A picks every row loaded, as fixed IDs. Any other set is
+    // kept as React Aria gives it: its anchor, where a Shift range starts,
+    // lives on it.
+    picking.pick(keys === "all" ? new Set(rows.map((row) => row.id)) : keys);
   };
 
   // Focus resting on a row reads its conversation ahead, as hovering does.
@@ -289,11 +353,14 @@ export function ConversationList({
   };
 
   return (
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- notes where a press began; the rows are what act.
     <div
       ref={listBox}
       className="flex min-h-0 flex-1 flex-col"
       onFocus={onFocus}
       onBlur={readAhead.leave}
+      onPointerDownCapture={onPointerDownCapture}
+      onKeyDownCapture={onKeyDownCapture}
     >
       {/* 1 rem square, so the rows follow the browser's text size. */}
       <span
@@ -324,52 +391,57 @@ export function ConversationList({
             </Button>
           </div>
         )}
-        <GridList
-          key={shown}
-          aria-label={listName}
-          rowSize={rowSize}
-          // Only once the member pressed "N new", never as the page loads:
-          // the button they pressed is gone.
-          // oxlint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={shown > 0 ? "first" : undefined}
-          onScroll={onScroll}
-          className="min-h-0 flex-1"
-        >
-          <Collection items={rows} dependencies={[now, accountsById, ringed]}>
-            {(conversation) => (
-              <ConversationRow
-                conversation={conversation}
-                account={rowAccount(accountsById.get(conversation.accountId))}
-                ringed={ringed}
-                markInbox={place !== "inbox"}
-                href={conversationHref(conversation.id)}
-                openStore={openStore}
-                now={now}
-                // React Aria's links never preload: the router reads the
-                // conversation ahead, as its own Link would (ADR031).
-                onRest={() => readAhead.rest(conversation.id)}
-                onLeave={readAhead.leave}
-                onStar={(starred) => star(conversation, starred)}
-              />
-            )}
-          </Collection>
-          {/* After a failed page, nothing loads by itself again: the
+        <PickingContext value={anyPicked ? "picking" : "ready"}>
+          <GridList
+            key={shown}
+            aria-label={listName}
+            rowSize={rowSize}
+            // Only once the member pressed "N new", never as the page loads:
+            // the button they pressed is gone.
+            // oxlint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus={shown > 0 ? "first" : undefined}
+            selectionMode="multiple"
+            selectedKeys={picking.ids}
+            onSelectionChange={onSelectionChange}
+            onScroll={onScroll}
+            className="min-h-0 flex-1"
+          >
+            <Collection items={rows} dependencies={[now, accountsById, ringed]}>
+              {(conversation) => (
+                <ConversationRow
+                  conversation={conversation}
+                  account={rowAccount(accountsById.get(conversation.accountId))}
+                  ringed={ringed}
+                  markInbox={place !== "inbox"}
+                  href={conversationHref(conversation.id)}
+                  openStore={openStore}
+                  now={now}
+                  // React Aria's links never preload: the router reads the
+                  // conversation ahead, as its own Link would (ADR031).
+                  onRest={() => readAhead.rest(conversation.id)}
+                  onLeave={readAhead.leave}
+                  onStar={(starred) => star(conversation, starred)}
+                />
+              )}
+            </Collection>
+            {/* After a failed page, nothing loads by itself again: the
               failure below offers Try again. */}
-          {list.hasNextPage && !olderFailed ? (
-            <GridListLoadMore
-              isLoading={list.isFetchingNextPage}
-              onLoadMore={() => {
-                if (!list.isFetchingNextPage) void list.fetchNextPage();
-              }}
-              className="justify-center"
-            >
-              <Spinner />
-              <span className="sr-only">{listLoadingMore}</span>
-            </GridListLoadMore>
-          ) : (
-            !olderFailed && <GridListEnd>{listEnd}</GridListEnd>
-          )}
-        </GridList>
+            {list.hasNextPage && !olderFailed ? (
+              <GridListLoadMore
+                isLoading={list.isFetchingNextPage}
+                onLoadMore={() => {
+                  if (!list.isFetchingNextPage) void list.fetchNextPage();
+                }}
+                className="justify-center"
+              >
+                <Spinner />
+                <span className="sr-only">{listLoadingMore}</span>
+              </GridListLoadMore>
+            ) : (
+              !olderFailed && <GridListEnd>{listEnd}</GridListEnd>
+            )}
+          </GridList>
+        </PickingContext>
       </div>
       {olderFailed && (
         <div role="alert" className="flex items-center gap-3 border-t px-4 py-2 text-sm">

@@ -4,6 +4,7 @@ import { toConversation } from "./conversations";
 import type { ConversationRow } from "@/api/generated/model";
 import {
   actionsFor,
+  targetsOf,
   countChanges,
   guess,
   guessChanges,
@@ -188,7 +189,39 @@ describe("actionsFor", () => {
     ],
   ];
   it.each(cases)("offers %s its state's actions", (_, changes, list, actions) => {
-    expect(actionsFor(rowWith(changes), list)).toEqual(actions);
+    expect(actionsFor([rowWith(changes)], list)).toEqual(actions);
+  });
+
+  it("offers mixed conversations every action any of them offers, in order", () => {
+    const rows = [
+      rowWith({ unread: true }),
+      toConversation(conversation(2, { inbox: false, starred: true })),
+    ];
+    expect(actionsFor(rows, "all")).toEqual([
+      "archive",
+      "unarchive",
+      "trash",
+      "spam",
+      "read",
+      "unread",
+      "star",
+      "unstar",
+    ]);
+  });
+
+  it("offers nothing for no conversations", () => {
+    expect(actionsFor([], "inbox")).toEqual([]);
+  });
+});
+
+describe("targetsOf", () => {
+  const unread = rowWith({ unread: true });
+  const archived = toConversation(conversation(2, { inbox: false }));
+
+  it("returns the conversations an action changes, in their order", () => {
+    expect(targetsOf([unread, archived], "archive", "all")).toEqual([unread]);
+    expect(targetsOf([unread, archived], "unread", "all")).toEqual([archived]);
+    expect(targetsOf([unread, archived], "trash", "all")).toEqual([unread, archived]);
   });
 });
 

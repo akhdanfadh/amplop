@@ -8,7 +8,7 @@ import * as zod from 'zod';
 
 export const conversationChangeAddMax = 100;
 
-export const conversationChangeIdsMax = 100;
+export const conversationChangeIdsMax = 25;
 
 export const conversationChangeRemoveMax = 100;
 

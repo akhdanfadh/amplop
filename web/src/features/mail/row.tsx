@@ -1,8 +1,18 @@
-import { Fragment, useSyncExternalStore, type ReactElement } from "react";
+import {
+  createContext,
+  Fragment,
+  memo,
+  useContext,
+  useSyncExternalStore,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/cn";
-import { ToggleButton } from "react-aria-components";
-import { StarIcon } from "lucide-react";
-import { accountName, type AccountColor } from "@/components/account-mark";
+import { CheckboxContext, ToggleButton, useSlottedContext } from "react-aria-components";
+import { CheckIcon, StarIcon } from "lucide-react";
+import { accountBorder, accountName, type AccountColor } from "@/components/account-mark";
 import { Badge } from "@/components/ui/badge";
 import { GridListItem } from "@/components/ui/grid-list";
 import type { SearchMatchOutput } from "@/api/generated/model/searchMatch.zod";
@@ -14,6 +24,17 @@ import { senders } from "./people";
 import { SenderAvatar } from "./sender-avatar";
 import { inboxChip, messageCount, rowName, subjectText, unknownSender } from "./text";
 import { actionWords } from "./words";
+
+// Picks is what a list lets its rows do: off, no picking, e.g. a search's
+// results, whose rows span places that offer different actions; ready,
+// rows can be picked and none is; picking, some are, so every row's box
+// shows.
+export type Picks = "off" | "ready" | "picking";
+
+// PickingContext says what the list lets its rows do, off unless it says
+// so. A context, not a prop: the rows a list has drawn stay as drawn, and
+// only their boxes need to know.
+export const PickingContext = createContext<Picks>("off");
 
 // RowAccount is what a row shows of its conversation's account.
 export type RowAccount = { color: AccountColor; email: string; name: string | null };
@@ -31,7 +52,10 @@ export function rowHeight(): number {
 // list"): its senders, count, and date; its subject; its preview, an
 // Inbox chip while it is in the Inbox and markInbox is set, e.g. in All
 // mail, and its star; led by its newest sender's initials, ringed in
-// account's colour unless the list shows one account (ringed false).
+// account's colour unless the list shows one account (ringed false), which
+// becomes its checkbox while the row is hovered, focused, or picked, and
+// on every row while the list is picking (PickingContext; DESIGN.md
+// "Message list").
 // href opens it, with fromList in its history state as the reading
 // pane's Back needs it; openStore says which conversation the reading
 // pane shows; now is the day its date is shown at; onRest and onLeave run as
@@ -123,99 +147,245 @@ export function ConversationRow({
       // The list reads the conversation ahead when focus rests here.
       data-conversation={conversation.id}
       className={cn(
-        "h-full gap-3 border-b px-4 py-2",
+        "group/row h-full gap-3 border-b px-4 py-2",
         // An unread row's mark: a 3 px bar in primary at its leading edge,
         // the text's colour in forced colours, which drop the others.
         conversation.unread &&
           "before:absolute before:inset-y-0 before:start-0 before:w-0.75 before:bg-primary forced-colors:before:bg-[CanvasText]",
       )}
     >
-      {/* 36 px, its top on the first line's and its left edge on the list
-          heading's (16 px); 12 px to the text, less than the edge, so it
-          reads with its text. The ring is drawn inside its edge. */}
-      <SenderAvatar
-        sender={(match ? match.from : conversation.latestFrom)[0]}
-        ring={ringed && account ? account.color : undefined}
-      />
-      <div
-        className={cn(
-          "flex min-w-0 flex-1 flex-col text-sm leading-5",
-          // Unread is weight, heavier in dark, where light text on dark
-          // looks bolder at any weight; a read row's text is a step
-          // quieter, so the two differ in brightness too.
-          conversation.unread ? "font-semibold dark:font-[650]" : "text-read-foreground",
-        )}
-      >
-        {/* One 20 px line, whatever the smaller texts' own line height.
+      {({ isSelected }) => (
+        <>
+          {/* 36 px, its top on the first line's and its left edge on the
+              list heading's (16 px); 12 px to the text, less than the
+              edge, so it reads with its text. The ring is drawn inside
+              its edge. */}
+          <PickBox picked={isSelected} ring={ringed && account ? account.color : undefined}>
+            <SenderAvatar
+              sender={(match ? match.from : conversation.latestFrom)[0]}
+              ring={ringed && account ? account.color : undefined}
+            />
+          </PickBox>
+          <RowText
+            conversation={conversation}
+            match={match}
+            names={names}
+            who={who}
+            count={count}
+            date={date}
+            dateText={dateText}
+            shownDate={shownDate}
+            subject={subject}
+            inInbox={inInbox}
+            onStar={onStar}
+          />
+        </>
+      )}
+    </GridListItem>
+  );
+}
+
+// RowText is a row's three lines: who, count, and date; subject; and
+// preview, the Inbox chip while inInbox, and the star, which onStar sets;
+// match's own, words marked, for a search's result.
+// Memoized: React Aria draws a row again at each selection, focus, or
+// press change, while its text stays.
+const RowText = memo(function RowText({
+  conversation,
+  match,
+  names,
+  who,
+  count,
+  date,
+  dateText,
+  shownDate,
+  subject,
+  inInbox,
+  onStar,
+}: {
+  conversation: Conversation;
+  match: SearchMatchOutput | undefined;
+  names: string[];
+  who: string;
+  count: number | undefined;
+  date: Date;
+  dateText: string;
+  shownDate: string;
+  subject: string;
+  inInbox: boolean;
+  onStar: (starred: boolean) => void;
+}): ReactElement {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 flex-1 flex-col text-sm leading-5",
+        // Unread is weight, heavier in dark, where light text on dark
+        // looks bolder at any weight; a read row's text is a step
+        // quieter, so the two differ in brightness too.
+        conversation.unread ? "font-semibold dark:font-[650]" : "text-read-foreground",
+      )}
+    >
+      {/* One 20 px line, whatever the smaller texts' own line height.
             dir="auto" sets each text's direction by its first letter, so
             a right-to-left name or subject is cut at its own end. Several
             senders read in the page's direction, in order, each name in its own
             direction (bdi), so a right-to-left first name can't turn the
             whole list around. */}
-        <div className="flex h-5 items-baseline gap-2">
-          <span dir={names.length > 1 ? undefined : "auto"} className="truncate">
-            {names.length > 1
-              ? names.map((name, i) => (
-                  // oxlint-disable-next-line react/no-array-index-key -- a sender listed twice has the same name; the list never reorders.
-                  <Fragment key={`${i} ${name}`}>
-                    {i > 0 && ", "}
-                    <bdi>{name}</bdi>
-                  </Fragment>
-                ))
-              : who}
-          </span>
-          {count !== undefined && (
-            <span className="shrink-0 text-xs leading-5 text-muted-foreground">
-              {messageCount(count)}
-            </span>
-          )}
-          <time
-            dateTime={dateText}
-            title={fullDate(date)}
-            className={cn(
-              "ml-auto shrink-0 text-xs leading-5 tabular-nums",
-              !conversation.unread && "text-muted-foreground",
-            )}
-          >
-            {shownDate}
-          </time>
-        </div>
-        <span dir="auto" className="truncate">
-          {match && match.subject.trim() !== "" ? (
-            <Marked text={match.subject} spans={match.subjectMatches} />
-          ) : (
-            subject
-          )}
+      <div className="flex h-5 items-baseline gap-2">
+        <span dir={names.length > 1 ? undefined : "auto"} className="truncate">
+          {names.length > 1
+            ? names.map((name, i) => (
+                // oxlint-disable-next-line react/no-array-index-key -- a sender listed twice has the same name; the list never reorders.
+                <Fragment key={`${i} ${name}`}>
+                  {i > 0 && ", "}
+                  <bdi>{name}</bdi>
+                </Fragment>
+              ))
+            : who}
         </span>
-        {/* The chip and the star end the preview's line, the row's marks
-            beside its date, so the text above starts where it does. */}
-        <div className="flex h-5 items-center gap-1.5">
-          <p
-            dir="auto"
-            className="min-w-0 flex-1 truncate text-snippet font-normal text-muted-foreground"
-          >
-            {match ? (
-              <Marked text={match.preview} spans={match.previewMatches} />
-            ) : (
-              conversation.preview
-            )}
-          </p>
-          {inInbox && (
-            // 16 px, the meta text's line and the star's icon, so 2 px
-            // stay between it and the subject above. A hovered or open
-            // row's surface is the chip's own fill, so there it takes the
-            // page's, to keep its shape.
-            <Badge
-              variant="secondary"
-              className="h-4 px-1.5 py-0 in-aria-[current=page]:bg-background in-data-hovered:bg-background"
-            >
-              {inboxChip}
-            </Badge>
+        {count !== undefined && (
+          <span className="shrink-0 text-xs leading-5 text-muted-foreground">
+            {messageCount(count)}
+          </span>
+        )}
+        <time
+          dateTime={dateText}
+          title={fullDate(date)}
+          className={cn(
+            "ml-auto shrink-0 text-xs leading-5 tabular-nums",
+            !conversation.unread && "text-muted-foreground",
           )}
-          <StarButton starred={conversation.starred} onStar={onStar} />
-        </div>
+        >
+          {shownDate}
+        </time>
       </div>
-    </GridListItem>
+      <span dir="auto" className="truncate">
+        {match && match.subject.trim() !== "" ? (
+          <Marked text={match.subject} spans={match.subjectMatches} />
+        ) : (
+          subject
+        )}
+      </span>
+      {/* The chip and the star end the preview's line, the row's marks
+            beside its date, so the text above starts where it does. */}
+      <div className="flex h-5 items-center gap-1.5">
+        <p
+          dir="auto"
+          className="min-w-0 flex-1 truncate text-snippet font-normal text-muted-foreground"
+        >
+          {match ? (
+            <Marked text={match.preview} spans={match.previewMatches} />
+          ) : (
+            conversation.preview
+          )}
+        </p>
+        {inInbox && (
+          // 16 px, the meta text's line and the star's icon, so 2 px
+          // stay between it and the subject above. A hovered or open
+          // row's surface is the chip's own fill, so there it takes the
+          // page's, to keep its shape.
+          <Badge
+            variant="secondary"
+            className="h-4 px-1.5 py-0 in-aria-[current=page]:bg-background in-data-hovered:bg-background"
+          >
+            {inboxChip}
+          </Badge>
+        )}
+        <StarButton starred={conversation.starred} onStar={onStar} />
+      </div>
+    </div>
+  );
+});
+
+// PickBox is a row's leading 36 px, in a list that picks: children, its
+// avatar, or its
+// checkbox, ticked while picked, inside ring, the avatar's account colour,
+// when given, which shows while picking or picked, and
+// while the row is hovered or focused by the keyboard. A press on it picks
+// or unpicks the row, even while nothing is picked, when a press elsewhere
+// on the row opens it; with Shift while picking, it picks every row from
+// the last one picked, as a Shift press on the row does.
+//
+// DESIGN: the row is what assistive technology and the keyboard reach,
+// selected or not (Space picks it), so the box is only drawn. It keeps a
+// plain press from the row, which would open the conversation, and picks
+// through the row's selection checkbox slot, as React Aria's own checkbox
+// would; a Shift press goes on to the row, whose selection keeps React
+// Aria's anchor for ranges. The avatar and the box are both always drawn,
+// one hidden by the row's state: swapping the elements as hover began,
+// during a press, left the browser no element to click.
+function PickBox({
+  picked,
+  ring,
+  children,
+}: {
+  picked: boolean;
+  ring: AccountColor | undefined;
+  children: ReactNode;
+}): ReactElement {
+  const picks = useContext(PickingContext);
+  const selection = useSlottedContext(CheckboxContext, "selection");
+  const picking = picks === "picking";
+  const range = (event: PointerEvent | MouseEvent) => picking && event.shiftKey;
+  const onClick = (event: MouseEvent) => {
+    if (range(event)) return;
+    event.stopPropagation();
+    selection?.onChange?.(!picked);
+  };
+  const boxed = picking || picked;
+  // A list that does not pick keeps the avatar alone.
+  if (picks === "off") return <>{children}</>;
+  return (
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- the row is the control: Space picks it; this is the pointer's way.
+    <span
+      data-slot="pick-box"
+      // A touch screen's target reaches 4 px past it, 44 px, as the
+      // star's does, without moving anything.
+      className="relative flex size-9 shrink-0 items-center justify-center pointer-coarse:after:absolute pointer-coarse:after:-inset-1"
+      onPointerDown={(event) => {
+        if (!range(event)) event.stopPropagation();
+      }}
+      onClick={onClick}
+    >
+      <span
+        className={cn(
+          boxed
+            ? "hidden"
+            : "contents group-data-focus-visible/row:hidden group-data-hovered/row:hidden",
+        )}
+      >
+        {children}
+      </span>
+      {/* The checkbox's box (ui/checkbox.tsx), its border a step stronger
+          over a hovered row's fill. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-4 items-center justify-center rounded-sm border bg-card transition-colors [&>svg]:size-3.5",
+          boxed ? "flex" : "hidden group-data-focus-visible/row:flex group-data-hovered/row:flex",
+          picked
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-input group-data-hovered/row:border-muted-foreground",
+        )}
+      >
+        {picked && <CheckIcon />}
+      </span>
+      {ring !== undefined && (
+        // The avatar's account ring stays around the box, as the avatar
+        // draws it (DESIGN.md "Message list"), so a list of several
+        // accounts still says whose each row is while picking.
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-full border-2",
+            accountBorder(ring),
+            boxed
+              ? "block"
+              : "hidden group-data-focus-visible/row:block group-data-hovered/row:block",
+          )}
+        />
+      )}
+    </span>
   );
 }
 

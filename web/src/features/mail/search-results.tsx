@@ -186,7 +186,7 @@ export function SearchResults({
   const star = (conversation: Conversation, starred: boolean) => {
     void perform({
       mail: { client, conversations, placeCounts },
-      conversation,
+      conversations: [conversation],
       action: starred ? "star" : "unstar",
       onUnauthorized: signOut,
     });

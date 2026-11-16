@@ -13,6 +13,9 @@ const notFound = 404;
 const conflict = 409;
 const tooManyRequests = 429;
 
+// Names in a sentence: "A, B, and C".
+const names = new Intl.ListFormat("en-US", { type: "conjunction" });
+
 // Each view's name, as the sidebar and the list's heading show it.
 export const placeName: Record<ViewPlace, string> = {
   inbox: "Inbox",
@@ -88,17 +91,73 @@ export const me = "me";
 // A date on the day before today.
 export const yesterday = "Yesterday";
 
+// conversationCount returns count conversations, e.g. "1,284
+// conversations".
+export function conversationCount(count: number): string {
+  return count === 1 ? "1 conversation" : `${formatCount(count)} conversations`;
+}
+
 // Why the API refused to change a conversation, with the fix.
 export const refusedText = {
   "not-found": "It's no longer in Gmail.",
-  "needs-reconnect": "Reconnect its account in Settings, then try again.",
+  "needs-reconnect": "Reconnect its account in Connected accounts, then try again.",
   failed: "Gmail didn't answer. Try again.",
 } as const;
 
-// findItIn returns where the conversation went, e.g. "Trash", which the
-// Undo bar tells screen readers.
-export function findItIn(where: string): string {
-  return `Find it in ${where}.`;
+// Refusal is why the API refused one conversation, as refusedText names
+// it.
+export type Refusal = keyof typeof refusedText;
+
+// refusalSentences says why several conversations were not changed, one
+// sentence per reason, as Check for new mail's failures do: reconnect
+// names each account, accounts; gone and failed count their
+// conversations; errors are each failed request's own words, once each.
+export function refusalSentences({
+  reconnect,
+  gone,
+  failed,
+  errors,
+}: {
+  reconnect: readonly string[];
+  gone: number;
+  failed: number;
+  errors: readonly string[];
+}): string {
+  const sentences: string[] = [];
+  if (reconnect.length === 1)
+    sentences.push(`Reconnect ${reconnect[0]} in Connected accounts, then try again.`);
+  if (reconnect.length > 1)
+    sentences.push(
+      `Reconnect ${reconnect.length} accounts in Connected accounts, then try again: ${names.format(reconnect)}.`,
+    );
+  if (gone === 1) sentences.push("1 conversation is no longer in Gmail.");
+  if (gone > 1) sentences.push(`${formatCount(gone)} conversations are no longer in Gmail.`);
+  if (failed > 0)
+    sentences.push(`Gmail didn't answer for ${conversationCount(failed)}. Try again.`);
+  sentences.push(...new Set(errors));
+  return sentences.join(" ");
+}
+
+// The headings of a refusal toast's details, one per reason, over the
+// conversations it holds.
+export const refusalHeading = {
+  "needs-reconnect": "Account needs reconnecting",
+  "not-found": "No longer in Gmail",
+  failed: "Gmail didn't answer",
+  error: "Not sent",
+} as const;
+
+// detailItem returns how a toast's details name one conversation: its
+// subject and, when known, its account.
+export function detailItem(subject: string, account: string): string {
+  // No break after the dot: the account starts its line with it.
+  return account ? `${subject} ·\u00a0${account}` : subject;
+}
+
+// findItIn returns where the conversation, or count of them, went, e.g.
+// "Trash", which the Undo bar tells screen readers.
+export function findItIn(where: string, count = 1): string {
+  return count === 1 ? `Find it in ${where}.` : `Find them in ${where}.`;
 }
 
 export const undoName = "Undo";
@@ -118,6 +177,31 @@ export function undoTooltip(keys: string): string {
 export function undone(subject: string): string {
   return `Undone: ${subject}.`;
 }
+
+// The picking bar's name as a toolbar, and its words.
+export const pickedBarName = "Picked conversations";
+export const stopPicking = "Stop picking";
+
+// pickedNumber returns how many conversations are picked, "All 60" once
+// every one of the place is (DESIGN.md "Message list"); the picking bar
+// says pickedWord after it.
+export function pickedNumber(count: number, all: boolean): string {
+  return all ? `All ${formatCount(count)}` : formatCount(count);
+}
+export const pickedWord = "picked";
+
+// pickAllName returns the name of the bar's checkbox that picks the count
+// conversations loaded, and pickAllTooltip its shorter tooltip.
+export function pickAllName(count: number): string {
+  return `Pick all ${formatCount(count)} loaded conversations`;
+}
+export function pickAllTooltip(count: number): string {
+  return `Pick all ${formatCount(count)} loaded`;
+}
+
+// The bar's checkbox's tooltip once every loaded row is picked, when a press
+// unpicks them all; its name stays, and its state says it is ticked.
+export const unpickAll = "Unpick all";
 
 // What a conversation's toolbar's More menu is called, and its link.
 export const moreName = "More actions";
@@ -211,9 +295,6 @@ export function checkRefusal(err: ApiError): CheckRefusal | undefined {
   if (uncertainOutcome(err)) return { kind: "uncertain" };
   return { kind: "failed", message: userMessage(err) };
 }
-
-// Names in a sentence: "A, B, and C".
-const names = new Intl.ListFormat("en-US", { type: "conjunction" });
 
 // checkFailures says why the accounts in refused, each named with its
 // refusal, could not be checked: one sentence per reason, naming every

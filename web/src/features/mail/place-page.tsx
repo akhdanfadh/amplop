@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactElement,
@@ -16,9 +18,12 @@ import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
 import { useLayout } from "@/hooks/use-layout";
 import { CheckMail } from "./check-mail";
+import type { Conversation } from "./conversations";
 import { listKey, useRowFocusRequest } from "./focus-request";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
+import { usePicking } from "./picking";
+import { PickingBar } from "./picking-bar";
 import { UndoBar } from "./undo";
 import { isViewPlace, searchPlace, type Place } from "./places";
 import { labelPath, usePlaceCounts } from "./place-counts";
@@ -26,6 +31,10 @@ import type { FilterChange, SearchFilters } from "./search";
 import { SearchBox, useSearchBox } from "./search-box";
 import { SearchResults } from "./search-results";
 import { closeSearch, openSearch, placeName, searchPlaceholder } from "./text";
+
+// How many frames a closing menu is waited for, about half a second, as
+// the list waits for a row to appear.
+const maxWatchFrames = 30;
 
 // PlaceAccount is the account a place's list is filtered to.
 export type PlaceAccount = { id: number; color: number; email: string; name: string | null };
@@ -130,12 +139,72 @@ export function PlacePage({
   // takes focus itself.
   const focusKey = listKey(place, account?.id);
   const rowAsked = useRowFocusRequest(focusKey) !== undefined;
+  // The rows the list shows, and whether it has reached its end, for the
+  // picking bar; picks follow them, so a row that leaves the list leaves
+  // the picks, unless an action holds it until it is answered.
+  const picking = usePicking(focusKey);
+  const [shown, setShown] = useState<{ rows: readonly Conversation[]; complete: boolean }>({
+    rows: [],
+    complete: false,
+  });
+  const onRows = useCallback(
+    (rows: readonly Conversation[], complete: boolean) => setShown({ rows, complete }),
+    [],
+  );
+  const { follow } = picking;
+  useEffect(() => follow(shown.rows), [follow, shown.rows]);
+  const picked = shown.rows.filter((row) => picking.ids.has(row.id));
+  const anyPicked = picked.length > 0;
+  // Picking takes the top bar from an open search box, which stays closed
+  // once picking stops: opening again would take focus from the list.
+  if (anyPicked && barOpen) setBarOpen(false);
+  // Picking that stops from inside the bar, e.g. by Stop picking, Escape,
+  // or Back, takes the bar and its focus with it: focus goes to the list,
+  // which puts it on the row it was last on (React Aria's grid). Not when
+  // focus is elsewhere, e.g. on a row after Escape there.
+  const mainRef = useRef<HTMLElement>(null);
+  const wasPicking = useRef(false);
+  useLayoutEffect(() => {
+    const stopped = wasPicking.current && !anyPicked;
+    wasPicking.current = anyPicked;
+    if (!stopped) return undefined;
+    const lost = () => document.activeElement === null || document.activeElement === document.body;
+    const toList = () => mainRef.current?.querySelector<HTMLElement>("[role=grid]")?.focus();
+    // A menu still open, e.g. More as Back stops picking, keeps the rest of
+    // the page inert, where nothing takes focus, and drops focus to the
+    // page as it goes: wait for the page to be free again, about half a
+    // second at most.
+    let frames = 0;
+    let frame = 0;
+    const settle = () => {
+      const grid = mainRef.current?.querySelector<HTMLElement>("[role=grid]");
+      // NOTE: the page stays inert a moment after the menu has gone.
+      const free = document.querySelector("[role=menu]") === null && !grid?.closest("[inert]");
+      if (free) {
+        if (lost()) toList();
+        return;
+      }
+      if (++frames < maxWatchFrames) frame = requestAnimationFrame(settle);
+    };
+    settle();
+    return () => cancelAnimationFrame(frame);
+  }, [anyPicked]);
+  // While picking, the heading is the bar's hidden one: the list takes the
+  // page's focus instead, on the row it was last on, which a sighted
+  // keyboard user sees. Chosen as focus is given, not as drawn.
+  const [opensOn] = useState<RefObject<HTMLElement | null>>(() => ({
+    get current() {
+      const barShown = document.querySelector("[data-slot=picking-bar]") !== null;
+      const grid = mainRef.current?.querySelector<HTMLElement>("[role=grid]");
+      return barShown && grid ? grid : headingRef.current;
+    },
+  }));
   // Each page focuses its heading when it opens (DESIGN.md "Focus"), so the
   // keyboard starts in the place, not back in the sidebar; what the reading
   // pane shows takes focus itself, and so does the box while the member
   // types in it, as their words open the results.
   useFocusOnOpen(
-    headingRef,
+    opensOn,
     pane === "list" && placed ? `${searching ? searchPlace : place} ${account?.id ?? ""}` : null,
     { unless: rowAsked || boxFocused },
   );
@@ -158,9 +227,26 @@ export function PlacePage({
       onFocusChange={setBoxFocused}
     />
   );
-  // The top bar: the box once opened, with a way back; else the place's
-  // header with the button that opens the box.
-  const barContent = barBox ? (
+  // The picking bar, in the list header's place, or the top bar's.
+  const pickingBar = (inTopBar: boolean) => (
+    <PickingBar
+      place={place}
+      account={account?.id}
+      name={name}
+      headingRef={headingRef}
+      picked={picked}
+      loaded={shown.rows}
+      complete={shown.complete}
+      picking={picking}
+      inTopBar={inTopBar}
+    />
+  );
+  // The top bar: the picking bar while picking; the box once opened, with
+  // a way back; else the place's header with the button that opens the
+  // box.
+  const barContent = anyPicked ? (
+    pickingBar(true)
+  ) : barBox ? (
     <BarSearch
       box={searchBox(true)}
       boxRef={boxRef}
@@ -220,7 +306,7 @@ export function PlacePage({
       <MailPanes
         pane={pane}
         list={
-          <main className="flex h-full flex-col" aria-labelledby="place-heading">
+          <main ref={mainRef} className="flex h-full flex-col" aria-labelledby="place-heading">
             {slot ? !hidden && createPortal(barContent, slot) : null}
             {!inBar && <div className="px-4 pt-3">{searchBox(false)}</div>}
             {search ? (
@@ -241,15 +327,18 @@ export function PlacePage({
               </>
             ) : (
               <>
-                {!inBar && (
-                  <PlaceHeader
-                    name={name}
-                    ownName={ownName}
-                    account={account}
-                    headingRef={headingRef}
-                    inTopBar={false}
-                  />
-                )}
+                {!inBar &&
+                  (anyPicked ? (
+                    pickingBar(false)
+                  ) : (
+                    <PlaceHeader
+                      name={name}
+                      ownName={ownName}
+                      account={account}
+                      headingRef={headingRef}
+                      inTopBar={false}
+                    />
+                  ))}
                 <ConversationList
                   // A new place, account, or attempt is a new list: its own
                   // scroll position, "N new" count, and first load.
@@ -259,6 +348,8 @@ export function PlacePage({
                   account={account?.id}
                   openId={openId}
                   heading={headingRef}
+                  picking={picking}
+                  onRows={onRows}
                   onRetry={() => setAttempt((n) => n + 1)}
                 />
               </>

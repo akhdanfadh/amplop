@@ -351,11 +351,18 @@ describe("ConversationView", () => {
     const bar = document.querySelector<HTMLElement>(".sticky");
     if (!bar?.parentElement) throw new Error("the view has no toolbar");
     expect(bar.dataset.raised).toBeUndefined();
+    const pane = bar.parentElement;
 
-    bar.parentElement.scrollTo({ top: 400 });
-
-    // The subject shows in it, and a hairline below it.
-    await expect.poll(() => bar.dataset.raised).toBe("true");
+    // To the end, again on each try: bodies still being drawn make the
+    // pane taller, and a scroll before they are stops short, the title
+    // still in view.
+    await expect
+      .poll(() => {
+        pane.scrollTo({ top: pane.scrollHeight });
+        return bar.dataset.raised;
+      })
+      // The subject shows in it, and a hairline below it.
+      .toBe("true");
   });
 
   it("keeps a long address whole on its own line in a narrow pane", async () => {

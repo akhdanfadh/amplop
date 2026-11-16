@@ -45,7 +45,7 @@ export function ConversationToolbar({
   providerUrl: string | null | undefined;
   onAction: (action: Action) => void;
 }): ReactElement {
-  const actions = actionsFor(conversation, list);
+  const actions = actionsFor([conversation], list);
   const more = actions.filter((action) => action === inMore);
   const gmail = providerUrl && isHttps(providerUrl) ? providerUrl : undefined;
   return (

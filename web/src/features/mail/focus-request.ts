@@ -2,11 +2,14 @@ import { useSyncExternalStore } from "react";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
 import type { Place } from "./places";
 
-// FocusRequest is a row an action in the reading pane sent the member
-// back to its list from: the list focuses that row itself when it stays,
-// e.g. after Mark unread, else the row that took its place, by where this
-// one sat in the list's order.
-export type FocusRequest = { id: string; dateMs: number; stays: boolean };
+// FocusRequest is a row an action took out of view, e.g. one in the
+// reading pane that sent the member back to its list: the list focuses
+// that row itself when it stays, e.g. after Mark unread, else the row
+// that took its place, by where this one sat in the list's order. The
+// list waits for the reading pane to close, unless now asks it to focus
+// at once, e.g. after the picking bar's action took every picked row
+// away while a conversation stays open beside the list.
+export type FocusRequest = { id: string; dateMs: number; stays: boolean; now?: boolean };
 
 // The open request, by its list's key.
 const requests = new Map<string, FocusRequest>();

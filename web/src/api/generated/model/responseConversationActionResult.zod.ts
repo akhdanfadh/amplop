@@ -11,7 +11,7 @@ export const responseConversationActionResultDataPlacesItemUnreadMin = 0;
 
 export const responseConversationActionResultDataUndoItemAddMax = 100;
 
-export const responseConversationActionResultDataUndoItemIdsMax = 100;
+export const responseConversationActionResultDataUndoItemIdsMax = 25;
 
 export const responseConversationActionResultDataUndoItemRemoveMax = 100;
 

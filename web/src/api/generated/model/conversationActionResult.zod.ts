@@ -11,7 +11,7 @@ export const conversationActionResultPlacesItemUnreadMin = 0;
 
 export const conversationActionResultUndoItemAddMax = 100;
 
-export const conversationActionResultUndoItemIdsMax = 100;
+export const conversationActionResultUndoItemIdsMax = 25;
 
 export const conversationActionResultUndoItemRemoveMax = 100;
 

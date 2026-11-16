@@ -8,11 +8,11 @@ import * as zod from 'zod';
 
 export const changeConversationsBodyChangesItemAddMax = 100;
 
-export const changeConversationsBodyChangesItemIdsMax = 100;
+export const changeConversationsBodyChangesItemIdsMax = 25;
 
 export const changeConversationsBodyChangesItemRemoveMax = 100;
 
-export const changeConversationsBodyChangesMax = 100;
+export const changeConversationsBodyChangesMax = 25;
 
 
 export const ChangeConversationsBody = zod.object({
@@ -22,7 +22,7 @@ export const ChangeConversationsBody = zod.object({
   "remove": zod.array(zod.string()).max(changeConversationsBodyChangesItemRemoveMax).optional().describe('The places to take each conversation\'s messages out of, named as in add.'),
   "starred": zod.boolean().optional().describe('true stars each conversation\'s newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is.'),
   "unread": zod.boolean().optional().describe('true marks each conversation\'s newest message unread, as unread does; false marks every message read. Left out, it stays as it is.')
-})).min(1).max(changeConversationsBodyChangesMax).describe('The changes, each to its own conversations; together they name at most 100, each once.')
+})).min(1).max(changeConversationsBodyChangesMax).describe('The changes, each to its own conversations; together they name at most 25, each once.')
 })
 
 export type ChangeConversationsBody = zod.input<typeof ChangeConversationsBody>;

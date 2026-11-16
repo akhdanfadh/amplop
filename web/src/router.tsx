@@ -80,6 +80,10 @@ declare module "@tanstack/react-router" {
     // A conversation opened from its list's row, so the entry before it
     // is that list.
     fromList?: boolean;
+    // An entry added as the member started picking conversations, which
+    // Back stops (features/mail/picking.ts): each its own number, so a
+    // new one is always a new entry.
+    picking?: number;
     // What the two-factor page just changed, for Security to report.
     twoFactorChange?: "on" | "off" | "canceled";
     // The entry the compose window added on a phone, by its message's id,

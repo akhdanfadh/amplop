@@ -155,12 +155,46 @@ export function countChanges(before: Conversation, after: Conversation): UnreadC
   ];
 }
 
-// actionsFor returns the actions conversation offers in list, a place's
-// list, in the toolbar's order: by the first state that fits. A Spam or
-// Trash list offers its own, so a conversation with one message there can
-// leave it; elsewhere its flags decide: in the inbox, archived, or only in
-// Spam or Trash, as those lists. No Delete forever: it cannot be undone.
-export function actionsFor(conversation: Conversation, list: Place): Action[] {
+// The order actions are offered in: the state's move first, then Delete,
+// Report spam, the marks, and the star, as the toolbar shows them.
+const actionOrder: readonly Action[] = [
+  "archive",
+  "unarchive",
+  "unspam",
+  "untrash",
+  "trash",
+  "spam",
+  "read",
+  "unread",
+  "star",
+  "unstar",
+];
+
+// actionsFor returns the actions conversations offer in list, a place's
+// list, in the toolbar's order: each action any of them offers, so
+// several mixed conversations offer both of a pair, e.g. Archive and Move
+// to Inbox. One conversation offers its state's: a Spam or Trash list
+// offers its own, so a conversation with one message there can leave it;
+// elsewhere its flags decide: in the inbox, archived, or only in Spam or
+// Trash, as those lists. No Delete forever: it cannot be undone.
+export function actionsFor(conversations: readonly Conversation[], list: Place): Action[] {
+  const offered = new Set(conversations.flatMap((conversation) => actionsOf(conversation, list)));
+  return actionOrder.filter((action) => offered.has(action));
+}
+
+// targetsOf returns the conversations, of conversations, that offer action
+// in list, in their order: the ones it changes.
+export function targetsOf(
+  conversations: readonly Conversation[],
+  action: Action,
+  list: Place,
+): Conversation[] {
+  return conversations.filter((conversation) => actionsOf(conversation, list).includes(action));
+}
+
+// actionsOf returns the actions conversation offers in list, as
+// actionsFor says.
+function actionsOf(conversation: Conversation, list: Place): Action[] {
   const mark: Action = conversation.unread ? "read" : "unread";
   const star: Action = conversation.starred ? "unstar" : "star";
   const onlyIn = (view: "spam" | "trash") => conversation[view] && !conversation.allMail;

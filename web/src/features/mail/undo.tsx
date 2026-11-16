@@ -24,13 +24,24 @@ const undoLetter = "z";
 const undoCode = "KeyZ";
 
 // PendingUndo is the last action's Undo: what it did, e.g. "Archived"; the
-// conversation's subject; where it went, e.g. "Trash"; and what Undo does.
+// conversation's subject, or how many it changed, e.g. "12
+// conversations"; count, how many that is; where they went, e.g. "Trash",
+// for an action that moves them; and what Undo does.
 type PendingUndo = {
   key: number;
   title: string;
   subject: string;
-  where: string;
+  count: number;
+  where?: string;
   onUndo: () => void;
+};
+
+// UndoHandle is what the caller of showUndo keeps: close closes its Undo,
+// e.g. once its action is refused; change says it now covers count
+// conversations, named by subject, e.g. after some were refused.
+export type UndoHandle = {
+  close: () => void;
+  change: (subject: string, count: number) => void;
 };
 
 // Said is what the live region says once an Undo has run, keyed so the
@@ -52,13 +63,19 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-// showUndo shows undo in the Undo bar in place of any other, and returns a
-// function that closes it, e.g. once its action is refused.
-export function showUndo(undo: Omit<PendingUndo, "key">): () => void {
+// showUndo shows undo in the Undo bar in place of any other, and returns
+// its handle.
+export function showUndo(undo: Omit<PendingUndo, "key">): UndoHandle {
   keys++;
   const key = keys;
   set({ pending: { ...undo, key } });
-  return () => closeUndo(key);
+  return {
+    close: () => closeUndo(key),
+    change: (subject, count) => {
+      if (state.pending?.key !== key) return;
+      set({ ...state, pending: { ...state.pending, subject, count } });
+    },
+  };
 }
 
 // closeUndo closes the Undo key, or any Undo and what one said when key is
@@ -72,8 +89,9 @@ export function closeUndo(key?: number): void {
   set({ said: state.said });
 }
 
-// sayUndone tells screen readers that Undo put the conversation of subject
-// back, until the next action's Undo shows.
+// sayUndone tells screen readers that Undo put the conversation of subject,
+// or the conversations it counts, back, until the next action's Undo
+// shows.
 export function sayUndone(subject: string): void {
   keys++;
   set({ pending: state.pending, said: { key: keys, text: undone(subject) } });
@@ -83,6 +101,13 @@ export function sayUndone(subject: string): void {
 // The module lives as long as the page, so it never stops listening.
 void onAccountCacheClear(() => closeUndo());
 
+// undoSaid returns what screen readers hear as undo shows: what it did,
+// to which conversations, and where they went.
+function undoSaid(undo: PendingUndo): string {
+  const said = `${undo.title}: ${undo.subject}.`;
+  return undo.where === undefined ? said : `${said} ${findItIn(undo.where, undo.count)}`;
+}
+
 // runUndo closes undo's bar and runs it.
 function runUndo(undo: PendingUndo): void {
   closeUndo(undo.key);
@@ -90,7 +115,8 @@ function runUndo(undo: PendingUndo): void {
 }
 
 // UndoBar is the last action's Undo, docked at the bottom of the list, or
-// of the mail area on a phone (DESIGN.md "Feedback"): what it did and to which conversation, Undo,
+// of the mail area on a phone (DESIGN.md "Feedback"): what it did and to
+// which conversation, or how many, Undo,
 // and Close. It shows for 10 s, a line draining as they pass, paused while
 // the pointer or focus is on it and while the tab is hidden; the next
 // action's Undo takes its place. It is part of the layout, so it covers
@@ -139,9 +165,7 @@ export function UndoBar({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [pending]);
 
-  const message = pending
-    ? { key: pending.key, text: `${pending.title}: ${pending.subject}. ${findItIn(pending.where)}` }
-    : said;
+  const message = pending ? { key: pending.key, text: undoSaid(pending) } : said;
   return (
     <>
       {/* Always in the page, empty between Undos: screen readers announce

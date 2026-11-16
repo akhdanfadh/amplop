@@ -447,7 +447,7 @@ type conversationActionInput struct {
 
 type conversationActionBody struct {
 	Action conversation.Action `json:"action" doc:"What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash (out of the inbox) or out of it (back into the inbox), star or unstar, report spam (out of the inbox) or not spam (back into it). star and unread mark a conversation's newest message, the newest it did not send when it has one, as the provider's own web app does. Every other action applies to every message of a conversation, as the provider's own thread action does."`
-	IDs    []uuid.UUID         `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to act on, by id from a list."`
+	IDs    []uuid.UUID         `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"25" uniqueItems:"true" doc:"The conversations to act on, by id from a list."`
 }
 
 // TransformSchema lists action's values from [conversation.Actions].
@@ -559,13 +559,13 @@ type conversationChangesInput struct {
 }
 
 type conversationChangesBody struct {
-	Changes []conversationChange `json:"changes" nullable:"false" minItems:"1" maxItems:"100" doc:"The changes, each to its own conversations; together they name at most 100, each once."`
+	Changes []conversationChange `json:"changes" nullable:"false" minItems:"1" maxItems:"25" doc:"The changes, each to its own conversations; together they name at most 25, each once."`
 }
 
 // conversationChange is a change of conversations as it is: an action's
 // undo, or one to send.
 type conversationChange struct {
-	IDs []uuid.UUID `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to change, by id from a list."`
+	IDs []uuid.UUID `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"25" uniqueItems:"true" doc:"The conversations to change, by id from a list."`
 	// Gmail takes at most 100 labels to add and 100 to remove per
 	// threads.modify (users.threads.modify reference). The same limit on
 	// both, so an undo, which swaps them, is a change this takes too; the
