@@ -252,6 +252,15 @@ describe("search", () => {
     expect(marks).toEqual(["Invoice"]);
   });
 
+  it("keeps a result's avatar on hover: results are not picked", async () => {
+    await open("/mail/search?q=invoice");
+    const row = results().getByRole("row", { name: /Invoice from Shop/ });
+    await userEvent.hover(row);
+
+    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    expect(row.element().querySelector("[data-slot=pick-box]")).toBeNull();
+  });
+
   it("searches the label it starts in, and names it in the box", async () => {
     const router = await open(`/mail/${label}?account=1`);
     await expect.element(box()).toHaveAttribute("placeholder", "Search Receipts");

@@ -148,8 +148,9 @@ Put shared code in the folder for its responsibility:
   toolbar, mail's TanStack DB collections (`conversations.ts`), what
   actions guess and which places a conversation is in (`rules.ts`), each
   action's words (`words.ts`), running an action on one conversation or
-  many (`perform.ts`) and its Undo bar (`undo.tsx`), how a row shows its date and people, and the
-  address Back to mail returns to.
+  many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows
+  (`picking.ts`), how a row shows its date and people, and the address
+  Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -1506,9 +1507,9 @@ keeps the rows and counts the API answers with; a conversation the API
 refuses, or every one when the request fails, goes back as it was, and
 `perform` says why, in one toast for many, whose details (`showError`'s
 `details`) list them by reason; a later answer that changed every
-conversation a toast names closes it (`closeAbout`). Actions in flight at once keep none of their answers' counts,
-which each hold the whole of List Places at their own moment; the last
-to settle reads them again. The reading pane reads its row from the same
+conversation a toast names closes it (`closeAbout`). Actions in flight
+at once keep none of their answers' counts, which each hold the whole of
+List Places at their own moment; the last to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so
 an action anywhere shows there at once; a failed read of it keeps the
 row as last confirmed, without an action's guess, and only a 404 lets it

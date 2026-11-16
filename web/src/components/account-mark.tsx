@@ -28,6 +28,24 @@ const rings = [
   "after:border-account-8",
 ];
 
+// Each colour as a plain border, for a ring drawn as its own element.
+const borders = [
+  "border-account-1",
+  "border-account-2",
+  "border-account-3",
+  "border-account-4",
+  "border-account-5",
+  "border-account-6",
+  "border-account-7",
+  "border-account-8",
+];
+
+// accountBorder returns the class that colours a border in color, e.g. the
+// ring a picked row's box keeps in the avatar's place.
+export function accountBorder(color: AccountColor): string {
+  return borders[colorIndex(color)];
+}
+
 // accountDot returns the class that fills an account's dot in color.
 export function accountDot(color: AccountColor): string {
   return backgrounds[colorIndex(color)];

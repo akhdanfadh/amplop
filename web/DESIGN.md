@@ -437,9 +437,22 @@ last two redirect into settings, so settings can move without the server.
   the avatar; no subject "(no subject)"; counts take a comma ("1,284").
 - **States:** open (`selection`, and `aria-current` for screen readers),
   hover (`accent`), keyboard focus (the ring) look different.
-- **Picking:** the avatar becomes a checkbox on hover; Space, Shift ranges,
-  long press on touch; the list header becomes the action bar with only
-  built actions. No bulk action built means no picking.
+- **Picking:** the avatar becomes a checkbox while its row is hovered,
+  focused by the keyboard, or picked, and on every row while any is; a
+  picked row's only mark is its ticked box, so the fills stay the open
+  row's and hover's; the box keeps the avatar's 36 px, 44 to touch, and,
+  in a list of several accounts, its account ring, so the rows still say
+  whose they are while picking. The box, Space, Shift ranges (Shift on a
+  press or an arrow), Ctrl or Cmd+A, and a long press on touch pick;
+  while picking, a tap picks too, and a mouse press on a row's text, or
+  Enter, still opens it, the picks staying. Escape, Back, and unticking
+  the last row stop picking, focus staying on the list's row. Starting
+  adds a history entry, which Back takes, at every width. Picks follow
+  the rows: a row the list no longer shows is unpicked, except one an
+  action took out until it answers, so a refused row comes back picked;
+  Undo brings rows back unpicked. A place's list picks; a search's
+  results, which span places, keep their avatars (ADR031, "Mitigations
+  and follow-up").
 - **Loading more:** pages of 50 as the member nears the end. New mail while
   scrolled waits behind a "N new conversations" button floating over the
   list's top, centred: a small primary button with an up arrow and the

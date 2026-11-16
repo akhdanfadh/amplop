@@ -35,6 +35,11 @@ export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")(
   // messages load (DESIGN.md "States"); one it doesn't, e.g. from a link,
   // waits for its read, and one that does not exist is Page not found. An
   // ended session opens sign-in.
+  // Read once per conversation opened: a navigation that keeps it, e.g.
+  // picking's history entry and the Back that takes it, needs no read,
+  // as the reading pane keeps its own fresh. TanStack still runs the
+  // loader for another conversation, which is a new match.
+  shouldReload: false,
   loader: async ({ context: { queryClient }, params: { conversationId }, location }) => {
     const options = getGetConversationQueryOptions(conversationId);
     if (currentMail(queryClient)?.conversations.has(conversationId)) {

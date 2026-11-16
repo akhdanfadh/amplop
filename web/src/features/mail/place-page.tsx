@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -16,9 +17,11 @@ import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
 import { useLayout } from "@/hooks/use-layout";
 import { CheckMail } from "./check-mail";
+import type { Conversation } from "./conversations";
 import { listKey, useRowFocusRequest } from "./focus-request";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
+import { usePicking } from "./picking";
 import { UndoBar } from "./undo";
 import { isViewPlace, searchPlace, type Place } from "./places";
 import { labelPath, usePlaceCounts } from "./place-counts";
@@ -130,6 +133,20 @@ export function PlacePage({
   // takes focus itself.
   const focusKey = listKey(place, account?.id);
   const rowAsked = useRowFocusRequest(focusKey) !== undefined;
+  // The rows the list shows, and whether it has reached its end; picks
+  // follow them, so a row that leaves the list leaves the picks, unless an
+  // action holds it until it is answered.
+  const picking = usePicking(focusKey);
+  const [shown, setShown] = useState<{ rows: readonly Conversation[]; complete: boolean }>({
+    rows: [],
+    complete: false,
+  });
+  const onRows = useCallback(
+    (rows: readonly Conversation[], complete: boolean) => setShown({ rows, complete }),
+    [],
+  );
+  const { follow } = picking;
+  useEffect(() => follow(shown.rows), [follow, shown.rows]);
   // Each page focuses its heading when it opens (DESIGN.md "Focus"), so the
   // keyboard starts in the place, not back in the sidebar; what the reading
   // pane shows takes focus itself, and so does the box while the member
@@ -259,6 +276,8 @@ export function PlacePage({
                   account={account?.id}
                   openId={openId}
                   heading={headingRef}
+                  picking={picking}
+                  onRows={onRows}
                   onRetry={() => setAttempt((n) => n + 1)}
                 />
               </>
