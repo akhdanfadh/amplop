@@ -924,11 +924,12 @@
         "additionalProperties": false,
         "properties": {
           "allowedActions": {
-            "description": "What the member can ask of this account now: sync (Sync Account Now), send (Send Message, Reply to Message, and Send Message Again from it), reconnect (Reconnect Account), rename (Rename Account), and disconnect (Disconnect Account). sync is missing while the account needs reconnecting, send while its status is not usable, and sync, send, and reconnect while its provider is not offered (see List Account Providers). A listed action can still be refused when the account or the instance's settings changed since this read. Clients ignore values they don't know.",
+            "description": "What the member can ask of this account now: sync (Sync Account Now), send (Send Message, Reply to Message, and Send Message Again from it), change-mail (Apply Conversation Action and Change Conversations on its conversations, and Create Label, Edit Label, and Delete Label in it), reconnect (Reconnect Account), rename (Rename Account), and disconnect (Disconnect Account). sync is missing while the account needs reconnecting, send and change-mail while its status is not usable, and sync, send, change-mail, and reconnect while its provider is not offered (see List Account Providers). A listed action can still be refused when the account or the instance's settings changed since this read. Clients ignore values they don't know.",
             "items": {
               "enum": [
                 "sync",
                 "send",
+                "change-mail",
                 "reconnect",
                 "rename",
                 "disconnect"
@@ -5387,7 +5388,7 @@
                 }
               }
             },
-            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered."
+            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
           },
           "422": {
             "content": {
@@ -5625,7 +5626,7 @@
                 }
               }
             },
-            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered."
+            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
           },
           "503": {
             "content": {
@@ -5789,7 +5790,7 @@
                 }
               }
             },
-            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered."
+            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
           },
           "422": {
             "content": {

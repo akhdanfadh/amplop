@@ -2462,9 +2462,10 @@ keys](#encryption-keys)). `sync` is where the account's
 `lastSyncedAt`, `failure`, and `failedAt`. `allowedActions` is what the
 member can ask of the account now (`connectedaccount.Account.AllowedActions`),
 so a client offers only that: `sync` while Google accepts the token,
-`send` while `status` is `usable`, `reconnect`, and `rename` and
-`disconnect` always; without a Google client, neither `sync`, `send`, nor
-`reconnect`. The handler composes
+`send` and `change-mail` (its conversations and [labels](#labels))
+while `status` is `usable`, `reconnect`, and `rename` and `disconnect`
+always; without a Google client, none of `sync`, `send`, `change-mail`,
+or `reconnect`. The handler composes
 `connectedaccount`'s list with `mailsync`'s reports, since `mailsync`
 depends on `connectedaccount`; an account disconnected between the two
 reads is left out. `syncStopped` is true when no run of
@@ -3090,7 +3091,9 @@ label name"), and a name the account has in any case (Gmail's 409); at
 `connected-account-not-found`, an account needing a reconnect 409
 `account-needs-reconnect`, no Google client 409 `gmail-not-configured`,
 and Gmail refusing for its limits or taking too long 503
-`mail-provider-busy` with `Retry-After: 30`.
+`mail-provider-busy` with `Retry-After: 30`. The connected account's
+`allowedActions` lists `change-mail` when its labels can change, by the same
+rule the service applies: Gmail offered and the account usable.
 
 Accepted: a sync that read the mailboxes before a label change and saves
 after it shows the old labels until the next sync. A rename that fails

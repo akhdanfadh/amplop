@@ -133,7 +133,7 @@ func labelResponses(api huma.API, notFound string, notFoundExample error, invali
 
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
 	conflict.Description = "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. " +
-		"Or no Google client is configured, so Gmail is not offered."
+		"Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
 	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
 		"needsReconnect":     {Value: labelProblem(connectedaccount.ErrNeedsReconnect)},
 		"gmailNotConfigured": {Value: labelProblem(errGmailNotConfigured)},

@@ -115,7 +115,7 @@ func TestListConnectedAccounts(t *testing.T) {
 	unreadable.Status = connectedaccount.StatusTokenUnreadable
 	const (
 		waitingJSON = `"sync":{"status":"waiting","messagesSoFar":null,"lastSyncedAt":null,"failure":null,"failedAt":null}`
-		allJSON     = `"allowedActions":["sync","send","reconnect","rename","disconnect"]`
+		allJSON     = `"allowedActions":["sync","send","change-mail","reconnect","rename","disconnect"]`
 	)
 	for _, c := range []struct {
 		name        string
