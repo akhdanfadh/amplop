@@ -951,6 +951,24 @@ function checkAccounts() {
 }
 
 describe("Check for new mail", () => {
+  it("checks every account the list shows that inbok can use", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await open(api);
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => new Set(api.syncs)).toEqual(new Set([1, 2]));
+  });
+
+  it("checks only the account the list is filtered to", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await open(api, "/mail/inbox?account=2");
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => api.syncs).toEqual([2]);
+  });
+
   it("says which account it could not check, and checks the others", async () => {
     const api = mailApi([conversation(1)], checkAccounts());
     api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };

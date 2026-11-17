@@ -293,23 +293,17 @@ describe("a label gone", () => {
       .toHaveAttribute("href", "/mail/inbox");
   });
 
-  it("says so once a sync finds the open label deleted in Gmail", async () => {
+  it.each([
+    [
+      "a sync finds the open label deleted in Gmail",
+      (all: PlaceCount[]) => all.filter((p) => p.place !== hiring),
+    ],
+    ["the last account goes, leaving no places at all", (): PlaceCount[] => []],
+  ])("says so once %s", async (_, left) => {
     const router = await open(`/mail/${hiring}?account=1`);
     await expect.element(page.getByRole("heading", { name: "Hiring", level: 1 })).toBeVisible();
 
-    api.places = api.places.filter((p) => p.place !== hiring);
-    await refreshMail(router.options.context.queryClient);
-
-    await expect
-      .element(page.getByRole("heading", { name: "This label doesn't exist" }))
-      .toBeVisible();
-  });
-
-  it("says so once the last account goes, leaving no places at all", async () => {
-    const router = await open(`/mail/${hiring}?account=1`);
-    await expect.element(page.getByRole("heading", { name: "Hiring", level: 1 })).toBeVisible();
-
-    api.places = [];
+    api.places = left(api.places);
     await refreshMail(router.options.context.queryClient);
 
     await expect

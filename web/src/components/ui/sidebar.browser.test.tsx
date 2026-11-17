@@ -623,27 +623,41 @@ describe("Sidebar", () => {
     await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
   });
 
-  it("gives focus to the sidebar's button when the layout takes the focused part away", async () => {
-    await page.viewport(390, 844);
-    await render(<TopBarFrame />);
-    page.getByRole("button", { name: "Open sidebar" }).element().focus();
-    await page.viewport(1440, 900);
-    await expect.element(sidebarButton("Collapse sidebar")).toHaveFocus();
+  it.each([
+    {
+      part: "the top bar's button, in a window grown wide",
+      from: [390, 844],
+      focused: () => page.getByRole("button", { name: "Open sidebar" }),
+      to: [1440, 900],
+      takes: () => sidebarButton("Collapse sidebar"),
+    },
+    {
+      part: "the wordmark, which the rail hides",
+      from: [1440, 900],
+      focused: () => page.getByRole("link", { name: "inbok" }),
+      to: [1100, 800],
+      takes: () => sidebarButton("Expand sidebar"),
+    },
+    {
+      // The drawer is in the same place at both widths; the page changes.
+      part: "a focused part of the page",
+      from: [390, 844],
+      focused: () => page.getByRole("button", { name: "Phone only" }),
+      to: [900, 800],
+      takes: () => page.getByRole("button", { name: "Open sidebar" }),
+    },
+  ])(
+    "gives focus to the sidebar's button when a resize takes away $part",
+    async ({ from, focused, to, takes }) => {
+      await page.viewport(from[0], from[1]);
+      await render(<TopBarFrame />);
+      focused().element().focus();
+      await expect.element(focused()).toHaveFocus();
 
-    // The rail hides the wordmark.
-    page.getByRole("link", { name: "inbok" }).element().focus();
-    await page.viewport(1100, 800);
-    await expect.element(sidebarButton("Expand sidebar")).toHaveFocus();
-  });
-
-  it("gives focus to the sidebar's button when a resize takes away a focused part of the page", async () => {
-    await page.viewport(390, 844);
-    await render(<TopBarFrame />);
-    page.getByRole("button", { name: "Phone only" }).element().focus();
-    // The drawer is in the same place at both widths; the page changes.
-    await page.viewport(900, 800);
-    await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
-  });
+      await page.viewport(to[0], to[1]);
+      await expect.element(takes()).toHaveFocus();
+    },
+  );
 
   it("leaves focus in the page where it is when the layout changes", async () => {
     await page.viewport(1440, 900);

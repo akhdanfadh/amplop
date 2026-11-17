@@ -500,22 +500,19 @@ describe("search", () => {
     await expect.element(box()).toHaveFocus();
   });
 
-  it("refuses a typed day after today, saying why", async () => {
+  it.each([
+    ["refuses a typed day after today, saying why", "20112099", "Pick days up to today."],
+    [
+      "waits for a day typed only in part, the year still empty",
+      "0211",
+      "Finish typing the day, or clear it.",
+    ],
+  ])("%s", async (_, typed, why) => {
     const router = await open("/mail/search?q=invoice");
     await userEvent.click(page.getByRole("button", { name: "any time" }));
     await userEvent.click(page.getByRole("spinbutton", { name: /^day, Since/ }));
-    await userEvent.keyboard("20112099");
-    await expect.element(page.getByText("Pick days up to today.")).toBeVisible();
-    await expect.element(page.getByRole("button", { name: "Apply" })).toBeDisabled();
-    expect(router.state.location.search).toEqual({ q: "invoice" });
-  });
-
-  it("waits for a day typed only in part, the year still empty", async () => {
-    const router = await open("/mail/search?q=invoice");
-    await userEvent.click(page.getByRole("button", { name: "any time" }));
-    await userEvent.click(page.getByRole("spinbutton", { name: /^day, Since/ }));
-    await userEvent.keyboard("0211");
-    await expect.element(page.getByText("Finish typing the day, or clear it.")).toBeVisible();
+    await userEvent.keyboard(typed);
+    await expect.element(page.getByText(why)).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Apply" })).toBeDisabled();
     expect(router.state.location.search).toEqual({ q: "invoice" });
   });

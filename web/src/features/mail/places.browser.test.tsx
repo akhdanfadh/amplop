@@ -56,13 +56,11 @@ describe("mailPage", () => {
     expect(pageOf(router)).toBeUndefined();
   });
 
-  it("is nothing for a place that does not exist", async () => {
-    const router = await appRouter("/mail/bogus", mailApi([], []).server);
-    expect(pageOf(router)).toBeUndefined();
-  });
-
-  it("is nothing for an address deeper than any page in a place", async () => {
-    const router = await appRouter("/mail/inbox/nope", mailApi([], []).server);
+  it.each([
+    ["a place that does not exist", "/mail/bogus"],
+    ["an address deeper than any page in a place", "/mail/inbox/nope"],
+  ])("is nothing for %s", async (_, address) => {
+    const router = await appRouter(address, mailApi([], []).server);
     expect(pageOf(router)).toBeUndefined();
   });
 

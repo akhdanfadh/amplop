@@ -75,27 +75,6 @@ async function signOut(): Promise<void> {
 }
 
 describe("Frame", () => {
-  it("gives focus to the sidebar's button when the window outgrows the open drawer", async () => {
-    serve();
-    await page.viewport(900, 800);
-    await show();
-    await userEvent.click(page.getByRole("button", { name: "Open sidebar" }));
-    const drawer = page.getByRole("dialog", { name: "Mail" });
-    await expect.element(drawer).toBeVisible();
-    // Focus is in the drawer, for the wider window to take away.
-    await expect.poll(() => drawer.element().contains(document.activeElement)).toBe(true);
-
-    await page.viewport(1440, 900);
-    await expect.element(drawer).not.toBeInTheDocument();
-    await expect
-      .element(
-        page
-          .getByRole("navigation", { name: "Mail" })
-          .getByRole("button", { name: "Collapse sidebar" }),
-      )
-      .toHaveFocus();
-  });
-
   it("opens the drawer with its button where the top bar's was, so nothing jumps", async () => {
     serve();
     await show();
