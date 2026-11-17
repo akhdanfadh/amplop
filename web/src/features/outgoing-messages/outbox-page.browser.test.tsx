@@ -394,6 +394,9 @@ describe("OutboxPage", () => {
 
     const status = page.getByRole("region", { name: "Status" });
     await expect.element(status.getByText("Sending to ana@example.com...")).toBeVisible();
+    // The raise is a 200 ms animation of real time, which may be over by
+    // the time a retried look sees the new words, so its class
+    // (`stepEnter`'s `animate-in`) is the evidence that lasts.
     expect(status.element().querySelector(".animate-in")).toBeNull();
     // The Outbox, read again while it sends, says Gmail took it.
     await clock.advance(sendPollMs);

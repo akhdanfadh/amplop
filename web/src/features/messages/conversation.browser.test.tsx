@@ -497,6 +497,7 @@ describe("ConversationView", () => {
     await vi.waitFor(() => {
       const pane = document.querySelector("[data-pane]")?.getBoundingClientRect().top ?? 0;
       const row = shown.element().closest("li")?.getBoundingClientRect().top ?? 0;
+      // DESIGN.md "Reading pane": the toolbar's bar keeps one 48 px row.
       expect(Math.round(row - pane)).toBe(48);
     });
     await userEvent.keyboard("{Enter}");

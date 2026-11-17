@@ -372,13 +372,19 @@ describe("the reading pane's actions", () => {
 
   it("keeps focus on the button whose action changes, e.g. Archive to Move to Inbox", async () => {
     await open([conversation(1)], 0, "all");
+    // A button's icon has no role or name of its own: its drawing is read.
+    const drawing = (name: string) =>
+      toolbar().getByRole("button", { name }).element().querySelector("svg")?.innerHTML;
+    const archive = drawing("Archive");
+    expect(archive).toBeTruthy();
     toolbar().getByRole("button", { name: "Archive" }).element().focus();
 
     await userEvent.keyboard("{Enter}");
 
     await expect.element(toolbar().getByRole("button", { name: "Move to Inbox" })).toHaveFocus();
-    // Move to Inbox, not Archive's box.
-    expect(document.activeElement?.querySelector(".lucide-archive-restore")).not.toBeNull();
+    // Its icon changed with its name: no longer Archive's box.
+    expect(drawing("Move to Inbox")).toBeTruthy();
+    expect(drawing("Move to Inbox")).not.toBe(archive);
   });
 
   it("runs a double click on Archive once, not Archive then Move to Inbox", async () => {
@@ -616,9 +622,7 @@ describe("the Undo bar's keys", () => {
 
     await userEvent.keyboard("{Tab}");
 
-    await expect
-      .poll(() => document.querySelector("[role=tooltip]")?.textContent)
-      .toBe(`Undo (${key}+Z)`);
+    await expect.poll(() => page.getByRole("tooltip").query()?.textContent).toBe(`Undo (${key}+Z)`);
     // And which conversation it puts back.
     await expect
       .element(bar().getByRole("button", { name: "Undo" }))

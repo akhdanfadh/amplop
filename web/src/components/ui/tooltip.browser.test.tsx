@@ -30,7 +30,12 @@ function Rail({ buttons }: { buttons: "drawn" | "not yet" }) {
 
 // tooltip returns the words of the tooltip shown, not one still closing.
 function tooltip(): string | null {
-  return document.querySelector("[role=tooltip]:not([data-exiting])")?.textContent ?? null;
+  // React Aria marks a closing tooltip `data-exiting` while it fades out.
+  const shown = page
+    .getByRole("tooltip")
+    .elements()
+    .find((element) => !element.hasAttribute("data-exiting"));
+  return shown?.textContent ?? null;
 }
 
 describe("Tooltip", () => {

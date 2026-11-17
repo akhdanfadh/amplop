@@ -31,6 +31,9 @@ async function openInbox(api: MailApi): Promise<ActionMail> {
   return { client, conversations, placeCounts };
 }
 
+// These tests run runAction as a module, with no page: each arranges an
+// order of answers and reads, then reads the collections a page draws
+// from and the requests the server got.
 describe("runAction", () => {
   it("keeps the answer over a list's refresh that read the conversation before it", async () => {
     const row = conversation(1, { unread: true });
@@ -85,6 +88,8 @@ describe("runAction", () => {
     await done;
 
     expect(mail.placeCounts.get(placeKey(1, "inbox"))?.unread).toBe(0);
+    // web/README.md "Reading data": an action keeps the counts the API
+    // answers with, so only the page's first read asked for them.
     expect(api.requests.filter((path) => path === "/api/v0/places")).toHaveLength(1);
   });
 
@@ -120,6 +125,8 @@ describe("runAction", () => {
     await runAction(mail, { action: "read", ids: [row.id] });
 
     expect(mail.placeCounts.get(placeKey(1, "inbox"))?.unread).toBe(0);
+    // The page's first read, then the one that stands in for the answer's
+    // counts (web/README.md "Reading data").
     expect(api.requests.filter((path) => path === "/api/v0/places")).toHaveLength(2);
   });
 
@@ -222,6 +229,8 @@ describe("runAction", () => {
     answerFirst.resolve();
     await Promise.allSettled([first, second]);
 
+    // The session cache's rule, which no screen shows: the next member's
+    // cache holds nothing the first one's late answer brought.
     expect(mail.client.getQueryData(getListPlacesQueryKey())).toEqual({
       data: { places: [next] },
     });

@@ -143,6 +143,8 @@ describe("mail addresses", () => {
       await refreshMail(client);
 
       expect(shown.getCurrentResult().data?.data.accounts.map((a) => a.id)).toEqual([1, 2, 3]);
+      // The cache's own mark, which no screen shows: a query left out of
+      // date would be read once more by the next page that uses it.
       expect(client.getQueryState(getListConnectedAccountsQueryKey())?.isInvalidated).toBe(false);
     } finally {
       stop();

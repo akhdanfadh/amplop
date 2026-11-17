@@ -79,7 +79,7 @@ describe("RouteError", () => {
     await expect.element(page.getByText("req-1")).toBeVisible();
     expect(document.title).toBe("Couldn't load this page - inbok");
     // The focused heading announces it; an alert would say it twice.
-    expect(document.querySelector("[role=alert]")).toBeNull();
+    expect(page.getByRole("alert").query()).toBeNull();
 
     await userEvent.click(page.getByRole("button", { name: "Try again" }));
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
@@ -231,8 +231,8 @@ describe("RoutePending", () => {
     const loading = page.getByRole("status");
     await expect.element(loading).toHaveTextContent("Loading...");
     // The test page started long ago, so the view shows at once, as it
-    // does after a setup check that took over 300 ms.
-    expect(loading.element()).toHaveClass("pending-delay");
+    // does after a setup check that took over 300 ms. The delay is that
+    // of the animation that hides the view until then.
     const [hide] = loading.element().getAnimations();
     expect(hide?.effect?.getTiming().delay).toBe(0);
     expect(document.activeElement).not.toBe(loading.element());

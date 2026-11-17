@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { page } from "vite-plus/test/browser/context";
+import { page, userEvent } from "vite-plus/test/browser/context";
 import { Frame } from "@/components/frame";
 import { conversation, listedAccount, mailApi } from "@/test/mail-api";
 import { stubRouter } from "@/test/stub-router";
@@ -89,12 +89,19 @@ describe("the top bar, where the sidebar is a drawer", () => {
     await expect.element(heading).toBeVisible();
     const menu = bar.getByRole("button", { name: "Open sidebar" }).element();
     const check = bar.getByRole("button", { name: "Check for new mail" }).element();
-    expect(menu.getBoundingClientRect().top).toBe(12);
+    const top = menu.getBoundingClientRect().top;
     expect(middle(heading.element())).toBe(middle(menu));
     expect(middle(check)).toBe(middle(menu));
+
+    // The drawer's header holds its button where the bar held this one.
+    await userEvent.click(bar.getByRole("button", { name: "Open sidebar" }));
+    const close = page.getByRole("dialog", { name: "Mail" }).getByRole("button", {
+      name: "Close sidebar",
+    });
+    await expect.poll(() => close.element().getBoundingClientRect().top).toBe(top);
   });
 
-  it("holds them from 780 px to 1023 px too", async () => {
+  it("holds them in a wider window where the sidebar is still a drawer", async () => {
     await open(900);
 
     const bar = page.getByRole("banner");

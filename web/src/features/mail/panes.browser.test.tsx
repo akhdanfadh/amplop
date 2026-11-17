@@ -69,10 +69,12 @@ describe("MailPanes", () => {
     await expect.element(inList).toHaveFocus();
   });
 
-  it("grows the list with the window, from 300 px to 440 px", async () => {
+  it("grows the list with the window, between its narrowest and its widest", async () => {
     await page.viewport(900, 900);
     await render(<MailPanes pane="list" list={<p>The list</p>} reader={<p>The reader</p>} />);
     await expect.element(page.getByText("The reader")).toBeVisible();
+    // DESIGN.md "Panes and widths": the list is 26% of the window, from
+    // 300 px to 440 px.
     expect(await listWidth(900)).toBe(300);
     expect(await listWidth(1440)).toBeCloseTo(374.4, 0);
     expect(await listWidth(1920)).toBe(440);

@@ -291,6 +291,8 @@ describe("two-factor setup", () => {
         .poll(() => sent(server).filter((s) => s === "GET /api/v0/sessions").length)
         .toBeGreaterThan(0);
       expect(reads).toBe(1);
+      // The session cache's rule, which this page does not show: the
+      // answer is still held.
       expect(queryClient.getQueryData(["/api/v0/conversations"])).toBe(1);
     } finally {
       stop();

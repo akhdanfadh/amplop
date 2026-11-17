@@ -1548,6 +1548,36 @@ assertion. Escape closes an open tooltip first, and the pointer rests
 where the last click was, so a test that closes a drawer or dialog it
 opened by a click presses its button, or moves the pointer away first.
 
+### What a test asserts
+
+A test checks what a member sees or what the server got, so it still
+passes after a change no member could notice.
+
+- A test finds an element the way a member would: by role and name, by
+  label, or by text. `querySelector`, `data-slot`, a class, or
+  `.parentElement` needs its reason in a comment, e.g. the element is
+  inside a message's frame, is a `<mark>` or a `<bdi>`, or has no role.
+- A test asserts what the member sees or what the server got. It reads
+  the query cache, a collection, or a hook's result only where no screen
+  shows the same fact, and says so in a comment.
+- A request count is asserted only where the request is the outcome: a
+  write the server must get once, an `Idempotency-Key`, a read that must
+  not repeat. The test names the README rule it protects when there is
+  one.
+- An exact pixel value names the `DESIGN.md` rule it comes from, in a
+  comment above it, e.g. `// DESIGN.md "Panes and widths": the sidebar
+  is 240 px, its rail 56 px.` A number with no such rule becomes a
+  relation: inside, left of, not wider than, as far above the Undo bar
+  as above the window's edge.
+- A class name, or a `data-*` state a library sets for its own use, is
+  asserted only when it is inbok's own public styling hook and nothing
+  visible says the same. The theme's `dark` class on the page is such a
+  hook; React Aria's `data-hovered` beside a style that shows the hover
+  is not.
+- A test's name says the behaviour, not the mechanism: "shows the focus
+  ring after the keyboard, not after a click", not "sets
+  data-focus-visible".
+
 ## Styling and components
 
 How screens look, are laid out, and are worded (tokens, components,
