@@ -404,14 +404,18 @@ describe("picking", () => {
     const end = page.getByText("That's everything inbok has copied.", { exact: false });
     await vi.waitFor(
       async () => {
-        const last = list().element().querySelectorAll<HTMLElement>("[role=row][aria-label]");
-        last[last.length - 1]?.focus();
+        const last = list()
+          .getByRole("row", { name: /Subject \d+,/ })
+          .last()
+          .element();
+        if (last instanceof HTMLElement) last.focus();
         await userEvent.keyboard("{End}");
         expect(end.query()).not.toBeNull();
       },
       { timeout: 10_000 },
     );
-    list().element().querySelector<HTMLElement>("[role=row][aria-label]")?.focus();
+    const first = list().getByRole("row").first().element();
+    if (first instanceof HTMLElement) first.focus();
     // React Aria's select all: Cmd+A on a Mac, Ctrl+A elsewhere.
     const mod = /Mac/.test(navigator.platform) ? "Meta" : "Control";
     await userEvent.keyboard(`{${mod}>}a{/${mod}}`);

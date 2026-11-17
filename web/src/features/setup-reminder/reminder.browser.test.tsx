@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
+import { render } from "vitest-browser-react";
 import {
   type QueryClient,
   QueryObserver,
   focusManager,
   onlineManager,
 } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
 import {
   getGetCurrentSessionQueryKey,
   getGetSystemEmailQueryKey,
@@ -308,6 +310,9 @@ describe("the signed-in app's loader", () => {
   it("reads system email for an administrator before the page draws", async () => {
     const { client } = await loadApp({ role: "admin", emailVerified: true });
 
+    // No screen shows this: the frame draws a moment after it is rendered,
+    // so a look at the page cannot tell an answer the load waited for from
+    // one that came just after. The cache at the load's end can.
     expect(client.getQueryState(getGetSystemEmailQueryKey())?.status).toBe("success");
   });
 
@@ -319,10 +324,18 @@ describe("the signed-in app's loader", () => {
 
   it("draws the page when the read fails", async () => {
     systemEmail = "fault";
-    const { client, router } = await loadApp({ role: "admin", emailVerified: true });
+    const { router, server } = await loadApp({ role: "admin", emailVerified: true });
 
-    expect(client.getQueryState(getGetSystemEmailQueryKey())?.status).toBe("error");
-    expect(router.state.matches.find((match) => match.routeId === "/_app")?.status).toBe("success");
+    // The server answered the one read with its fault.
+    expect(systemEmailReads(server)).toBe(1);
+    // What the Security page reads once it draws.
+    server.on("GET", "/api/v0/totp", () =>
+      data({ status: "off", backupCodesLeft: 0, backupCodesWaiting: false }),
+    );
+    server.on("GET", "/api/v0/sessions", () => data({ sessions: [] }));
+    await render(<RouterProvider router={router} />);
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+    expect(page.getByText(/Finish setting up/).query()).toBeNull();
   });
 
   it("does not wait for a retry paused after a failed first read", async () => {
@@ -330,6 +343,8 @@ describe("the signed-in app's loader", () => {
     // reminder retries offline, and its retry waits for the connection.
     systemEmail = "fault";
     const { client, router } = await loadApp({ role: "admin", emailVerified: true });
+    // No screen shows a read that failed and left nothing: the reminder is
+    // just absent. This test and the next are about the query's own state.
     expect(client.getQueryState(getGetSystemEmailQueryKey())?.status).toBe("error");
     systemEmail = "none";
     onlineManager.setOnline(false);

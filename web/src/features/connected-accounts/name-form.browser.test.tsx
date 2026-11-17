@@ -171,11 +171,8 @@ describe("the account name form", () => {
     await older;
     await expect.poll(() => client.isFetching()).toBe(0);
 
-    const kept = client.getQueryData<{ data: { accounts: { name: string | null }[] } }>(
-      getListConnectedAccountsQueryKey(),
-    );
-    expect(kept?.data.accounts[0].name).toBe("Work");
-    // Drawn from what the client holds by the frame after next.
+    // The list draws what the client holds by the frame after next, so
+    // the older read's answer would show here.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     expect(listed.element().textContent).toBe("Work");
   });

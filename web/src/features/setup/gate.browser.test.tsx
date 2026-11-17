@@ -73,7 +73,8 @@ describe("SetupGate", () => {
     await render(<RouterProvider router={app()} />);
     const loading = page.getByRole("status");
     await expect.element(loading).toHaveTextContent("Loading...");
-    // Hidden by CSS for the router's pending delay, then shown.
+    // Hidden by CSS for the router's pending delay, then shown (DESIGN.md
+    // "States": a loading view appears after 300 ms).
     const [hide] = loading.element().getAnimations();
     expect(hide?.effect?.getTiming().delay).toBe(300);
     await expect.poll(() => getComputedStyle(loading.element()).opacity).toBe("1");

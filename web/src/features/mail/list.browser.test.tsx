@@ -33,9 +33,9 @@ function grid() {
 // React Aria scrolls into view, as a member's End does; reaching it loads
 // the next page.
 async function toLastRow(): Promise<void> {
-  const first = grid().element().querySelector('[role="row"][aria-label]');
-  if (!grid().element().contains(document.activeElement) && first instanceof HTMLElement) {
-    first.focus();
+  if (!grid().element().contains(document.activeElement)) {
+    const first = grid().getByRole("row").first().element();
+    if (first instanceof HTMLElement) first.focus();
   }
   await userEvent.keyboard("{End}");
 }
@@ -95,9 +95,9 @@ describe("ConversationList", () => {
     );
     await open(api);
     await expect.element(page.getByRole("row", { name: /^Bo Tan, Subject 69,/ })).toBeVisible();
-    const rows = grid().element().querySelectorAll('[role="row"][aria-label]');
-    expect(rows[0]?.getAttribute("aria-label")).toMatch(/Subject 69/);
-    expect(rows[1]?.getAttribute("aria-label")).toMatch(/Subject 68/);
+    const rows = grid().getByRole("row");
+    await expect.element(rows.nth(0)).toHaveAccessibleName(/Subject 69/);
+    await expect.element(rows.nth(1)).toHaveAccessibleName(/Subject 68/);
 
     const end = page.getByText("That's everything inbok has copied.", { exact: false });
     // Each move to the last row loads the next page.
@@ -114,7 +114,7 @@ describe("ConversationList", () => {
     expect(reads.some((r) => r.includes("before="))).toBe(true);
   });
 
-  it("ends with its words 12 px under the last row", async () => {
+  it("ends with its words close under the last row", async () => {
     await open(mailApi([conversation(1)], one));
     const words = page.getByText("That's everything inbok has copied.", { exact: false });
     await expect.element(words).toBeVisible();
@@ -123,6 +123,7 @@ describe("ConversationList", () => {
       .getByRole("row", { name: /Subject 1,/ })
       .element()
       .getBoundingClientRect();
+    // DESIGN.md "Message list": the end's words are 12 px under the last row.
     expect(words.element().getBoundingClientRect().top - row.bottom).toBe(12);
   });
 
@@ -235,11 +236,13 @@ describe("ConversationList", () => {
     await expect
       .element(page.getByRole("row", { name: /Subject 2, .*ana@work\.example$/ }))
       .toBeVisible();
-    const avatar = page
-      .getByRole("row", { name: /Subject 2,/ })
-      .element()
-      .querySelector('[data-slot="avatar"]');
-    expect(avatar?.className).toContain("after:border-account-3");
+    const ring = avatarRing(page.getByRole("row", { name: /Subject 2,/ }).element());
+    expect(ring.borderTopWidth).toBe("2px");
+    expect(ring.borderTopColor).toBe(accountColor(3));
+    // The other account's ring is another colour.
+    expect(
+      avatarRing(page.getByRole("row", { name: /Subject 1,/ }).element()).borderTopColor,
+    ).not.toBe(ring.borderTopColor);
   });
 
   it("adds an opened conversation to the history, and replaces it with the next", async () => {
@@ -299,8 +302,10 @@ describe("one account's list", () => {
     expect(page.getByRole("row", { name: /Subject 1,/ }).query()).toBeNull();
     // The heading names the account, so its rows don't.
     expect(row.element().getAttribute("aria-label")).not.toContain("ana@work.example");
-    const avatar = row.element().querySelector('[data-slot="avatar"]');
-    expect(avatar?.className).not.toContain("after:border-account");
+    // The avatar keeps its hairline edge, in no account's colour.
+    const ring = avatarRing(row.element());
+    expect(ring.borderTopWidth).not.toBe("2px");
+    expect(ring.borderTopColor).not.toBe(accountColor(3));
   });
 
   it("names the place when its list is empty, and the account still syncing", async () => {
@@ -320,11 +325,13 @@ describe("the list's rows", () => {
     await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
-    expect(row.element().getBoundingClientRect().height).toBe(76);
+    // DESIGN.md "Space, size, shape, motion": list rows are 76 px.
+    const usual = 76;
+    expect(row.element().getBoundingClientRect().height).toBe(usual);
     // Twice the browser's usual 16 px, as a member's own text size.
     document.documentElement.style.fontSize = "32px";
     try {
-      await vi.waitFor(() => expect(row.element().getBoundingClientRect().height).toBe(152), {
+      await vi.waitFor(() => expect(row.element().getBoundingClientRect().height).toBe(2 * usual), {
         timeout: 10_000,
       });
     } finally {
@@ -411,6 +418,26 @@ function subjectStyle(n: number) {
   return getComputedStyle(page.getByText(`Subject ${n}`, { exact: true }).element());
 }
 
+// avatarRing returns the computed style of the edge drawn on row's avatar,
+// which is its account's ring when accounts mix.
+function avatarRing(row: Element): CSSStyleDeclaration {
+  // The avatar has no role or name: it repeats the sender the row names.
+  const avatar = row.querySelector('[data-slot="avatar"]');
+  if (!avatar) throw new Error("the row has no avatar");
+  return getComputedStyle(avatar, "::after");
+}
+
+// accountColor returns the colour of the theme's account token n, as the
+// browser computes it (DESIGN.md "Colour").
+function accountColor(n: number): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(--account-${n})`;
+  document.body.append(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
+}
+
 // bar returns the computed style of row's edge mark.
 function bar(row: Element) {
   return getComputedStyle(row, "::before");
@@ -439,8 +466,7 @@ describe("a hovered row's actions", () => {
     expect(getComputedStyle(rowActions(/Subject 1,/)).pointerEvents).toBe("none");
 
     await userEvent.hover(row);
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
-    expect(getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
+    await expect.poll(() => getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
     expect(getComputedStyle(rowActions(/Subject 2,/)).opacity).toBe("0");
     // The toolbar's, but the star the row already has, and Report spam.
     const names = [...row.element().querySelectorAll("button")].map((b) => b.ariaLabel);
@@ -458,7 +484,7 @@ describe("a hovered row's actions", () => {
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await userEvent.unhover(row);
     await userEvent.hover(row);
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    await expect.poll(() => getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
     await expect
       .poll(() => [
         getComputedStyle(rowActions(/Subject 1,/)).backgroundColor,
@@ -703,7 +729,8 @@ describe("the Inbox chip", () => {
     // is enters it without moving, which reports no hover.
     await userEvent.unhover(row);
     await userEvent.hover(row);
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    // The hover shows as the row's own fill.
+    await expect.poll(() => getComputedStyle(row.element()).backgroundColor).toBe(accent);
     // The chip, around its name.
     const badge = chip.element().closest("[data-slot=badge]")!;
     expect(getComputedStyle(badge).backgroundColor).not.toBe(
@@ -801,7 +828,7 @@ describe("the list's order and refreshes", () => {
       // oxlint-disable-next-line unicorn/no-array-sort -- a new array; tsconfig's lib has no toSorted.
       .sort((a, b) => b.date - a.date || (a.id < b.id ? 1 : -1))
       .map((row) => row.subject);
-    const first = grid().element().querySelector('[role="row"][aria-label]');
+    const first = grid().getByRole("row").first().element();
     if (first instanceof HTMLElement) first.focus();
     const seen: string[] = [];
     for (const subject of expected) {
@@ -864,6 +891,7 @@ describe("the list's order and refreshes", () => {
     const atTop = () =>
       document
         .elementFromPoint(box.getBoundingClientRect().left + 40, top)
+        // The row under a point: no locator starts from a place on screen.
         ?.closest("[role=row]")
         ?.getAttribute("aria-label");
     const shown = atTop();
@@ -914,7 +942,8 @@ describe("the list's order and refreshes", () => {
     // Hovered, it offers nothing; its neighbour of the other account does.
     await userEvent.unhover(starred);
     await userEvent.hover(starred);
-    await expect.element(starred).toHaveAttribute("data-hovered", "true");
+    // The hover shows as the row's own fill.
+    await expect.poll(() => getComputedStyle(starred.element()).backgroundColor).toBe(accent);
     expect(starred.element().querySelector("[data-slot=row-actions]")).toBeNull();
     expect(rowActions(/Subject 2,/)).not.toBeNull();
   });
@@ -951,6 +980,24 @@ function checkAccounts() {
 }
 
 describe("Check for new mail", () => {
+  it("checks every account the list shows that inbok can use", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await open(api);
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => new Set(api.syncs)).toEqual(new Set([1, 2]));
+  });
+
+  it("checks only the account the list is filtered to", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await open(api, "/mail/inbox?account=2");
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => api.syncs).toEqual([2]);
+  });
+
   it("says which account it could not check, and checks the others", async () => {
     const api = mailApi([conversation(1)], checkAccounts());
     api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };

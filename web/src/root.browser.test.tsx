@@ -92,7 +92,7 @@ describe("root route", () => {
     expect(location.hash).toBe("#top");
   });
 
-  it("passes a link's router options, e.g. replacing the history entry", async () => {
+  it("opens a link in place of the current history entry when the link asks", async () => {
     const router = setup();
     await render(<RouterProvider router={router} />);
     const entries = history.length;

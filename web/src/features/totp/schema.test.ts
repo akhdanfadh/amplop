@@ -6,25 +6,21 @@ import {
   turnOffSchema,
 } from "./schema";
 
+// features/auth/code-schema.test.ts holds the rule for a complete code, which
+// every schema here takes from completeCode. Each schema's tests prove only
+// that it applies the rule, for the kind of code it asks for.
 describe.each([
   ["the enrollment code", EnrollmentCodeSchema],
   ["the replacement code", ReplacementCodeSchema],
 ])("%s", (_, schema) => {
-  it("keeps leading zeros", () => {
+  it("keeps a complete authenticator code as typed", () => {
     expect(schema.parse({ code: "012345" })).toEqual({ code: "012345" });
   });
 
-  it.each(["", "12345", "1234567", "abcdef", "abcde-fghjk"])(
-    "rejects incomplete or non-authenticator input %s",
-    (code) => {
-      expect(schema.safeParse({ code }).success).toBe(false);
-    },
-  );
-
-  // What the six-slot field lets a member type: one message, not one per
-  // check. Longer input also meets the contract's own length limit.
-  it.each(["", "12345", "abcdef"])("words input %s with one message", (code) => {
-    const issues = schema.safeParse({ code }).error?.issues ?? [];
+  // Five digits pass the contract's own limit, so only the shared rule
+  // refuses them, with its words for an authenticator code.
+  it("refuses an incomplete code with the authenticator code's message", () => {
+    const issues = schema.safeParse({ code: "12345" }).error?.issues ?? [];
     expect(new Set(issues.map((issue) => issue.message))).toEqual(new Set(["Enter all 6 digits."]));
   });
 });
@@ -50,11 +46,11 @@ describe("turning off two-factor authentication", () => {
     expect(turnOffSchema("backup").parse({ code: "aBcDefGhJk" })).toEqual({ code: "aBcDefGhJk" });
   });
 
+  // One refusal a kind: letters where the authenticator's digits go, and an
+  // authenticator code where a backup code goes.
   it.each([
     ["authenticator", "abcdef"],
-    ["authenticator", "12345"],
     ["backup", "012345"],
-    ["backup", "abcde!ghjk"],
   ] as const)("rejects %s input %s", (kind, code) => {
     expect(turnOffSchema(kind).safeParse({ code }).success).toBe(false);
   });

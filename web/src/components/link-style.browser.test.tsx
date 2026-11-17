@@ -21,6 +21,8 @@ describe("link styles", () => {
     // The light theme's primary (DESIGN.md "Colour").
     expect(getComputedStyle(text).color).toBe("rgb(37, 87, 214)");
     expect(getComputedStyle(line).color).toBe("rgb(37, 87, 214)");
+    // DESIGN.md "Space, size, shape, motion", Links: a link on a line of
+    // its own is 44 px tall.
     expect(line.getBoundingClientRect().height).toBe(44);
     expect(getComputedStyle(text).textDecorationLine).toBe("underline");
 

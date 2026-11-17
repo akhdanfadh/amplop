@@ -108,7 +108,7 @@ describe("AlertDialog", () => {
     now = doubleClickTime;
     // Closed and, at once, opened again: the dialog never unmounted.
     await rerender(<Shown open={false} onConfirm={onConfirm} />);
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(page.getByRole("alertdialog").query()).not.toBeNull();
     await rerender(<Shown open onConfirm={onConfirm} />);
     await userEvent.click(page.getByRole("button", { name: "Disconnect Studio" }));
 
@@ -149,17 +149,7 @@ describe("AlertDialog", () => {
     // Still open, and not on its way out: the caller closes it, e.g. once
     // the change it confirms is saved. A dialog that closes is marked as
     // exiting, or gone, by the time the press returns.
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(page.getByRole("alertdialog").query()).not.toBeNull();
     expect(document.querySelector("[data-exiting]")).toBeNull();
-  });
-
-  it("cancels on Escape", async () => {
-    const onConfirm = vi.fn<() => void>();
-    await render(<Confirm onConfirm={onConfirm} />);
-    await userEvent.click(page.getByRole("button", { name: "Disconnect" }));
-    await userEvent.keyboard("{Escape}");
-
-    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
-    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

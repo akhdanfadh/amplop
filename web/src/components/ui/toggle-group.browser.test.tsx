@@ -130,8 +130,10 @@ describe("ToggleGroup in a Popover", () => {
     document.documentElement.classList.add("dark");
     await render(<ThemeChoice />);
     await userEvent.click(page.getByRole("button", { name: "Member menu" }));
-    await expect.element(page.getByRole("dialog", { name: "Account and theme" })).toBeVisible();
-    const popover = document.querySelector("[data-trigger=DialogTrigger]");
+    const dialog = page.getByRole("dialog", { name: "Account and theme" });
+    await expect.element(dialog).toBeVisible();
+    // The surface is the box around the dialog, which has no role itself.
+    const popover = dialog.element().parentElement;
     if (!popover) throw new Error("no popover");
     expect(getComputedStyle(popover).boxShadow).not.toBe("none");
   });

@@ -62,6 +62,8 @@ describe("registration's visitor pages", () => {
 
     const header = page.getByRole("heading", { name: "Create an account" }).element().parentElement;
     expect(header?.getAnimations()).toEqual([]);
+    // An entrance that already ran is in no list of animations by now, so
+    // only its class (tw-animate-css's `animate-in`) shows there was one.
     expect(header?.className).not.toContain("animate-in");
   });
 

@@ -112,7 +112,11 @@ describe("MailNav", () => {
 
     const inbox = nav().getByRole("link", { name: "Inbox 12,849 unread" });
     await expect.element(inbox).toBeVisible();
-    await expect.element(inbox).toHaveClass(/font-semibold/);
+    // DESIGN.md "Sidebar": unread is the name and count in 600 weight.
+    await expect.element(inbox).toHaveStyle({ fontWeight: "600" });
+    expect(
+      getComputedStyle(nav().getByRole("link", { name: "Spam" }).element()).fontWeight,
+    ).not.toBe("600");
     // Only the Inbox counts among the views.
     await expect.element(nav().getByRole("link", { name: "Spam" })).toBeVisible();
   });

@@ -217,6 +217,7 @@ describe("Sidebar", () => {
   it("collapses to the rail and back with Ctrl+B in a wide window", async () => {
     await render(<Frame />);
     await expect.element(page.getByRole("navigation", { name: "Mail" })).toBeVisible();
+    // DESIGN.md "Panes and widths": the sidebar is 240 px, its rail 56 px.
     await expect.poll(navWidth).toBe(240);
 
     await userEvent.keyboard("{Control>}b{/Control}");
@@ -277,12 +278,14 @@ describe("Sidebar", () => {
     await expect.element(expandButton()).toHaveFocus();
   });
 
-  it("never lets CSS hide the sidebar React chose", async () => {
+  it("has no breakpoint class, which a member's larger text would move", async () => {
     // A breakpoint in rem follows the browser's default font size, which
     // the layout's px queries do not; a member with a larger font would
     // be left without navigation.
     await page.viewport(1100, 800);
     await render(<Frame />);
+    // The classes are the rule here: no window or font size a test can
+    // set shows that a breakpoint class is absent at every other one.
     for (const element of document.querySelectorAll("[data-slot^=sidebar]")) {
       expect(element.className).not.toMatch(/\b(sm|md|lg|xl|2xl):/);
     }
@@ -304,6 +307,7 @@ describe("Sidebar", () => {
     await render(<Frame />);
     // The member's open choice is for the full layout; this one shows the rail.
     expect(state()).toBe("collapsed");
+    // DESIGN.md "Panes and widths": from 1024 px the sidebar is a 56 px rail.
     await expect.poll(navWidth).toBe(56);
 
     await userEvent.click(expandButton());
@@ -311,6 +315,7 @@ describe("Sidebar", () => {
     // Open in the drawer, the items show their names, not a rail's icons.
     await expect.element(sheet().getByText("Members")).toBeVisible();
     // The content keeps its place: only the rail's room is reserved.
+    // The room the sidebar reserves beside the content has no role.
     const gap = document.querySelector("[data-slot=sidebar-gap]");
     await expect.poll(() => gap?.getBoundingClientRect().width).toBe(56);
 
@@ -399,6 +404,8 @@ describe("Sidebar", () => {
     await expect.element(drawer).toBeVisible();
     await expect.element(drawer.getByRole("navigation", { name: "Mail" })).toBeVisible();
     const panel = document.querySelector("[data-slot=sheet-content]");
+    // The sidebar's own drawer width, 18rem (`--sheet-width`); DESIGN.md
+    // gives the drawer no width.
     await expect.poll(() => panel?.getBoundingClientRect().width).toBe(288);
 
     // The phone shows the same drawer, so it stays open.
@@ -557,7 +564,8 @@ describe("Sidebar", () => {
       const box = action.getBoundingClientRect();
       expect(box.top + box.height / 2).toBe(label.top + label.height / 2);
       expect(box.right).toBe(label.right);
-      // As tall as the rows beside it.
+      // As tall as the rows beside it (DESIGN.md "Space, size, shape,
+      // motion": nav rows are 32 px).
       expect(field.getBoundingClientRect().height).toBe(32);
     });
 
@@ -584,7 +592,7 @@ describe("Sidebar", () => {
     // tooltip.
     await userEvent.keyboard("{Tab}{Tab}");
     await expect
-      .poll(() => document.querySelector("[role=tooltip]")?.textContent)
+      .poll(() => page.getByRole("tooltip").query()?.textContent)
       .toBe(`Collapse sidebar (${shortcutModifier()}+B)`);
   });
 
@@ -623,27 +631,41 @@ describe("Sidebar", () => {
     await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
   });
 
-  it("gives focus to the sidebar's button when the layout takes the focused part away", async () => {
-    await page.viewport(390, 844);
-    await render(<TopBarFrame />);
-    page.getByRole("button", { name: "Open sidebar" }).element().focus();
-    await page.viewport(1440, 900);
-    await expect.element(sidebarButton("Collapse sidebar")).toHaveFocus();
+  it.each([
+    {
+      part: "the top bar's button, in a window grown wide",
+      from: [390, 844],
+      focused: () => page.getByRole("button", { name: "Open sidebar" }),
+      to: [1440, 900],
+      takes: () => sidebarButton("Collapse sidebar"),
+    },
+    {
+      part: "the wordmark, which the rail hides",
+      from: [1440, 900],
+      focused: () => page.getByRole("link", { name: "inbok" }),
+      to: [1100, 800],
+      takes: () => sidebarButton("Expand sidebar"),
+    },
+    {
+      // The drawer is in the same place at both widths; the page changes.
+      part: "a focused part of the page",
+      from: [390, 844],
+      focused: () => page.getByRole("button", { name: "Phone only" }),
+      to: [900, 800],
+      takes: () => page.getByRole("button", { name: "Open sidebar" }),
+    },
+  ])(
+    "gives focus to the sidebar's button when a resize takes away $part",
+    async ({ from, focused, to, takes }) => {
+      await page.viewport(from[0], from[1]);
+      await render(<TopBarFrame />);
+      focused().element().focus();
+      await expect.element(focused()).toHaveFocus();
 
-    // The rail hides the wordmark.
-    page.getByRole("link", { name: "inbok" }).element().focus();
-    await page.viewport(1100, 800);
-    await expect.element(sidebarButton("Expand sidebar")).toHaveFocus();
-  });
-
-  it("gives focus to the sidebar's button when a resize takes away a focused part of the page", async () => {
-    await page.viewport(390, 844);
-    await render(<TopBarFrame />);
-    page.getByRole("button", { name: "Phone only" }).element().focus();
-    // The drawer is in the same place at both widths; the page changes.
-    await page.viewport(900, 800);
-    await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
-  });
+      await page.viewport(to[0], to[1]);
+      await expect.element(takes()).toHaveFocus();
+    },
+  );
 
   it("leaves focus in the page where it is when the layout changes", async () => {
     await page.viewport(1440, 900);

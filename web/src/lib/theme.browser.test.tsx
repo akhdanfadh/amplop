@@ -37,7 +37,7 @@ function runScript() {
 }
 
 describe("theme", () => {
-  it("head script applies a stored dark or light choice", () => {
+  it("shows a stored dark or light choice before the app starts", () => {
     localStorage.setItem(themeKey, "dark");
     runScript();
     expect(html.classList.contains("dark")).toBe(true);
@@ -47,7 +47,7 @@ describe("theme", () => {
     expect(html.classList.contains("dark")).toBe(false);
   });
 
-  it("head script and applyTheme agree on the system choice", () => {
+  it("shows the system's choice the same before and after the app starts", () => {
     runScript();
     const fromScript = html.classList.contains("dark");
     applyTheme("system");
