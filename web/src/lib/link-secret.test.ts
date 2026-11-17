@@ -13,7 +13,6 @@ function openPage(url: string) {
 
 afterEach(() => {
   forgetLinkSecret();
-  vi.unstubAllGlobals();
 });
 
 describe("captureLinkSecret", () => {

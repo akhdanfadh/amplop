@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { ApiError } from "@/api/transport";
 import { readSession } from "./guard";
 
@@ -29,11 +29,6 @@ function answer(body: unknown, status: number, type = "application/json") {
 function client(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
-});
 
 describe("readSession", () => {
   it("returns the signed-in member's session", async () => {

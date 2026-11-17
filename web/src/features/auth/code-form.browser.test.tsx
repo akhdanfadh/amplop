@@ -1,5 +1,5 @@
 import "@/zod-config";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -22,10 +22,6 @@ function challengeExpired(): Response {
     headers: { "Content-Type": "application/problem+json" },
   });
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("CodeForm", () => {
   it("takes a code typed as soon as the step opens", async () => {

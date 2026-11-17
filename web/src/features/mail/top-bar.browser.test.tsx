@@ -96,7 +96,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 describe("the top bar, where the sidebar is a drawer", () => {

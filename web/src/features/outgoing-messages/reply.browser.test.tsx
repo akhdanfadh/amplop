@@ -7,7 +7,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
@@ -196,10 +196,6 @@ async function show(message: AnsweredMessage = answered) {
   await render(<RouterProvider router={router} />);
   return { client };
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("ConversationReply", () => {
   it("offers Reply all only when someone else received the message", async () => {

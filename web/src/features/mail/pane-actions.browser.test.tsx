@@ -1,13 +1,14 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { shortcutModifier } from "@/lib/shortcut";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { data } from "@/test/server";
 
 let api: MailApi;
 let current: Awaited<ReturnType<typeof appRouter>> | undefined;
@@ -17,7 +18,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // open renders the app wide, or width wide, at /mail/<place>/<id of
@@ -32,16 +32,13 @@ async function open(
 ) {
   await page.viewport(width, 900);
   api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-  const router = await appRouter(`/mail/${place}/${rows[index].id}`, memberSession, (url, init) => {
-    // The session is the member's until api signs out.
-    if (new URL(url, location.href).pathname === "/api/v0/sessions/current") {
-      return api.signedOut ? api.fetch(url, init) : undefined;
+  api.server.on("GET", "/api/v0/conversations", async ({ url }, earlier) => {
+    if (slowPlace && url.searchParams.get("place") === slowPlace) {
+      await new Promise((done) => setTimeout(done, 400));
     }
-    if (slowPlace && url.includes(`place=${slowPlace}`)) {
-      return new Promise((done) => setTimeout(done, 400)).then(() => api.fetch(url, init));
-    }
-    return api.fetch(url, init);
+    return earlier();
   });
+  const router = await appRouter(`/mail/${place}/${rows[index].id}`, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   await expect.element(toolbar()).toBeVisible();
@@ -76,53 +73,48 @@ function bar() {
   return page.getByRole("region", { name: "Undo" });
 }
 
-// hold makes api's answers to requests to path wait, each until released
-// in turn, and returns what releases the next and how many wait.
-function hold(path: string): { release: () => void; waiting: () => number } {
-  const fetch = api.fetch;
+// hold makes api's answers to the writes to path wait, each until
+// released in turn, and returns what releases the next and how many wait.
+function hold(path: "/api/v0/conversations/actions" | "/api/v0/conversations/changes"): {
+  release: () => void;
+  waiting: () => number;
+} {
   const waiting: (() => void)[] = [];
-  api.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (new URL(url, location.href).pathname !== path) return fetch(input, init);
+  api.server.on("POST", path, async (_, earlier) => {
     await new Promise<void>((done) => waiting.push(done));
-    return fetch(input, init);
-  };
+    return earlier();
+  });
   return { release: () => waiting.shift()?.(), waiting: () => waiting.length };
 }
 
 // withMessage makes api answer the read of row with one message, so the
 // pane offers Reply.
 function withMessage(row: ConversationRow): void {
-  const fetch = api.fetch;
-  api.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    const { pathname } = new URL(url, location.href);
-    if (pathname === `/api/v0/conversations/${row.id}`) {
-      const message = {
-        id: "00000000-0000-4000-8000-000000000901",
-        date: row.date,
-        subject: row.subject,
-        preview: "Hello",
-        from: [{ name: "Bo Tan", address: "bo@example.com" }],
-        to: [{ name: "", address: "ana@example.com" }],
-        cc: [],
-        replyTo: [],
-        labelIds: [],
-        spam: false,
-        trash: false,
-        sent: false,
-        starred: false,
-        unread: false,
-        answers: null,
-        attachments: false,
-      };
-      return Response.json({ data: { conversation: row, messages: [message], providerUrl: null } });
-    }
-    if (pathname.includes("/content")) {
-      return Response.json({ data: { remote: "none", attachments: [], bodies: [] } });
-    }
-    return fetch(input, init);
-  };
+  api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) => {
+    if (params.id !== row.id) return earlier();
+    const message = {
+      id: "00000000-0000-4000-8000-000000000901",
+      date: row.date,
+      subject: row.subject,
+      preview: "Hello",
+      from: [{ name: "Bo Tan", address: "bo@example.com" }],
+      to: [{ name: "", address: "ana@example.com" }],
+      cc: [],
+      replyTo: [],
+      labelIds: [],
+      spam: false,
+      trash: false,
+      sent: false,
+      starred: false,
+      unread: false,
+      answers: null,
+      attachments: false,
+    };
+    return data({ conversation: row, messages: [message], providerUrl: null });
+  });
+  api.server.on("GET", "/api/v0/messages/{id}/content", () =>
+    data({ remote: "none", attachments: [], bodies: [] }),
+  );
 }
 
 // press sends a key press to target, as from the keyboard, and returns
@@ -358,10 +350,7 @@ describe("the reading pane's actions", () => {
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
     await page.viewport(1440, 900);
-    const router = await appRouter("/mail/starred", memberSession, (url, init) => {
-      if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-      return api.fetch(url, init);
-    });
+    const router = await appRouter("/mail/starred", api.server);
     await render(<RouterProvider router={router} />);
     current = router;
     await router.navigate({
@@ -379,10 +368,7 @@ describe("the reading pane's actions", () => {
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
     await page.viewport(1440, 900);
-    const router = await appRouter("/mail/inbox", memberSession, (url, init) => {
-      if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-      return api.fetch(url, init);
-    });
+    const router = await appRouter("/mail/inbox", api.server);
     await render(<RouterProvider router={router} />);
     current = router;
     await userEvent.click(list().getByRole("row", { name: /Subject 2/ }));
@@ -400,10 +386,7 @@ describe("the reading pane's actions", () => {
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
     await page.viewport(1440, 900);
-    const router = await appRouter("/mail/starred", memberSession, (url, init) => {
-      if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-      return api.fetch(url, init);
-    });
+    const router = await appRouter("/mail/starred", api.server);
     await render(<RouterProvider router={router} />);
     current = router;
     await router.navigate({
@@ -546,12 +529,10 @@ describe("the reading pane's actions", () => {
     await expect.poll(() => api.actions).toHaveLength(1);
     // The session ends as the Undo is sent: any request before it would
     // open sign-in first.
-    const answer = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes("/conversations/changes")) api.signedOut = true;
-      return answer(input, init);
-    };
+    api.server.on("POST", "/api/v0/conversations/changes", (_, earlier) => {
+      api.signedOut = true;
+      return earlier();
+    });
 
     await userEvent.click(bar().getByRole("button", { name: "Undo" }));
 

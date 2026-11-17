@@ -5,7 +5,7 @@ import {
   createRootRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { getListConnectedAccountsQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
@@ -65,10 +65,6 @@ function refusal(status: number, more: Record<string, unknown> = {}): Response {
 function refuseRename(answer: () => Response): Wrap {
   return (next) => async (input, init) => (init?.method === "PATCH" ? answer() : next(input, init));
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 const field = () => page.getByRole("textbox", { name: /^Name/ });
 const save = () => page.getByRole("button", { name: "Save" });

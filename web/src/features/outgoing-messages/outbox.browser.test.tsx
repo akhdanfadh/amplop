@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { OutgoingMessage, OutgoingMessageSummary } from "@/api/generated/model";
@@ -98,10 +98,6 @@ async function read() {
 async function pastPoll(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, sendPollMs + 500));
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("useOutgoingMessage", () => {
   it("takes a listed message's status from the Outbox, its content from its read", async () => {

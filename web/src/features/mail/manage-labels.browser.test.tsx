@@ -6,7 +6,7 @@ import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow, ListedAccount, PlaceCount } from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { refreshMail } from "./conversations";
 
@@ -58,7 +58,7 @@ async function open(address: string, rows: ConversationRow[] = [], listed = acco
   await page.viewport(1440, 900);
   api = mailApi(rows, listed);
   api.places = places();
-  const router = await appRouter(address, memberSession, (url, init) => api.fetch(url, init));
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   return router;

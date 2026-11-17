@@ -1,6 +1,6 @@
 import "@/zod-config";
 import { StrictMode } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent, page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -82,10 +82,6 @@ async function signIn() {
   await vi.waitFor(() => expect(shown.answer.send).toBeDefined());
   return shown;
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("SignInForm", () => {
   it('puts "Forgot password?" on the label\'s line, after the password in Tab order', async () => {

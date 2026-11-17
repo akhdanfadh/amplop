@@ -43,10 +43,22 @@ export default defineConfig({
   // focus, pointer events, and layout behave as in a browser. web/README.md
   // says how to install that browser.
   test: {
+    // Before each test, in both projects: a global a test stubbed
+    // (vi.stubGlobal), e.g. fetch, is the real one again, and a method a
+    // test spied on (vi.spyOn) is the original. So a stub or spy belongs
+    // in the test or a beforeEach; one made for a whole file would last
+    // only until its first test.
+    unstubGlobals: true,
+    restoreMocks: true,
     projects: [
       {
         extends: true,
-        test: { name: "unit", include: ["src/**/*.test.ts"], environment: "node" },
+        test: {
+          name: "unit",
+          include: ["src/**/*.test.ts"],
+          environment: "node",
+          setupFiles: ["src/test/setup.ts"],
+        },
       },
       {
         extends: true,
@@ -60,7 +72,7 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.tsx"],
-          setupFiles: ["src/test/browser-setup.ts"],
+          setupFiles: ["src/test/setup.ts", "src/test/browser-setup.ts"],
           browser: {
             enabled: true,
             headless: true,

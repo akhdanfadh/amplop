@@ -1,10 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
 import { useRestIntent } from "./list-state";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe("useRestIntent", () => {
   it("reads only the row the pointer rests on, after 100 ms", async () => {

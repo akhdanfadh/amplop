@@ -285,7 +285,6 @@ afterEach(async () => {
   // the fetch stub is gone.
   await opened?.cancelQueries();
   opened?.clear();
-  vi.unstubAllGlobals();
 });
 
 const button = (name: string) => page.getByRole("button", { name, exact: true });

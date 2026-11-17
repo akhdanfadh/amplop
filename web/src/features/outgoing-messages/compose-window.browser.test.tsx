@@ -7,14 +7,15 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { LeaveWarning } from "@/components/leave-warning";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
+import { fakeServer, memberSession } from "@/test/server";
 import { ComposeProvider, ComposeStore, useCompose } from "./compose-store";
 import { ComposeWindow } from "./compose-window";
 import { MessageStatus } from "./status";
@@ -200,9 +201,6 @@ describe("ComposeWindow", () => {
   beforeEach(async () => {
     await page.viewport(1280, 800);
     serve();
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it("opens docked as a named region, with focus in From", async () => {
@@ -415,7 +413,7 @@ describe("ComposeWindow", () => {
   });
 
   it("opens from /compose over the Inbox, which history keeps in its place", async () => {
-    const router = await appRouter("/compose", memberSession);
+    const router = await appRouter("/compose", fakeServer(memberSession));
     expect(router.state.location.pathname).toBe("/mail/inbox");
     expect(router.history.length).toBe(1);
     expect(router.options.context.compose.snapshot().message).not.toBeNull();

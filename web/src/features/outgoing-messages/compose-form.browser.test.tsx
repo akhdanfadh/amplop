@@ -6,7 +6,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import {
@@ -168,10 +168,6 @@ function keyReused(): Response {
     { status: unprocessable, headers: { "Content-Type": "application/problem+json" } },
   );
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("ComposeForm", () => {
   it("shows the message editor's rows, with Cc and Bcc on demand", async () => {

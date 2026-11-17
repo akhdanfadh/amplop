@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import {
@@ -56,9 +56,6 @@ describe("AlertDialog", () => {
   beforeEach(() => {
     now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it("names and describes itself and focuses Cancel", async () => {

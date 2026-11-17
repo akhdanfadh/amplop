@@ -5,7 +5,7 @@ import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 let api: MailApi;
@@ -18,7 +18,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // Whether open's actions wait to be answered, and the ones waiting, each
@@ -34,16 +33,11 @@ async function open(
 ) {
   await page.viewport(width, 900);
   api = mailApi(rows, accounts);
-  const router = await appRouter(address, memberSession, (url, init) => {
-    const path = new URL(url, location.href).pathname;
-    if (path === "/api/v0/sessions/current") {
-      return api.signedOut ? api.fetch(url, init) : undefined;
-    }
-    if (gated && path === "/api/v0/conversations/actions") {
-      return new Promise<void>((done) => waiting.push(done)).then(() => api.fetch(url, init));
-    }
-    return api.fetch(url, init);
+  api.server.on("POST", "/api/v0/conversations/actions", async (_, earlier) => {
+    if (gated) await new Promise<void>((done) => waiting.push(done));
+    return earlier();
   });
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   await expect.element(list()).toBeVisible();
@@ -278,20 +272,16 @@ describe("picking", () => {
     api.refuse[rows[0].id] = "needs-reconnect";
     // Google stops accepting the account as the action reaches the server,
     // after every read the page made before it.
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (new URL(url, location.href).pathname === "/api/v0/conversations/actions") {
-        api.accounts = [
-          {
-            ...listedAccount(1, "ana@example.com"),
-            status: "needs-reconnect",
-            allowedActions: ["reconnect", "rename", "disconnect"],
-          },
-        ];
-      }
-      return fetch(input, init);
-    };
+    api.server.on("POST", "/api/v0/conversations/actions", (_, earlier) => {
+      api.accounts = [
+        {
+          ...listedAccount(1, "ana@example.com"),
+          status: "needs-reconnect",
+          allowedActions: ["reconnect", "rename", "disconnect"],
+        },
+      ];
+      return earlier();
+    });
     await pickBox("Subject 5");
 
     await userEvent.click(bar().getByRole("button", { name: "Archive" }));

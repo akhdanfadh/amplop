@@ -1,5 +1,5 @@
 import "@/zod-config";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -240,11 +240,6 @@ const refused: ListedAccount = {
   needsReconnectSince: "2026-11-10T09:00:00Z",
   allowedActions: ["reconnect", "rename", "disconnect"],
 };
-
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
 
 // fakeClock makes the timers the page and its reads use fake, while still
 // running on real time, so a test can jump ahead a minute.

@@ -1,12 +1,13 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { mailApi } from "@/test/mail-api";
+import { data, problem, type Server } from "@/test/server";
 import { noMessageOpen } from "./text";
 
 const ok = 200;
@@ -127,14 +128,6 @@ function serve({
   api = { lists: [messages, ...later], reads: 0, failFrom, outbox, accounts, again, dismiss };
 }
 
-// problem returns an API problem answer of status.
-function problem(status: number): Response {
-  return Response.json(
-    { type: "/api/v0/problems/internal-error", status, title: "", detail: "" },
-    { status, headers: { "Content-Type": "application/problem+json" } },
-  );
-}
-
 // sentAgainAs returns message once sent again as copy, no longer
 // outstanding, as the API then says.
 function sentAgainAs(message: OutgoingMessage, copy: OutgoingMessage): OutgoingMessage {
@@ -152,55 +145,52 @@ function dismissed(message: OutgoingMessage): OutgoingMessage {
   };
 }
 
-// answer answers the Outbox's requests from api, and nothing else.
-function answer(url: string, init?: RequestInit): Promise<Response> | undefined {
-  const path = new URL(url, location.href).pathname;
-  const method = init?.method ?? "GET";
-  if (path === "/api/v0/outgoing-messages" && method === "GET") {
+// withOutbox adds the Outbox's routes, answered from api, to server.
+function withOutbox(server: Server): Server {
+  server.on("GET", "/api/v0/outgoing-messages", () => {
     const read = api.reads++;
-    if (api.outbox !== ok && read >= api.failFrom) return Promise.resolve(problem(api.outbox));
-    const listed = api.lists[Math.min(read, api.lists.length - 1)];
-    return Promise.resolve(Response.json({ data: { messages: listed } }, { status: ok }));
-  }
-  const again = api.again;
-  if (again && method === "POST" && path === `/api/v0/outgoing-messages/${again.id}/send-again`) {
+    if (api.outbox !== ok && read >= api.failFrom) return internalProblem(api.outbox);
+    return data({ messages: api.lists[Math.min(read, api.lists.length - 1)] });
+  });
+  server.on("POST", "/api/v0/outgoing-messages/{id}/send-again", ({ params }, earlier) => {
+    const again = api.again;
+    if (params.id !== again?.id) return earlier();
     // The copy joins the list, and the message points to it.
     const before = api.lists[Math.min(api.reads, api.lists.length - 1)];
     const after = before.map((one) => (one.id === again.id ? sentAgainAs(one, again.copy) : one));
     api.lists = [[again.copy, ...after]];
     api.reads = 0;
-    return Promise.resolve(Response.json({ data: again.copy }, { status: created }));
-  }
-  const dismiss = api.dismiss;
-  if (dismiss && method === "POST" && path === `/api/v0/outgoing-messages/${dismiss.id}/dismiss`) {
-    if (dismiss.refused)
-      return Promise.resolve(
-        Response.json(
-          {
-            type: "/api/v0/problems/not-dismissible",
-            status: conflict,
-            title: "Message not dismissible",
-            detail: "",
-          },
-          { status: conflict, headers: { "Content-Type": "application/problem+json" } },
-        ),
-      );
+    return data(again.copy, created);
+  });
+  server.on("POST", "/api/v0/outgoing-messages/{id}/dismiss", async ({ params }, earlier) => {
+    const dismiss = api.dismiss;
+    if (params.id !== dismiss?.id) return earlier();
+    if (dismiss.refused) {
+      return problem(conflict, "/api/v0/problems/not-dismissible", {
+        title: "Message not dismissible",
+        detail: "",
+      });
+    }
     const before = api.lists[Math.min(api.reads, api.lists.length - 1)];
     api.lists = [before.map((one) => (one.id === dismiss.id ? dismissed(one) : one))];
     api.reads = 0;
     // Saved, but the answer never arrives whole.
-    if (dismiss.lost) return Promise.resolve(problem(internalError));
+    if (dismiss.lost) return internalProblem(internalError);
     const one = api.lists[0].find((message) => message.id === dismiss.id);
-    return (dismiss.hold ?? Promise.resolve()).then(() =>
-      Response.json({ data: one }, { status: ok }),
-    );
-  }
-  if (path.startsWith("/api/v0/outgoing-messages/") && method === "GET") {
-    const known = [...api.lists.flat(), ...(again ? [again.copy] : [])];
-    const one = known.find((message) => path === `/api/v0/outgoing-messages/${message.id}`);
-    return Promise.resolve(one ? Response.json({ data: one }, { status: ok }) : problem(notFound));
-  }
-  return undefined;
+    await dismiss.hold;
+    return data(one);
+  });
+  server.on("GET", "/api/v0/outgoing-messages/{id}", ({ params }) => {
+    const known = [...api.lists.flat(), ...(api.again ? [api.again.copy] : [])];
+    const one = known.find((message) => message.id === params.id);
+    return one ? data(one) : internalProblem(notFound);
+  });
+  return server;
+}
+
+// internalProblem returns the API's internal-error answer with status.
+function internalProblem(status: number): Response {
+  return problem(status, "/api/v0/problems/internal-error", { title: "", detail: "" });
 }
 
 let current: Awaited<ReturnType<typeof appRouter>> | undefined;
@@ -209,12 +199,7 @@ let current: Awaited<ReturnType<typeof appRouter>> | undefined;
 // at the window's width. It returns the router.
 async function show(path = "/mail/outbox", width = 1280) {
   await page.viewport(width, 800);
-  const mail = mailApi([], api.accounts);
-  const router = await appRouter(path, memberSession, (url, init) => {
-    // The session is the member's, as appRouter answers it.
-    if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-    return answer(url, init) ?? mail.fetch(url, init);
-  });
+  const router = await appRouter(path, withOutbox(mailApi([], api.accounts).server));
   await render(<RouterProvider router={router} />);
   current = router;
   return router;
@@ -225,7 +210,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 describe("OutboxPage", () => {

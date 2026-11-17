@@ -1,5 +1,5 @@
 import "@/zod-config";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -99,10 +99,6 @@ const linkGone: Answer = () =>
     "/api/v0/problems/password-reset-link-invalid",
     "This link has expired, was already used, or is not valid. Ask for a new one.",
   );
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("signed-out pages", () => {
   it("open with focus on their title", async () => {

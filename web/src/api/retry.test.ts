@@ -51,9 +51,6 @@ beforeEach(() => {
 afterEach(() => {
   for (const queryClient of clients) queryClient.clear();
   clients.length = 0;
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-  vi.useRealTimers();
 });
 
 describe("read retries", () => {

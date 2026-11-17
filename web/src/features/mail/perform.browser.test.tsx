@@ -20,7 +20,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // Labels' ids, as List Places gives them.

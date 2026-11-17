@@ -108,7 +108,6 @@ afterEach(() => {
   sendLink = undefined;
   failing.session = false;
   failing.totp = false;
-  vi.unstubAllGlobals();
 });
 
 describe("Security", () => {

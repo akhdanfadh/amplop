@@ -8,11 +8,12 @@ import {
   createRouter,
   useParams,
 } from "@tanstack/react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { listedAccount, mailApi } from "@/test/mail-api";
+import { fakeServer, memberSession } from "@/test/server";
 import { Route as appRoot } from "@/routes/__root";
 import { MailFrame } from "./frame";
 import { forgetMailHref, mailHref, mailPage } from "./places";
@@ -93,16 +94,10 @@ beforeEach(() => {
   forgetMailHref();
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 describe("mailPage", () => {
   it("is the place a loaded page in mail shows, with its search", async () => {
     const accounts = mailApi([], [listedAccount(2, "ana@example.com")]);
-    const router = await appRouter("/mail/spam?account=2", memberSession, (url) =>
-      url.includes("/connected-accounts") ? accounts.fetch(url) : undefined,
-    );
+    const router = await appRouter("/mail/spam?account=2", accounts.server);
     expect(pageOf(router)).toEqual({
       to: "/mail/$place",
       params: { place: "spam" },
@@ -112,27 +107,27 @@ describe("mailPage", () => {
 
   it("is a message in the Outbox", async () => {
     const id = "0193c8a0-0000-7000-8000-000000000000";
-    const router = await appRouter(`/mail/outbox/${id}`, memberSession);
+    const router = await appRouter(`/mail/outbox/${id}`, mailApi([], []).server);
     expect(pageOf(router)).toMatchObject({ to: "/mail/outbox/$id", params: { id } });
   });
 
   it("is nothing for a page outside mail, which the frame sees as it leaves", async () => {
-    const router = await appRouter("/settings/security", memberSession);
+    const router = await appRouter("/settings/security", fakeServer(memberSession));
     expect(pageOf(router)).toBeUndefined();
   });
 
   it("is nothing for a place that does not exist", async () => {
-    const router = await appRouter("/mail/bogus", memberSession);
+    const router = await appRouter("/mail/bogus", mailApi([], []).server);
     expect(pageOf(router)).toBeUndefined();
   });
 
   it("is nothing for an address deeper than any page in a place", async () => {
-    const router = await appRouter("/mail/inbox/nope", memberSession);
+    const router = await appRouter("/mail/inbox/nope", mailApi([], []).server);
     expect(pageOf(router)).toBeUndefined();
   });
 
   it("is nothing for a page still loading", async () => {
-    const router = await appRouter("/mail/spam", memberSession);
+    const router = await appRouter("/mail/spam", mailApi([], []).server);
     const loading = router.state.matches.map((match, index, all) =>
       index === all.length - 1 ? { ...match, status: "pending" as const } : match,
     );

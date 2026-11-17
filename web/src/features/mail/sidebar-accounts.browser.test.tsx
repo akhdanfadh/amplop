@@ -1,10 +1,10 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import type { ListedAccount, PlaceCount } from "@/api/generated/model";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const work = "11111111-1111-4111-8111-111111111111";
@@ -47,11 +47,7 @@ async function open(address: string, width = 1440, prepare: (api: MailApi) => vo
   api = mailApi([conversation(1)], accounts());
   api.places = places();
   prepare(api);
-  const router = await appRouter(address, memberSession, (url, init) =>
-    new URL(url, location.href).pathname === "/api/v0/sessions/current"
-      ? undefined
-      : api.fetch(url, init),
-  );
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   return router;
@@ -67,7 +63,6 @@ afterEach(async () => {
   // The member's data ends, folds included, so each test starts folded.
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // labelsOf returns the chevron that folds or unfolds the labels of the

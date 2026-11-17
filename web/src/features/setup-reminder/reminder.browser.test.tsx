@@ -181,7 +181,6 @@ afterEach(() => {
   ended = false;
   onlineManager.setOnline(true);
   focusManager.setFocused(undefined);
-  vi.unstubAllGlobals();
 });
 
 const reminders = () => page.getByRole("region", { name: "Setup reminders" });
