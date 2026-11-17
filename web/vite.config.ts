@@ -4,6 +4,7 @@ import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "vite-plus/test/browser-playwright";
 import { messageServer } from "./src/test/message-server";
+import { defaultViewport } from "./src/test/viewport";
 
 // Written by the router plugin; it asks to be left unformatted and unlinted.
 const generated = ["src/routeTree.gen.ts"];
@@ -72,12 +73,18 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.tsx"],
+          // In this order: browser-setup.ts's cleanup after each test
+          // must run before setup.ts's checks, and the later file's
+          // afterEach runs first.
           setupFiles: ["src/test/setup.ts", "src/test/browser-setup.ts"],
           browser: {
             enabled: true,
             headless: true,
             provider: playwright(),
             instances: [{ browser: "chromium" }],
+            // The size a test file's page opens at; browser-setup.ts sets
+            // it again before each test.
+            viewport: defaultViewport,
           },
         },
       },

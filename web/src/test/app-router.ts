@@ -3,6 +3,7 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { buildRouter } from "@/router";
 import { routeTree } from "@/routeTree.gen";
+import { rememberQueryClient } from "./query-client";
 import { fakeServer } from "./server";
 
 // NOTE: a test mounts the app in a <div> inside <body>, not on the
@@ -20,7 +21,8 @@ Object.assign(routeTree.options, { shellComponent: AppShell });
 // guards' redirects followed. server, which it installs, answers the
 // app's requests; left out, a visitor's server does, which knows no
 // session. prepare gets the router's query client before the first load,
-// e.g. to seed the cache. The client is router.options.context.queryClient.
+// e.g. to seed the cache. The client is router.options.context.queryClient;
+// the setup ends its data after the test (endQueryClients).
 //
 // It differs from the app's router in three ways: its history is in
 // memory, the root renders AppShell without the document (the NOTE
@@ -32,7 +34,7 @@ export async function appRouter(
 ) {
   server.install();
   const router = buildRouter(createMemoryHistory({ initialEntries: [address] }));
-  const { queryClient } = router.options.context;
+  const queryClient = rememberQueryClient(router.options.context.queryClient);
   // The app tries a failed read again after 1 s, then 2 s, which a test
   // of a failure would wait out; api/retry.test.ts holds those rules.
   const options = queryClient.getDefaultOptions();

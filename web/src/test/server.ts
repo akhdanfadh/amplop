@@ -158,7 +158,9 @@ export function fakeServer(session?: CurrentSession): Server {
       const request = input instanceof Request ? input : undefined;
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const url = new URL(href, globalThis.location?.href);
+      // The app asks by path alone, e.g. "/api/v0/places". Node has no
+      // page whose address would complete it, so any origin does there.
+      const url = new URL(href, globalThis.location?.href ?? "http://inbok.test");
       const text = typeof init?.body === "string" ? init.body : await request?.clone().text();
       const asked: Asked = {
         method: (init?.method ?? request?.method ?? "GET").toUpperCase(),
