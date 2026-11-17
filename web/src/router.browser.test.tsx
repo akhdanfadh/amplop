@@ -27,8 +27,8 @@ describe("getRouter", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  // The pages' tests build their own routers with the same two options;
-  // this holds the app's to them.
+  // A page's test opens the app's router (appRouter), so it waits as
+  // the app does; this holds the app's router to the two options.
   it("waits on a visit for a read marked out of date, a preloaded visit too", () => {
     expect(getRouter().options).toMatchObject({
       defaultStaleReloadMode: "blocking",

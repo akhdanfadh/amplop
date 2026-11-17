@@ -265,8 +265,8 @@ began before the write and is still running when the member comes back is
 joined, and its older answer drawn; and a conversation the list holds
 opens from its row at once, its messages refreshing in place (DESIGN.md
 "States"). The server refuses any change a stale page offers, with its
-reason. A test's own router that loads such pages sets the same two
-router options; `appRouter` has them, being the app's router.
+reason. A page's test gets the same two router options from `appRouter`,
+the app's router.
 
 A page whose data it cannot draw without, e.g. System email, Registration,
 or Members, reads it in its route's loader, made by `cachedLoader`
@@ -763,7 +763,9 @@ their Google Account. The dialog leaves out that inbok does not ask when
 another member here connected the same Google account, whose access
 stays. Once the server confirms, the row goes, the notice says "Work is
 disconnected.", and focus moves to the next row's pencil, else the
-previous row's, else Connect Gmail. An account already gone (the API's 404) closes the dialog with "Work was already disconnected."; a failure
+previous row's, else Connect Gmail; where that one is not on the page,
+e.g. the last account goes while Gmail isn't offered, to the section's
+heading. An account already gone (the API's 404) closes the dialog with "Work was already disconnected."; a failure
 or a lost answer shows inside it, where pressing again retries. While
 Gmail isn't offered, i.e. the server has no Google client, a sentence
 where Connect Gmail would be says so by who can fix it: a member is told
@@ -1259,33 +1261,87 @@ error. To format on save and see lint errors while typing, install the
 Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 <https://viteplus.dev/guide/ide-integration>).
 
-Tests sit next to the code they test, in two Vitest projects set up in
-`vite.config.ts`:
+The project uses TypeScript 7. If your VS Code still checks types with
+TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
+
+Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
+functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
+latter. They run in two Vitest projects set up in `vite.config.ts`:
 
 - `unit`: files named `*.test.ts`, run in Node, for code without a page.
 - `browser`: files named `*.browser.test.tsx`, run in a real Chromium that
   [Playwright](https://playwright.dev) drives ([Vitest browser
   mode](https://vitest.dev/guide/browser/)), for components and anything
-  that needs focus, pointer events, layout, or storage. Render with
-  `render` from `vitest-browser-react`; find elements with `page` and
-  interact with `userEvent` from `vite-plus/test/browser/context`, which
-  send real browser input. `src/test/browser-setup.ts` loads the app's
-  stylesheet first. Every browser test starts 1440 px wide and 900 high
-  (`defaultViewport` in `src/test/viewport.ts`), the wide layout with the
-  sidebar beside the content: the browser project's `browser.viewport`
-  opens the page at that size and `browser-setup.ts` sets it again before
-  each test. A test about another width sets it with `page.viewport`,
-  with the numbers it means, and puts nothing back afterwards. Message
-  bodies for the message view's frame come from
-  `src/test/message-server.ts`, which serves them on the test page's
-  origin with the headers the Go server's body route sends.
+  that needs focus, pointer events, layout, or storage.
+
+The browser project needs Playwright's Chromium, once per machine and
+again after a Playwright upgrade. From `web`:
+
+```sh
+pnpm exec playwright install chromium
+```
+
+Run every test, one project, or one file:
+
+```sh
+pnpm test
+pnpm exec vp test run --project browser
+pnpm exec vp test run src/lib/theme.browser.test.tsx
+```
+
+`make check` runs both projects, headless.
+
+### A browser test
+
+A browser test renders with `render` from `vitest-browser-react`, finds
+elements with `page`, and interacts with `userEvent` from
+`vite-plus/test/browser/context`, which send real browser input.
+`src/test/browser-setup.ts` loads the app's stylesheet first, so
+components lay out, hide, and show as they do in the app, and then the
+app's font: it is declared `font-display: swap`, so text would otherwise
+draw in a fallback font first and change width when the font arrives,
+part-way through a test that measures.
+
+Every browser test starts 1440 px wide and 900 high (`defaultViewport`
+in `src/test/viewport.ts`), the wide layout with the sidebar beside the
+content: the browser project's `browser.viewport` opens the page at that
+size and `browser-setup.ts` sets it again before each test. A test about
+another width sets it with `page.viewport`, with the numbers it means,
+and puts nothing back afterwards.
+
+React Aria's Virtualizer stops virtualizing, and keeps lists at their
+top, when `NODE_ENV` is `test`, as Vitest sets it, unless `VIRT_ON` is
+set; the browser project sets it (`vite.config.ts`), so a list test sees
+the list as the app has it. Scroll a virtualized list with the keyboard,
+e.g. End, which React Aria scrolls itself.
+
+Message bodies for the message view's frame come from
+`src/test/message-server.ts`, which serves them on the test page's
+origin with the headers the Go server's body route sends.
+
+### Which harness a test uses
 
 No test declares an app route again: its id, path, guard, loader, or a
 component taken from `src/routes`. A page's test opens the page through
 `appRouter` (`src/test/app-router.ts`), the app's own router, and fakes
-only the server. A component's test renders the component alone. Only a
-test of the router's own machinery (`route-states`, the setup gate, the
-root's React Aria bridge) makes up routes.
+only the server. A component's test renders the component alone, inside
+`stubRouter` when it needs a router around it. Only a test of the
+router's own machinery (`route-states`, the setup gate, the root's React
+Aria bridge) makes up routes.
+
+`appRouter(address, server)` is the app's router, built by `buildRouter`
+in `src/router.tsx` as `getRouter` builds the app's, loaded at the
+address; the test renders it in a `RouterProvider`. It differs from the
+app's in three ways: its history is in memory, at the address the test
+gives; a failed read is not tried again, which would wait 1 s and then
+2 s (`src/api/retry.test.ts` holds those rules); and the test mounts it
+in a `<div>`, not on the document as the app does. So it renders the
+root route's `AppShell` without the `<html>` and `<body>` around it:
+React's own `<body>` there makes a later event loop forever
+([react#35480](https://github.com/react/react/issues/35480)), and a
+hanging test never fails by itself, since its timer runs on the frozen
+page. `src/test/app-router.browser.test.tsx` checks that React leaves the
+page's `<body>` alone; `make` stops the web tests after five minutes.
 
 A component that needs a router around it, for a link, a navigation, or
 a leave warning, gets one from `stubRouter` (`src/test/stub-router.tsx`).
@@ -1302,24 +1358,21 @@ await expect.element(page.getByRole("heading", { name: "/elsewhere" })).toBeVisi
 ```
 
 The stub holds nothing of the app's routes: no guard, loader, search
-rule, or root component. A component that needs no router gets none:
-`render`, inside a `QueryClientProvider` when it reads the API. Either
-way the query client is `testQueryClient()` (`src/test/query-client.ts`),
+rule, or root component.
+
+A component that needs no router gets none: `render`, inside a
+`QueryClientProvider` when it reads the API. With or without the stub,
+the query client is `testQueryClient()` (`src/test/query-client.ts`),
 which does not try a failed read again; `stubRouter` makes one unless
 the test passes its own as `client`. Only the transport's own tests
 (`src/api/retry.test.ts`, `timeout.test.ts`, `offline.test.ts`) build a
-`QueryClient` themselves, from the options they test, and only they and
-`transport.test.ts` stub `fetch` by hand.
+`QueryClient` themselves, from the options they test.
 
-A page's test sits in its feature's folder, e.g.
-`features/members/page.browser.test.tsx`, or
-`features/password-reset/pages.browser.test.tsx` for a feature's several
-pages. Tests of the whole app sit in `src`: `entry-paths` (the addresses
-the server links), `session-end` (a session that ends on an open page),
-and `guards` (the route table's guards).
+### Faking the API
 
 A test fakes the API by faking `fetch`, with the fake server in
-`src/test/server.ts`:
+`src/test/server.ts`. Only the transport's tests named above and
+`src/api/transport.test.ts` stub `fetch` by hand.
 
 ```ts
 const server = fakeServer(memberSession);
@@ -1337,20 +1390,21 @@ const router = await appRouter("/mail/inbox", server);
   `api/generated/openapi.json`, so a path or method the API does not have
   is a type error. Of two routes that match, the one with fewer
   parameters answers, then the later one, so a test replaces a route by
-  adding it again.
+  adding it again. To answer once, register with `once`: the earlier
+  route answers again afterwards.
 - A handler gets the request (`url`, `params`, the parsed JSON `body`,
   `headers`) and returns a `Response`, built with `data(value, status)`
   for the API's `{ data }` or `problem(status, type, more)` for Problem
-  Details with the required members, `Retry-After` from `retryAfter`.
+  Details with the required members, `Retry-After` from `retryAfter`. Its
+  second argument, `earlier`, answers as the route it replaced does, e.g.
+  after a wait.
 - To hold an answer, the handler awaits the promise of `held()`, which
   the test resolves: `const answer = held()`, `await answer.promise` in
   the handler, then `answer.resolve()`. It stands in for
   `Promise.withResolvers()`, a type error under `tsconfig.json`'s `lib`,
-  which also types the app's code. To answer once, register with `once`:
-  the earlier route answers again afterwards. To lose the answer after the
-  server acted, as a dropped connection does, the handler ends with
-  `return lose()`, and `fetch` rejects. A handler's second argument,
-  `earlier`, answers as the route it replaced does, e.g. after a wait.
+  which also types the app's code. To lose the answer after the server
+  acted, as a dropped connection does, the handler ends with
+  `return lose()`, and `fetch` rejects.
 - The server answers as a quiet inbok, one with nothing to report: setup
   is done, the session read answers its `session`, the member has no
   connected account and syncing runs, system email is saved and tested
@@ -1358,7 +1412,8 @@ const router = await appRouter("/mail/inbox", server);
   the signed-in frame and sign-in make on their own (the sync banner, an
   administrator's setup reminder, sign-in's registration link), so a test
   adds only its page's routes; its own route for one of them replaces the
-  quiet answer. `memberSession` and `adminSession` are the two sessions.
+  quiet answer. `memberSession` and `adminSession` are the two sessions;
+  `fakeServer()` without one is a visitor's server.
   `server.session = undefined` ends the session: every operation that
   needs one then answers a 401 `unauthenticated`.
 - `server.requests` holds every request (method, path with search, body,
@@ -1383,6 +1438,14 @@ conversation), and `outgoingMessage()`. `api.messages[row.id] =
 content answers as `noContent`, nothing to show, unless the test adds
 its own route.
 
+Without a fake server installed, a browser test's `fetch` refuses a
+request for `/api/` as a lost connection, so no test reaches a real
+server through the dev proxy. Such a request comes from work a test left
+running, e.g. a navigation whose loader had yet to run when the test
+ended.
+
+### Setup and cleanup
+
 Cleanup is central. Before each test Vitest puts back every stubbed
 global and every spied method (`unstubGlobals` and `restoreMocks` in
 `vite.config.ts`), and after each test `src/test/setup.ts` puts back the
@@ -1390,11 +1453,12 @@ real timers and checks the fake server's unanswered requests. So a test
 file calls none of `vi.unstubAllGlobals()`,
 `vi.restoreAllMocks()`, or `vi.useRealTimers()`, and makes its stubs and
 spies in the test or a `beforeEach`: one made once for the file lasts
-only until its first test. The two exceptions restore a spy as their
-test ends, because something reads the real thing before the next test:
-`src/lib/local-store.browser.test.tsx` (the cleanup below clears the
-real `Storage`) and `src/root.browser.test.tsx` (React Aria rereads the
-browser's language).
+only until its first test. The three exceptions put the real thing back
+before their test ends, because something reads it before the next
+test: `src/lib/local-store.browser.test.tsx` (the cleanup below clears
+the real `Storage`), `src/root.browser.test.tsx` (React Aria rereads the
+browser's language), and `src/features/mail/folds.browser.test.tsx`
+(the page gets its real `sessionStorage` back before the test goes on).
 
 After each browser test `src/test/browser-setup.ts` also, in this order:
 unmounts what the test rendered; ends the member's data in every query
@@ -1411,53 +1475,6 @@ query clients, toasts, the connection, or storage, and its own
 in reverse order of registration: the file's own, then
 `browser-setup.ts`'s, then `setup.ts`'s, so the page is gone and its
 reads are cancelled before the unanswered requests are checked.
-
-Without a fake server installed, a browser test's `fetch` refuses a
-request for `/api/` as a lost connection, so no test reaches a real
-server through the dev proxy. Such a request comes from work a test left
-running, e.g. a navigation whose loader had yet to run when the test
-ended.
-
-The browser project needs Playwright's Chromium, once per machine and
-again after a Playwright upgrade. From `web`:
-
-```sh
-pnpm exec playwright install chromium
-```
-
-Run every test, one project, or one file:
-
-```sh
-pnpm test
-pnpm exec vp test run --project browser
-pnpm exec vp test run src/lib/theme.browser.test.tsx
-```
-
-React Aria's Virtualizer stops virtualizing, and keeps lists at their
-top, when `NODE_ENV` is `test`, as Vitest sets it, unless `VIRT_ON` is
-set; the browser project sets it (`vite.config.ts`), so a list test sees
-the list as the app has it. Scroll a virtualized list with the keyboard,
-e.g. End, which React Aria scrolls itself.
-
-`appRouter` (`src/test/app-router.ts`) is the app's router, built by
-`buildRouter` in `src/router.tsx` as `getRouter` builds the app's. It
-differs in three ways: its history is in memory, at the address the test
-gives; a failed read is not tried again, which would wait 1 s and then
-2 s (`src/api/retry.test.ts` holds those rules); and the test mounts it
-in a `<div>`, not on the document as the app does. So it renders the
-root route's `AppShell` without the `<html>` and `<body>` around it: React's own `<body>` there
-makes a later event loop forever
-([react#35480](https://github.com/react/react/issues/35480)), and a
-hanging test never fails by itself, since its timer runs on the frozen
-page. `src/test/app-router.browser.test.tsx` checks that React leaves the
-page's `<body>` alone; `make` stops the web tests after five minutes.
-
-Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
-functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
-latter. `make check` runs both projects, headless.
-
-The project uses TypeScript 7. If your VS Code still checks types with
-TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
 
 ### Time
 
@@ -1557,9 +1574,8 @@ passes after a change no member could notice.
   label, or by text. `querySelector`, `data-slot`, a class, or
   `.parentElement` needs its reason in a comment, e.g. the element is
   inside a message's frame, is a `<mark>` or a `<bdi>`, or has no role.
-- A test asserts what the member sees or what the server got. It reads
-  the query cache, a collection, or a hook's result only where no screen
-  shows the same fact, and says so in a comment.
+- A test reads the query cache, a collection, or a hook's result only
+  where no screen shows the same fact, and says so in a comment.
 - A request count is asserted only where the request is the outcome: a
   write the server must get once, an `Idempotency-Key`, a read that must
   not repeat. The test names the README rule it protects when there is
@@ -1577,6 +1593,17 @@ passes after a change no member could notice.
 - A test's name says the behaviour, not the mechanism: "shows the focus
   ring after the keyboard, not after a click", not "sets
   data-focus-visible".
+
+### Where tests live
+
+Tests sit next to the code they test. A page's test sits in its
+feature's folder, e.g. `features/members/page.browser.test.tsx`, or
+`features/password-reset/pages.browser.test.tsx` for a feature's several
+pages. Tests of the whole app sit in `src`: `entry-paths` (the addresses
+the server links), `session-end` (a session that ends on an open page),
+`guards` (the route table's guards), `signed-out-pages` (what every
+signed-out page does), and `router` and `root` (the app router's options
+and the root route). The harness's own tests sit in `src/test`.
 
 ## Styling and components
 
