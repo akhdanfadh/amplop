@@ -8,6 +8,7 @@ import {
   type SystemEmailSettings,
   type SystemEmailTestMessageResult,
 } from "@/api/generated/model";
+import { pressInDialog } from "@/test/dialog";
 import { appRouter } from "@/test/app-router";
 import { adminSession, data, fakeServer, held, lose, problem, type Server } from "@/test/server";
 
@@ -110,14 +111,6 @@ const button = (name: string) => page.getByRole("button", { name, exact: true })
 const dialog = () => page.getByRole("alertdialog");
 const announcement = () => page.getByRole("status").last();
 
-// confirmByKeyboard presses the dialog's confirming button: Cancel has
-// focus, the action is next. A keyboard press counts at once, unlike a click
-// within a double-click of the dialog opening.
-async function confirmByKeyboard(): Promise<void> {
-  await expect.element(dialog()).toBeVisible();
-  await userEvent.keyboard("{Tab}{Enter}");
-}
-
 // frames waits for the browser to draw twice, e.g. after a scroll.
 function frames(): Promise<void> {
   return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
@@ -135,7 +128,7 @@ describe("Registration", () => {
     await expect.element(page.getByText("Closed", { exact: true })).toBeVisible();
 
     await userEvent.click(button("Open registration"));
-    await confirmByKeyboard();
+    await pressInDialog("Open registration");
     await expect.element(button("Opening...")).toBeVisible();
     await expect.element(button("Cancel")).toBeDisabled();
     // A change already sent can't be called back.
@@ -164,7 +157,7 @@ describe("Registration", () => {
     await expect.element(page.getByText("Paused", { exact: true })).toBeVisible();
 
     await userEvent.click(button("Close registration"));
-    await confirmByKeyboard();
+    await pressInDialog("Close registration");
 
     await expect.element(dialog()).not.toBeInTheDocument();
     await expect.element(page.getByText("Closed", { exact: true })).toBeVisible();
@@ -177,7 +170,7 @@ describe("Registration", () => {
     await open(state.server);
 
     await userEvent.click(button("Open registration"));
-    await confirmByKeyboard();
+    await pressInDialog("Open registration");
     // A fault leaves it unknown whether the change was saved.
     await expect
       .element(dialog().getByRole("alert"))
@@ -201,7 +194,7 @@ describe("Registration", () => {
     await open(server);
 
     await userEvent.click(button("Open registration"));
-    await confirmByKeyboard();
+    await pressInDialog("Open registration");
 
     await expect
       .element(dialog().getByRole("alert"))

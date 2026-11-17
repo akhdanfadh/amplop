@@ -1531,6 +1531,23 @@ What a test author must know about a fake clock in browser mode
   an answer held across a longer move fails as a timeout. A fake
   server's handler that waits with `setTimeout` waits on the fake clock.
 
+One app timer reads a clock `fakeClock` leaves real: an alert dialog's
+confirming button ignores a mouse or touch press within a double-click
+(`doubleClickTime`) of the dialog opening, by `performance.now`. A test
+gets past it with `pressInDialog("Discard")` (`src/test/dialog.ts`),
+which waits for the button named exactly that in the open alert dialog,
+focuses it, and presses Enter: a keyboard press counts at once. No test
+sleeps through the guard or clicks that button, except the guard's own
+tests (`src/components/ui/alert-dialog.browser.test.tsx`), which set
+`performance.now` themselves.
+
+A CSS transition or animation is real time too. A test waits for its
+end by what React Aria marks, e.g. nothing `data-entering` before a
+size is read, and a position that moves is read inside a retried
+assertion. Escape closes an open tooltip first, and the pointer rests
+where the last click was, so a test that closes a drawer or dialog it
+opened by a click presses its button, or moves the pointer away first.
+
 ## Styling and components
 
 How screens look, are laid out, and are worded (tokens, components,

@@ -5,6 +5,8 @@ import { render } from "vitest-browser-react";
 import type { ConversationRow, ListedSessions, TotpStatus } from "@/api/generated/model";
 import { refreshNewest } from "@/features/mail/conversations";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
+import { pressInDialog } from "@/test/dialog";
 import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 import { data, fakeServer, memberSession } from "@/test/server";
 
@@ -49,15 +51,6 @@ async function endSession(router: Awaited<ReturnType<typeof appRouter>>): Promis
   await refreshNewest(router.options.context.queryClient);
 }
 
-// press presses name in the dialog that asks, once it can take a press.
-async function press(name: string): Promise<void> {
-  const button = page.getByRole("alertdialog").getByRole("button", { name, exact: true });
-  await expect.element(button).toBeVisible();
-  // The dialog ignores a press within a double-click of opening.
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  await userEvent.click(button);
-}
-
 const banner = () => page.getByRole("region", { name: "Signed out" });
 
 describe("an ended session", () => {
@@ -74,6 +67,7 @@ describe("an ended session", () => {
   });
 
   it("keeps a typed reply to copy, then opens sign-in once it is discarded", async () => {
+    const clock = fakeClock();
     const row = conversation(1);
     const router = await open(`/mail/inbox/${row.id}`, row);
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }).last());
@@ -86,8 +80,9 @@ describe("an ended session", () => {
     await expect.element(typed).toHaveValue("See you at nine.");
     expect(router.state.location.pathname).toBe(`/mail/inbox/${row.id}`);
     // The list's refresh failed on the same 401: inbok answered, so the
-    // list doesn't say it isn't answering.
-    await new Promise((done) => setTimeout(done, 1000));
+    // list doesn't say it isn't answering. It would say so as it draws the
+    // failed refresh, which a second of the clock is well past.
+    await clock.advance(1000);
     expect(page.getByText("Couldn't refresh.").query()).toBeNull();
 
     // A press says why it failed, at the button, as any failure does.
@@ -97,7 +92,7 @@ describe("an ended session", () => {
     await expect.element(typed).toHaveValue("See you at nine.");
 
     await userEvent.click(page.getByRole("button", { name: "Discard" }));
-    await press("Discard");
+    await pressInDialog("Discard");
 
     await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
     expect(router.state.location.search).toEqual({ redirect: `/mail/inbox/${row.id}` });
@@ -117,7 +112,7 @@ describe("an ended session", () => {
 
     // Leaving for sign-in would close the window, so it asks.
     await userEvent.click(window.getByRole("link", { name: "sign in" }));
-    await press("Discard");
+    await pressInDialog("Discard");
 
     await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
     expect(router.state.location.search).toEqual({ redirect: "/mail/inbox" });

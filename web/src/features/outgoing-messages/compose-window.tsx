@@ -45,7 +45,7 @@ import {
 } from "./text";
 
 // How long a sent message's status stays before the window closes itself.
-const closesAfterSentMs = 3_000;
+export const closesAfterSentMs = 3_000;
 
 // The window's size while docked, where nothing covers the page.
 type Size = "docked" | "minimised" | "full";

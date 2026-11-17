@@ -4,6 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import type { CurrentSession } from "@/api/generated/model";
 import { ComposeProvider, ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { ComposeWindow } from "@/features/outgoing-messages/compose-window";
+import { pressInDialog } from "@/test/dialog";
 import { type Server, fakeServer, memberSession } from "@/test/server";
 import { stubRouter } from "@/test/stub-router";
 import { Frame } from "./frame";
@@ -73,24 +74,6 @@ async function signOut(): Promise<void> {
   await userEvent.click(page.getByRole("button", { name: "Sign out" }));
 }
 
-// pressSignOutChoice presses name in the question Sign out asks.
-async function pressSignOutChoice(name: string): Promise<void> {
-  const button = page
-    .getByRole("alertdialog", { name: "Sign out and discard your message?" })
-    .getByRole("button", { name });
-  await expect.element(button).toBeVisible();
-  // The dialog ignores a press within a double-click of opening.
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  await userEvent.click(button);
-}
-
-// frame lets React render what a native event changed.
-function frame(): Promise<void> {
-  return new Promise((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-  );
-}
-
 describe("Frame", () => {
   it("gives focus to the sidebar's button when the window outgrows the open drawer", async () => {
     serve();
@@ -99,7 +82,8 @@ describe("Frame", () => {
     await userEvent.click(page.getByRole("button", { name: "Open sidebar" }));
     const drawer = page.getByRole("dialog", { name: "Mail" });
     await expect.element(drawer).toBeVisible();
-    await frame();
+    // Focus is in the drawer, for the wider window to take away.
+    await expect.poll(() => drawer.element().contains(document.activeElement)).toBe(true);
 
     await page.viewport(1440, 900);
     await expect.element(drawer).not.toBeInTheDocument();
@@ -121,22 +105,30 @@ describe("Frame", () => {
       const open = page.getByRole("banner").getByRole("button", { name: "Open sidebar" });
       // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
       await expect.element(open).toBeVisible();
-      const before = open.element().getBoundingClientRect();
+      // The top bar's button stays where it is under the open drawer, out
+      // of a locator's reach.
+      const openButton = open.element();
       // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
       await userEvent.click(open);
-      const drawer = page.getByRole("dialog").getByRole("button", { name: "Close sidebar" });
+      const close = page.getByRole("dialog").getByRole("button", { name: "Close sidebar" });
       // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
-      await expect.element(drawer).toBeVisible();
-      // Once the drawer has slid in.
+      await expect.element(close).toBeVisible();
+      // Once the drawer has slid in, its button is no pixel right of or
+      // below the top bar's.
       // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
       await expect
         .poll(() => {
-          const after = drawer.element().getBoundingClientRect();
-          return { width, x: after.x, y: after.y };
+          const before = openButton.getBoundingClientRect();
+          const after = close.element().getBoundingClientRect();
+          return { width, right: after.x - before.x, down: after.y - before.y };
         })
-        .toEqual({ width, x: before.x, y: before.y });
+        .toEqual({ width, right: 0, down: 0 });
+      // By its button, not Escape: the pointer rests on that button, and
+      // while its tooltip shows, Escape closes only the tooltip.
       // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
-      await userEvent.keyboard("{Escape}");
+      await userEvent.click(close);
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
     }
   });
 
@@ -183,11 +175,11 @@ describe("Frame", () => {
     compose.setLoses("typed");
     await show({ compose });
     await signOut();
-    await pressSignOutChoice("Keep writing");
+    await pressInDialog("Keep writing");
     expect(server.requests.some((asked) => asked.method === "DELETE")).toBe(false);
 
     await signOut();
-    await pressSignOutChoice("Sign out");
+    await pressInDialog("Sign out");
     await expect.element(page.getByRole("heading", { name: "/sign-in" })).toBeVisible();
   });
 

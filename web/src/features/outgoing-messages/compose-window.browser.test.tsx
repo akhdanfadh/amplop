@@ -11,9 +11,12 @@ import type {
 } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
+import { pressInDialog } from "@/test/dialog";
 import { conversation, mailApi, message, outgoingMessage, type MailApi } from "@/test/mail-api";
 import { data, fakeServer, memberSession, problem } from "@/test/server";
 import { ComposeStore } from "./compose-store";
+import { closesAfterSentMs } from "./compose-window";
 import { editNote } from "./text";
 
 const created = 201;
@@ -151,15 +154,6 @@ async function composeInDrawer(): Promise<void> {
   await userEvent.click(page.getByRole("button", { name: "Compose" }));
 }
 
-// press presses an alert dialog's button named name, after the dialog's
-// guard against a double click's second press (AlertDialogAction).
-async function press(name: string): Promise<void> {
-  const button = page.getByRole("alertdialog").getByRole("button", { name });
-  await expect.element(button).toBeVisible();
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  await userEvent.click(button);
-}
-
 describe("ComposeWindow", () => {
   beforeEach(async () => {
     await page.viewport(1280, 800);
@@ -227,11 +221,11 @@ describe("ComposeWindow", () => {
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
 
     await userEvent.click(page.getByRole("button", { name: "Close", exact: true }));
-    await press("Keep editing");
+    await pressInDialog("Keep editing");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Lunch");
 
     await userEvent.click(page.getByRole("button", { name: "Close", exact: true }));
-    await press("Discard");
+    await pressInDialog("Discard");
     await expect.element(page.getByRole("region", { name: "Lunch" })).not.toBeInTheDocument();
     await expect.element(compose()).toHaveFocus();
   });
@@ -289,15 +283,16 @@ describe("ComposeWindow", () => {
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Mine");
 
     await userEvent.click(editAndSend());
-    await press("Keep writing");
+    await pressInDialog("Keep writing");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Mine");
 
     await userEvent.click(editAndSend());
-    await press("Replace");
+    await pressInDialog("Replace");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
   });
 
   it("shows the sent message's status, then closes 3 s after Gmail takes it", async () => {
+    const clock = fakeClock();
     await open();
     await userEvent.click(compose());
     await userEvent.click(page.getByRole("button", { name: /From/ }));
@@ -313,10 +308,11 @@ describe("ComposeWindow", () => {
     await expect.element(status).toMatchTextContent("Sent to ana@example.com");
     // Away from the window, so nothing holds it open.
     await userEvent.unhover(status);
+    // Still open: the clock has not reached the close.
+    expect(page.getByRole("region", { name: "Lunch" }).query()).not.toBeNull();
 
-    await expect
-      .element(page.getByRole("region", { name: "Lunch" }), { timeout: 5_000 })
-      .not.toBeInTheDocument();
+    await clock.advance(closesAfterSentMs);
+    await expect.element(page.getByRole("region", { name: "Lunch" })).not.toBeInTheDocument();
     await expect.element(compose()).toHaveFocus();
   });
 
@@ -465,9 +461,7 @@ describe("ComposeWindow", () => {
     tried = true;
     await userEvent.click(window.getByRole("button", { name: "Send again" }));
 
-    await expect
-      .element(window.getByText("Sent to ana@example.com"), { timeout: 5_000 })
-      .toBeVisible();
+    await expect.element(window.getByText("Sent to ana@example.com")).toBeVisible();
   });
 
   it("keeps the status, saying it may be out of date, when a reread fails", async () => {
@@ -481,7 +475,7 @@ describe("ComposeWindow", () => {
     await userEvent.type(page.getByRole("textbox", { name: "To" }), "ana@example.com,");
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
-    await expect.element(page.getByText(/may be out of date/), { timeout: 5_000 }).toBeVisible();
+    await expect.element(page.getByText(/may be out of date/)).toBeVisible();
     await expect.element(page.getByText("Sending to ana@example.com...")).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Try again" })).toBeVisible();
   });
@@ -515,11 +509,11 @@ describe("ComposeWindow", () => {
       await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
 
       void router.navigate({ href: "/mail/starred" });
-      await press("Keep editing");
+      await pressInDialog("Keep editing");
       await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Lunch");
 
       void router.navigate({ href: "/mail/starred" });
-      await press("Discard");
+      await pressInDialog("Discard");
       await expect.element(page.getByRole("dialog", { name: "Lunch" })).not.toBeInTheDocument();
       await expect.element(page.getByRole("heading", { name: "Starred" })).toBeVisible();
     });

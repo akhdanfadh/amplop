@@ -3,10 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { shortcutModifier } from "@/lib/shortcut";
+import { fakeClock } from "@/test/clock";
+import { pressInDialog } from "@/test/dialog";
 import { listedAccount, mailApi } from "@/test/mail-api";
 import { type Asked, type Handler, type Server, data, problem } from "@/test/server";
 import { stubRouter } from "@/test/stub-router";
 import { ConversationReply, ReplyEditorSlot, ReplyProvider } from "./reply";
+import { sendPollMs } from "./poll";
 import type { AnsweredMessage } from "./reply-defaults";
 import { editNote } from "./text";
 
@@ -111,6 +114,13 @@ function posts(server: Server): Asked[] {
   return server.requests.filter((asked) => asked.method === "POST");
 }
 
+// outboxReads returns how many reads of the Outbox server got.
+function outboxReads(server: Server): number {
+  return server.requests.filter(
+    (asked) => asked.method === "GET" && asked.path === "/api/v0/outgoing-messages",
+  ).length;
+}
+
 // newer is a message that arrives in the conversation after answered.
 const newer: AnsweredMessage = {
   ...answered,
@@ -182,14 +192,24 @@ describe("ConversationReply", () => {
   });
 
   it("sends with Ctrl+Enter, with a key, and shows how the send goes", async () => {
+    const clock = fakeClock();
     const server = serve({ statuses: [saved("sending"), saved("sent")] });
-    await show();
+    const { client } = await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
     await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
 
+    // The Outbox's read after the send says sending; its answer is in
+    // before the poll, which would otherwise join the read still running.
+    await expect.poll(() => outboxReads(server)).toBe(1);
+    await expect.poll(() => client.isFetching()).toBe(0);
     await expect
-      .element(page.getByRole("status"), { timeout: 5_000 })
+      .element(page.getByRole("status"))
+      .toMatchTextContent(/^Sending to ana@example\.com/);
+    // The next poll's read says sent.
+    await clock.advance(sendPollMs);
+    await expect
+      .element(page.getByRole("status"))
       .toMatchTextContent(/^Sent to ana@example\.comFrom studio@example\.com/);
     const [post] = posts(server);
     expect(post?.path).toBe(`/api/v0/messages/${answered.id}/replies`);
@@ -248,9 +268,7 @@ describe("ConversationReply", () => {
     await userEvent.click(page.getByRole("button", { name: "Discard" }));
     const dialog = page.getByRole("alertdialog", { name: "Discard this reply?" });
     await expect.element(dialog.getByRole("button", { name: "Keep editing" })).toHaveFocus();
-    // The keyboard, since the dialog ignores a click this soon after it
-    // opens, as a double click's second half.
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Discard");
 
     await expect.element(page.getByRole("form")).not.toBeInTheDocument();
     await expect.element(page.getByRole("button", { name: "Reply", exact: true })).toHaveFocus();
@@ -515,16 +533,21 @@ describe("ConversationReply", () => {
   });
 
   it("says when the status can't be read again, with Try again", async () => {
-    serve({ statuses: [saved("sending")], failReadsFrom: 1 });
-    await show();
+    const clock = fakeClock();
+    const server = serve({ statuses: [saved("sending")], failReadsFrom: 1 });
+    const { client } = await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
     await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
 
     const status = page.getByRole("region", { name: "Your reply" });
-    await expect
-      .element(status.getByRole("button", { name: "Try again" }), { timeout: 8_000 })
-      .toBeVisible();
+    // The Outbox's read after the send answers; the poll's read fails.
+    await expect.poll(() => outboxReads(server)).toBe(1);
+    await expect.poll(() => client.isFetching()).toBe(0);
+    await expect.element(status).toMatchTextContent("Sending to ana@example.com");
+    expect(status.getByRole("button", { name: "Try again" }).query()).toBeNull();
+    await clock.advance(sendPollMs);
+    await expect.element(status.getByRole("button", { name: "Try again" })).toBeVisible();
     await expect.element(status).toMatchTextContent("may be out of date");
   });
 
