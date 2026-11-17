@@ -190,8 +190,8 @@ Put shared code in the folder for its responsibility:
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).
 - `src/routes`: route registration and page composition.
-- `src/test`: setup for the browser tests, and `appRouter`, the app's
-  routes loaded at an address with a session read stubbed.
+- `src/test`: setup for the tests, the fake server (`fakeServer`), and
+  `appRouter`, the app's router loaded at an address.
 - `src/styles.css`: the tokens and base styles. Beside it,
   `react-aria-pressable.css` holds a React Aria rule the
   Content-Security-Policy would otherwise block; the file says why.
@@ -1272,10 +1272,19 @@ Tests sit next to the code they test, in two Vitest projects set up in
   `src/test/message-server.ts`, which serves them on the test page's
   origin with the headers the Go server's body route sends.
 
-A page's own flows, e.g. submitting its form, are tested in a router of
-the page's own (`src/signed-out-pages.browser.test.tsx`).
-`src/test/app-router.ts` loads the whole app, for what needs every route,
-e.g. guards and addresses.
+No test declares an app route again: its id, path, guard, loader, or a
+component taken from `src/routes`. A page's test opens the page through
+`appRouter` (`src/test/app-router.ts`), the app's own router, and fakes
+only the server. A component's test renders the component alone. Only a
+test of the router's own machinery (`route-states`, the setup gate, the
+root's React Aria bridge) makes up routes.
+
+A page's test sits in its feature's folder, e.g.
+`features/members/page.browser.test.tsx`, or
+`features/password-reset/pages.browser.test.tsx` for a feature's several
+pages. Tests of the whole app sit in `src`: `entry-paths` (the addresses
+the server links), `session-end` (a session that ends on an open page),
+and `guards` (the route table's guards).
 
 A test fakes the API by faking `fetch`, with the fake server in
 `src/test/server.ts`:
@@ -1301,18 +1310,32 @@ const router = await appRouter("/mail/inbox", server);
   `headers`) and returns a `Response`, built with `data(value, status)`
   for the API's `{ data }` or `problem(status, type, more)` for Problem
   Details with the required members, `Retry-After` from `retryAfter`.
-- To hold an answer, the handler awaits a promise the test settles, e.g.
-  `Promise.withResolvers()`'s. To answer once, register with `once`: the
-  earlier route answers again afterwards. To lose the answer after the
+- To hold an answer, the handler awaits the promise of `held()`, which
+  the test resolves: `const answer = held()`, `await answer.promise` in
+  the handler, then `answer.resolve()`. It stands in for
+  `Promise.withResolvers()`, a type error under `tsconfig.json`'s `lib`,
+  which also types the app's code. To answer once, register with `once`:
+  the earlier route answers again afterwards. To lose the answer after the
   server acted, as a dropped connection does, the handler ends with
   `return lose()`, and `fetch` rejects. A handler's second argument,
   `earlier`, answers as the route it replaced does, e.g. after a wait.
-- The server answers the session read with its `session` and says setup
-  is done. `server.session = undefined` ends the session: every operation
-  that needs one then answers a 401 `unauthenticated`.
+- The server answers as a quiet inbok, one with nothing to report: setup
+  is done, the session read answers its `session`, the member has no
+  connected account and syncing runs, system email is saved and tested
+  (`testedSystemEmail`), and registration is closed. Those are the reads
+  the signed-in frame and sign-in make on their own (the sync banner, an
+  administrator's setup reminder, sign-in's registration link), so a test
+  adds only its page's routes; its own route for one of them replaces the
+  quiet answer. `memberSession` and `adminSession` are the two sessions.
+  `server.session = undefined` ends the session: every operation that
+  needs one then answers a 401 `unauthenticated`.
 - `server.requests` holds every request (method, path with search, body,
-  headers). A request no route knows answers a 404 and is kept in
-  `server.unknown`, the first place to look when a page shows a failure.
+  headers). A request no route knows answers a 404, is kept in
+  `server.unknown`, and fails its test: after each test
+  `src/test/setup.ts` calls `expectAllAnswered()`, which throws
+  "Requests without an answer: GET /api/v0/..." for the servers installed
+  during the test. Give the fake the honest answer; a test about a failed
+  read registers a route that answers the failure.
 - `appRouter` installs its server; another test calls `server.install()`,
   which puts the server in `fetch`'s place.
 
@@ -1324,7 +1347,8 @@ api.server)`, and `api.server.on(...)` for a route of the test's own.
 Cleanup is central. Before each test Vitest puts back every stubbed
 global and every spied method (`unstubGlobals` and `restoreMocks` in
 `vite.config.ts`), and after each test `src/test/setup.ts` puts back the
-real timers. So a test file calls none of `vi.unstubAllGlobals()`,
+real timers and checks the fake server's unanswered requests. So a test
+file calls none of `vi.unstubAllGlobals()`,
 `vi.restoreAllMocks()`, or `vi.useRealTimers()`, and makes its stubs and
 spies in the test or a `beforeEach`: one made once for the file lasts
 only until its first test.
@@ -1350,14 +1374,13 @@ set; the browser project sets it (`vite.config.ts`), so a list test sees
 the list as the app has it. Scroll a virtualized list with the keyboard,
 e.g. End, which React Aria scrolls itself.
 
-A test of the whole app loads them with `appRouter`
-(`src/test/app-router.ts`), which is the app's router, built by
+`appRouter` (`src/test/app-router.ts`) is the app's router, built by
 `buildRouter` in `src/router.tsx` as `getRouter` builds the app's. It
 differs in three ways: its history is in memory, at the address the test
 gives; a failed read is not tried again, which would wait 1 s and then
 2 s (`src/api/retry.test.ts` holds those rules); and the test mounts it
-in a `<div>`, not on the document as the app does. So it renders the root route's `AppShell`
-without the `<html>` and `<body>` around it: React's own `<body>` there
+in a `<div>`, not on the document as the app does. So it renders the
+root route's `AppShell` without the `<html>` and `<body>` around it: React's own `<body>` there
 makes a later event loop forever
 ([react#35480](https://github.com/react/react/issues/35480)), and a
 hanging test never fails by itself, since its timer runs on the frozen
