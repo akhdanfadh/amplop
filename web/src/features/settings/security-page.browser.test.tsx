@@ -2,7 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
-import { getGetCurrentSessionQueryKey, getGetTOTPStatusQueryKey } from "@/api/generated/inbok";
+import {
+  getGetCurrentSessionQueryKey,
+  getGetTOTPStatusQueryKey,
+  getListSessionsQueryKey,
+} from "@/api/generated/inbok";
 import type { ListedSessions, SentEmailVerification, TotpStatus } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
 import { data, fakeServer, held, memberSession, problem, type Server } from "@/test/server";
@@ -82,6 +86,37 @@ describe("Security", () => {
     await expect
       .element(page.getByText(/Could not check two-factor authentication\./))
       .not.toBeInTheDocument();
+  });
+
+  it("says a failed signed-in browsers refresh failed, keeps the list, and reads again on Try again", async () => {
+    const { server, queryClient } = await openSecurity();
+
+    server.on("GET", "/api/v0/sessions", serverFault);
+    await queryClient.refetchQueries({ queryKey: getListSessionsQueryKey() });
+
+    const failure = page
+      .getByRole("alert")
+      .filter({ hasText: "Could not load signed-in browsers." });
+    await expect.element(failure).toBeVisible();
+    await expect.element(page.getByText(/Firefox on Linux/)).toBeVisible();
+
+    // A second browser signed in meanwhile, so the list shows it was read again.
+    const [firefox] = browsers.sessions;
+    const chrome = {
+      ...firefox,
+      id: "0193c8a0-0000-7000-8000-000000000002",
+      browser: "Chrome",
+      os: "macOS",
+      current: false,
+    };
+    server.on("GET", "/api/v0/sessions", () => data({ sessions: [firefox, chrome] }));
+    await userEvent.click(failure.getByRole("button", { name: "Try again" }));
+
+    await expect
+      .element(page.getByRole("button", { name: "Sign out Chrome on macOS" }))
+      .toBeVisible();
+    await expect.element(page.getByText(/Firefox on Linux/)).toBeVisible();
+    await expect.element(failure).not.toBeInTheDocument();
   });
 
   it("keeps focus on Send verification link while it sends", async () => {

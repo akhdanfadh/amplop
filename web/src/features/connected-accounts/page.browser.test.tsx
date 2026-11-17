@@ -286,6 +286,18 @@ describe("Connected accounts", () => {
     expect(state.accounts.map((a) => a.id)).toEqual([2]);
   });
 
+  it("moves focus to the section's heading when the last account goes while Gmail isn't offered", async () => {
+    // No other row and no Connect Gmail are left to take focus.
+    const unoffered: ListedAccount = { ...work, allowedActions: ["rename", "disconnect"] };
+    await open(api([unoffered], { offered: false }).server);
+
+    await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
+    await pressInDialog("Disconnect Work");
+
+    await expect.element(page.getByText("Work is disconnected.")).toBeVisible();
+    await expect.element(page.getByRole("heading", { name: "Gmail accounts" })).toHaveFocus();
+  });
+
   it("says an account was already disconnected when the server no longer has it", async () => {
     const state = api([work]);
     // Another tab disconnected it since the list was read: the server

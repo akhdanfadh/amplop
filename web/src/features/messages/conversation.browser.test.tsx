@@ -593,6 +593,32 @@ describe("ConversationView", () => {
       .toBeLessThan(400);
   });
 
+  it("ends a message's flash with its animation, and flashes it again on a later press", async () => {
+    await show([message(1), message(2), message(3, { answers: messageId(1) })]);
+    const line = page.getByRole("button", { name: /^In reply to Ana Lima on / });
+    // flashName returns the animation the first message's row is styled
+    // with: "flash-selection" while it is marked to flash, else "none".
+    const flashName = () => {
+      const row = firstAnaRow();
+      return row && getComputedStyle(row).animationName;
+    };
+
+    await userEvent.click(line);
+    await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
+    // The flash, a CSS animation of 1.6 s, is ended itself, not waited out.
+    firstAnaRow()?.getAnimations()[0]?.finish();
+
+    // The row keeps no mark of the flash. A member sees no difference at
+    // this moment, a finished animation paints nothing; the mark left on
+    // would start the flash again by itself whenever the row is drawn
+    // anew, so the style is the one place that shows it gone.
+    await expect.poll(flashName).toBe("none");
+
+    await userEvent.click(line);
+    await expect.poll(flashName).toBe("flash-selection");
+    await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
+  });
+
   it("says nothing of the message answered when it is the one just before", async () => {
     await show([message(1), message(2, { answers: messageId(1) })]);
 
