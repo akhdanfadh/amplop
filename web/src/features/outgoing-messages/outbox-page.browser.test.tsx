@@ -5,8 +5,10 @@ import { cleanup, render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
 import { mailApi, outgoingMessage } from "@/test/mail-api";
 import { data, problem, type Server } from "@/test/server";
+import { sendPollMs } from "./poll";
 import { noMessageOpen } from "./text";
 
 const ok = 200;
@@ -311,25 +313,25 @@ describe("OutboxPage", () => {
       sentAt: null,
       outstanding: true,
     };
+    const clock = fakeClock();
     serve({ messages: [sending], later: [[sending], [sent]] });
     await show();
     const list = page.getByRole("grid", { name: "Messages sent from inbok" });
     await userEvent.click(
       list.getByRole("rowgroup", { name: "Not sent yet" }).getByRole("row", { name: /Lunch/ }),
     );
+    // Open, its status read again, before the Outbox's next poll.
+    const status = page.getByRole("region", { name: "Status" });
+    await expect.element(status.getByText("Sending to ana@example.com...")).toBeVisible();
+    await clock.advance(sendPollMs);
 
     await expect
       .element(
         list.getByRole("rowgroup", { name: "Done" }).getByRole("row", { name: /Lunch, Sent/ }),
-        {
-          timeout: 10_000,
-        },
       )
       .toBeVisible();
     expect(list.getByRole("rowgroup", { name: "Not sent yet" }).elements()).toHaveLength(0);
-    await expect
-      .element(page.getByRole("region", { name: "Status" }).getByText("Sent to ana@example.com"))
-      .toBeVisible();
+    await expect.element(status.getByText("Sent to ana@example.com")).toBeVisible();
   });
 
   it("keeps keyboard focus on a row as it moves to Done", async () => {
@@ -339,6 +341,7 @@ describe("OutboxPage", () => {
       sentAt: null,
       outstanding: true,
     };
+    const clock = fakeClock();
     serve({
       messages: [sending, tried],
       later: [
@@ -347,7 +350,7 @@ describe("OutboxPage", () => {
         [sent, tried],
       ],
     });
-    await show();
+    const router = await show();
     const list = page.getByRole("grid", { name: "Messages sent from inbok" });
     await expect
       .element(
@@ -356,13 +359,23 @@ describe("OutboxPage", () => {
       .toBeVisible();
     await userEvent.tab();
     await expect.element(list.getByRole("row", { name: /Lunch/ })).toHaveFocus();
+    const client = router.options.context.queryClient;
+    // poll moves the clock one send poll on, to the Outbox's read number
+    // read, and waits for its answer: the next poll would otherwise join
+    // the read still running.
+    const poll = async (read: number) => {
+      await clock.advance(sendPollMs);
+      expect(api.reads).toBe(read);
+      await expect.poll(() => client.isFetching()).toBe(0);
+    };
+    // The third poll's read says it was sent.
+    await poll(2);
+    await poll(3);
+    await poll(4);
 
     await expect
       .element(
         list.getByRole("rowgroup", { name: "Done" }).getByRole("row", { name: /Lunch, Sent/ }),
-        {
-          timeout: 10_000,
-        },
       )
       .toHaveFocus();
   });
@@ -374,6 +387,7 @@ describe("OutboxPage", () => {
       sentAt: null,
       outstanding: true,
     };
+    const clock = fakeClock();
     serve({ messages: [sending], later: [[sending], [sent]] });
     await show();
     await userEvent.click(page.getByRole("row", { name: /Lunch/ }));
@@ -382,9 +396,8 @@ describe("OutboxPage", () => {
     await expect.element(status.getByText("Sending to ana@example.com...")).toBeVisible();
     expect(status.element().querySelector(".animate-in")).toBeNull();
     // The Outbox, read again while it sends, says Gmail took it.
-    await expect
-      .element(status.getByText("Sent to ana@example.com"), { timeout: 6_000 })
-      .toBeVisible();
+    await clock.advance(sendPollMs);
+    await expect.element(status.getByText("Sent to ana@example.com")).toBeVisible();
     expect(status.element().querySelector(".animate-in")).not.toBeNull();
   });
 

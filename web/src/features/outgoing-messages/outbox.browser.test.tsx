@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { OutgoingMessage, OutgoingMessageSummary } from "@/api/generated/model";
+import { fakeClock } from "@/test/clock";
 import { outgoingMessage } from "@/test/mail-api";
 import { testQueryClient } from "@/test/query-client";
 import { data, fakeServer, memberSession, problem } from "@/test/server";
@@ -30,8 +31,9 @@ function summary({ body: _body, ...rest }: OutgoingMessage): OutgoingMessageSumm
 
 // serve installs a fake server: each read of the Outbox lists the next of outbox,
 // the last one repeating, and each read of the message answers with the
-// next of message, the first after firstMessageMs; an entry that is a
-// number answers with that status. It returns the reads made so far.
+// next of message, the first after firstMessageMs of the test's fake
+// clock; an entry that is a number answers with that status. It returns
+// the reads made so far.
 function serve({
   outbox,
   message,
@@ -49,7 +51,8 @@ function serve({
   });
   server.on("GET", "/api/v0/outgoing-messages/{id}", async () => {
     const answer = message[Math.min(reads.message++, message.length - 1)];
-    if (reads.message === 1) await new Promise((resolve) => setTimeout(resolve, firstMessageMs));
+    if (reads.message === 1 && firstMessageMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, firstMessageMs));
     return typeof answer === "number" ? busy(answer) : data(answer);
   });
   return reads;
@@ -71,12 +74,6 @@ async function read() {
   return { result, client };
 }
 
-// pastPoll waits longer than one poll, so a read still polling shows in
-// the counts.
-async function pastPoll(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, sendPollMs + 500));
-}
-
 describe("useOutgoingMessage", () => {
   it("takes a listed message's status from the Outbox, its content from its read", async () => {
     // The message's own read answered with an older status.
@@ -88,29 +85,38 @@ describe("useOutgoingMessage", () => {
   });
 
   it("reads a listed message once while the Outbox follows its send", async () => {
+    const clock = fakeClock();
     const reads = serve({ outbox: [[waiting], [sending], [sent]], message: [waiting] });
     const { result } = await read();
 
-    await expect.poll(() => result.current.message?.status, { timeout: 6_000 }).toBe("sent");
+    await expect.poll(() => result.current.message?.status).toBe("waiting");
+    await clock.advance(sendPollMs);
+    await expect.poll(() => result.current.message?.status).toBe("sending");
+    await clock.advance(sendPollMs);
+    await expect.poll(() => result.current.message?.status).toBe("sent");
     // Nothing is read again once the send ended.
-    await pastPoll();
+    await clock.advance(sendPollMs);
     expect(reads.outbox).toBe(3);
     expect(reads.message).toBe(1);
   });
 
   it("follows a message the Outbox doesn't hold by its own read", async () => {
     // E.g. one outside the newest 50, or saved after the Outbox was read.
+    const clock = fakeClock();
     const reads = serve({ outbox: [[]], message: [sending, sent] });
     const { result } = await read();
 
-    await expect.poll(() => result.current.message?.status, { timeout: 4_000 }).toBe("sent");
-    await pastPoll();
+    await expect.poll(() => result.current.message?.status).toBe("sending");
+    await clock.advance(sendPollMs);
+    await expect.poll(() => result.current.message?.status).toBe("sent");
+    await clock.advance(sendPollMs);
     expect(reads.message).toBe(2);
     expect(reads.outbox).toBe(1);
   });
 
   it("hands a message from its own read to the Outbox once it lists it", async () => {
     // Saved after the Outbox was read; Send then reads the Outbox again.
+    const clock = fakeClock();
     const reads = serve({ outbox: [[], [sending], [sent]], message: [waiting] });
     const { result, client } = await read();
 
@@ -119,8 +125,10 @@ describe("useOutgoingMessage", () => {
       .poll(() => client.getQueryState(getListOutgoingMessagesQueryKey())?.status)
       .toBe("success");
     await client.invalidateQueries({ queryKey: getListOutgoingMessagesQueryKey() });
-    await expect.poll(() => result.current.message?.status, { timeout: 4_000 }).toBe("sent");
-    await pastPoll();
+    await expect.poll(() => result.current.message?.status).toBe("sending");
+    await clock.advance(sendPollMs);
+    await expect.poll(() => result.current.message?.status).toBe("sent");
+    await clock.advance(sendPollMs);
     // The Outbox followed it from there; its own read stopped.
     expect(reads.message).toBe(1);
     expect(reads.outbox).toBe(3);
@@ -130,6 +138,7 @@ describe("useOutgoingMessage", () => {
     // Sent again elsewhere; its copy then pushes it past the newest 50.
     const failed: OutgoingMessage = { ...waiting, status: "failed", failure: "gave-up" };
     const tried: OutgoingMessage = { ...failed, sentAgainAs: copy.id };
+    const clock = fakeClock();
     const reads = serve({
       outbox: [[{ ...copy, status: "sending" }, tried], [copy]],
       message: [failed, tried],
@@ -137,14 +146,18 @@ describe("useOutgoingMessage", () => {
     const { result } = await read();
 
     await expect.poll(() => result.current.message?.sentAgainAs).toBe(copy.id);
-    await expect.poll(() => reads.outbox, { timeout: 4_000 }).toBe(2);
+    await clock.advance(sendPollMs);
+    await expect.poll(() => reads.outbox).toBe(2);
     await expect.poll(() => reads.message).toBe(2);
-    expect(result.current.message?.sentAgainAs).toBe(copy.id);
+    // The second read's answer reaches the hook once the clock moves,
+    // which the retrying assertion does.
+    await expect.poll(() => result.current.message?.sentAgainAs).toBe(copy.id);
   });
 
   it("reads a message leaving the Outbox afresh while its first read runs", async () => {
     const failed: OutgoingMessage = { ...waiting, status: "failed", failure: "gave-up" };
     const tried: OutgoingMessage = { ...failed, sentAgainAs: copy.id };
+    const clock = fakeClock();
     // The first read answers after the message has left, with what it held
     // before the list's last status.
     const reads = serve({
@@ -152,12 +165,17 @@ describe("useOutgoingMessage", () => {
       message: [failed, tried],
       firstMessageMs: sendPollMs + 1_000,
     });
-    const { result } = await read();
+    const { result, client } = await read();
 
-    await expect.poll(() => reads.outbox, { timeout: 4_000 }).toBe(2);
+    // The list's poll starts with its first answer.
+    await expect
+      .poll(() => client.getQueryState(getListOutgoingMessagesQueryKey())?.status)
+      .toBe("success");
+    await clock.advance(sendPollMs);
+    await expect.poll(() => reads.outbox).toBe(2);
     await expect.poll(() => result.current.message?.sentAgainAs).toBe(copy.id);
-    // The first read's older answer, arriving after, changes nothing.
-    await pastPoll();
+    // The first read's older answer, arriving 1 s after, changes nothing.
+    await clock.advance(sendPollMs);
     expect(reads.message).toBe(2);
     expect(result.current.message?.sentAgainAs).toBe(copy.id);
   });
@@ -176,15 +194,16 @@ describe("useOutgoingMessage", () => {
   });
 
   it("keeps the status the Outbox last listed when its reread fails", async () => {
+    const clock = fakeClock();
     const reads = serve({ outbox: [[sending], serviceUnavailable, [sent]], message: [waiting] });
     const { result } = await read();
 
-    await expect
-      .poll(() => result.current.error?.status, { timeout: 4_000 })
-      .toBe(serviceUnavailable);
+    await expect.poll(() => result.current.message?.status).toBe("sending");
+    await clock.advance(sendPollMs);
+    await expect.poll(() => result.current.error?.status).toBe(serviceUnavailable);
     expect(result.current.message?.status).toBe("sending");
     // A failed read stops its polling until Try again.
-    await pastPoll();
+    await clock.advance(sendPollMs);
     expect(reads.outbox).toBe(2);
     result.current.retry();
     await expect.poll(() => result.current.message?.status).toBe("sent");

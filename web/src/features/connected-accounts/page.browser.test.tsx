@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
@@ -11,6 +11,7 @@ import type {
   TotpStatus,
 } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
 import { listedAccount } from "@/test/mail-api";
 import {
   adminSession,
@@ -23,6 +24,7 @@ import {
   type Asked,
   type Server,
 } from "@/test/server";
+import { idleRefresh, syncNowRefresh } from "./sync";
 
 const accepted = 202;
 const unauthorized = 401;
@@ -133,15 +135,6 @@ const refused: ListedAccount = {
   needsReconnectSince: "2026-11-10T09:00:00Z",
   allowedActions: ["reconnect", "rename", "disconnect"],
 };
-
-// fakeClock makes the timers the page and its reads use fake, while still
-// running on real time, so a test can jump ahead a minute.
-function fakeClock(): void {
-  vi.useFakeTimers({
-    shouldAdvanceTime: true,
-    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
-  });
-}
 
 describe("Connected accounts", () => {
   it("offers each account the actions the server allows it", async () => {
@@ -407,7 +400,7 @@ describe("Connected accounts", () => {
   });
 
   it("stops waiting for a check after 30 seconds", async () => {
-    fakeClock();
+    const clock = fakeClock();
     const { server } = api([home]);
     await open(server);
     // The list never shows the check.
@@ -417,7 +410,7 @@ describe("Connected accounts", () => {
     await expect
       .element(page.getByRole("button", { name: "Checking... ana@home.example" }))
       .toBeVisible();
-    await vi.advanceTimersByTimeAsync(30_000);
+    await clock.advance(syncNowRefresh);
 
     await expect
       .element(page.getByRole("button", { name: "Check now ana@home.example" }))
@@ -575,7 +568,7 @@ describe("the sync banner", () => {
   });
 
   it("follows a stop and a recovery on any signed-in page", async () => {
-    fakeClock();
+    const clock = fakeClock();
     const state = api([home]);
     await open(state.server, "/settings/security", false);
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
@@ -585,12 +578,12 @@ describe("the sync banner", () => {
     await expect.element(landmark).not.toBeInTheDocument();
 
     state.syncStopped = true;
-    await vi.advanceTimersByTimeAsync(60_000);
+    await clock.advance(idleRefresh);
     await expect.element(banner).toBeVisible();
     // A landmark only while it shows.
     await expect.element(landmark).toBeVisible();
     state.syncStopped = false;
-    await vi.advanceTimersByTimeAsync(60_000);
+    await clock.advance(idleRefresh);
 
     await expect.element(banner).not.toBeInTheDocument();
     await expect.element(landmark).not.toBeInTheDocument();

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
+import { fakeClock, type Clock } from "@/test/clock";
 import { Button } from "./button";
 import { Sheet, SheetTitle } from "./sheet";
 import { closeAbout, closeToasts, showError, shownAbout, Toaster } from "./toast";
@@ -14,12 +15,6 @@ function toasts(): number {
 // toastSpace returns the space the toasts take, as Toaster sets it.
 function toastSpace(): string {
   return document.documentElement.style.getPropertyValue("--toast-space");
-}
-
-// Moves the fake clock by ms and lets React draw what changed.
-async function wait(ms: number): Promise<void> {
-  vi.advanceTimersByTime(ms);
-  await new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 // Host has a button that opens a drawer, beside the toast region.
@@ -36,12 +31,13 @@ function Host() {
   );
 }
 
+// The fake clock of the running test.
+let clock: Clock;
+
 beforeEach(() => {
-  // Only the clocks React Aria's toast timer reads: setTimeout to close,
-  // Date to work out the time left after a pause. The runner polls with
-  // its own real timers, but moves this clock about 50 ms per 50 ms while
-  // a locator waits, so the checks below keep a margin.
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  // React Aria's toast timer reads both of its clocks: setTimeout to
+  // close, Date to work out the time left after a pause.
+  clock = fakeClock();
 });
 
 describe("Toaster", () => {
@@ -120,7 +116,7 @@ describe("Toaster", () => {
     showError("Couldn't archive the conversation", "Check your connection, then try again.");
     // On screen first: React Aria starts a toast's timer when it mounts.
     await expect.element(page.getByText("Couldn't archive the conversation")).toBeVisible();
-    await wait(60_000);
+    await clock.advance(60_000);
     expect(toasts()).toBe(1);
 
     await userEvent.click(page.getByRole("button", { name: "Close" }));

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { ApiError } from "@/api/transport";
+import { fakeClock } from "@/test/clock";
 import { testQueryClient } from "@/test/query-client";
 import { fakeServer, memberSession, problem } from "@/test/server";
 import { readSession } from "./guard";
@@ -36,11 +37,11 @@ describe("readSession", () => {
   });
 
   it("uses a cached session however old, since pages reread it themselves", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+    const clock = fakeClock();
     const server = fakeServer(memberSession).install();
     const queries = testQueryClient();
     await readSession(queries);
-    vi.setSystemTime(Date.now() + anHour);
+    await clock.advance(anHour);
     await readSession(queries);
     expect(server.requests).toHaveLength(1);
   });
