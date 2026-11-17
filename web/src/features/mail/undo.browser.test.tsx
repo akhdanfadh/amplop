@@ -4,8 +4,18 @@ import { useRef, type ReactElement } from "react";
 import { render } from "vitest-browser-react";
 import { shortcutModifier } from "@/lib/shortcut";
 import { applyTheme } from "@/lib/theme";
+import { fakeClock } from "@/test/clock";
 import { pointAway, pointTo } from "@/test/pointer";
 import { closeUndo, sayUndone, showUndo, UndoBar } from "./undo";
+
+// How long a closed bar stays drawn for its fade: useLeaving's timer in
+// undo.tsx, line 338, which gives it no name.
+const leavingMs = 200;
+
+// frame waits for the page's next frame.
+function frame(): Promise<number> {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
 
 afterEach(() => {
   closeUndo();
@@ -211,6 +221,7 @@ describe("UndoBar", () => {
   });
 
   it("keeps counting down through a theme switch", async () => {
+    const clock = fakeClock();
     await render(<Bar />);
     undo();
     await expect.element(page.getByRole("button", { name: "Undo" })).toBeVisible();
@@ -218,7 +229,11 @@ describe("UndoBar", () => {
 
     try {
       applyTheme(dark ? "light" : "dark");
-      await new Promise((done) => setTimeout(done, 300));
+      // A countdown the switch ended would close the bar in the next
+      // frame, and the closed bar would be gone once its fade is over.
+      await frame();
+      await frame();
+      await clock.advance(leavingMs);
 
       expect(page.getByRole("button", { name: "Undo" }).query()).not.toBeNull();
       expect(getComputedStyle(countdown()).animationDuration).toBe("10s");

@@ -160,15 +160,23 @@ describe("the account name form", () => {
     const listed = page.getByTestId("listed");
     await expect.element(listed).toHaveTextContent("ana@work.example");
     gate = held();
-    void client.refetchQueries({ queryKey: getListConnectedAccountsQueryKey() });
+    const older = client.refetchQueries({ queryKey: getListConnectedAccountsQueryKey() });
 
     await userEvent.fill(field(), "Work");
     await userEvent.click(save());
     await expect.element(listed).toHaveTextContent("Work");
     gate.resolve();
     gate = undefined;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The older read has ended, and so has any read begun since.
+    await older;
+    await expect.poll(() => client.isFetching()).toBe(0);
 
+    const kept = client.getQueryData<{ data: { accounts: { name: string | null }[] } }>(
+      getListConnectedAccountsQueryKey(),
+    );
+    expect(kept?.data.accounts[0].name).toBe("Work");
+    // Drawn from what the client holds by the frame after next.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     expect(listed.element().textContent).toBe("Work");
   });
 });

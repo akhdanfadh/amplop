@@ -222,11 +222,13 @@ describe("Labels at the contract's limit", () => {
     await more("Labels");
     const items = page.getByRole("menuitemcheckbox");
     await expect.element(items.nth(100)).toBeInTheDocument();
-    for (let i = 0; i < 101; i++) {
-      // One press after another, as a member ticks them.
-      // oxlint-disable-next-line no-await-in-loop
-      await userEvent.click(items.nth(i));
-    }
+    await expect.element(page.getByRole("searchbox", { name: "Filter labels" })).toHaveFocus();
+    // One press after another, as a member ticks them, from the keyboard:
+    // down to the next label and Enter, 101 times, sent as one piece of
+    // typing. A pointer press on each took the test 11 s.
+    await userEvent.keyboard("{ArrowDown}{Enter}".repeat(101));
+    await expect.element(items.nth(100)).toHaveAttribute("aria-checked", "true");
+    expect(items.elements().filter((item) => item.ariaChecked === "true")).toHaveLength(101);
     const apply = page.getByRole("button", { name: "Apply" });
     await expect.element(page.getByText("Add or remove up to 100 at once.")).toBeVisible();
     await expect.element(apply).toBeDisabled();
@@ -234,8 +236,7 @@ describe("Labels at the contract's limit", () => {
 
     await expect.element(apply).toBeEnabled();
     expect(page.getByText("Add or remove up to 100 at once.").elements()).toHaveLength(0);
-    // 102 presses, one after another: slow on a busy machine.
-  }, 60_000);
+  });
 });
 
 describe("Labels from the keyboard", () => {

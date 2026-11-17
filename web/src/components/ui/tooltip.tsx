@@ -17,7 +17,7 @@ const arrowTransform = {
 
 // restMs is how long the pointer rests on a trigger before the first
 // tooltip shows (DESIGN.md "Motion").
-const restMs = 500;
+export const restMs = 500;
 
 // TooltipTrigger pairs a React Aria button or link with its Tooltip. The
 // first tooltip shows after the pointer rests on its trigger for delay ms,

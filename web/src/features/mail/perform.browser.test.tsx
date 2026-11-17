@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Toaster } from "@/components/ui/toast";
+import { fakeClock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { testQueryClient } from "@/test/query-client";
 import { held } from "@/test/server";
@@ -182,6 +183,7 @@ describe("perform", () => {
   });
 
   it("says nothing of an Undo's late failure once a later action put it right", async () => {
+    const clock = fakeClock();
     // 26: two requests each way.
     const rows = Array.from({ length: 26 }, (_, n) => conversation(n + 1));
     const api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
@@ -207,7 +209,10 @@ describe("perform", () => {
     release();
 
     await expect.poll(() => api.changes.length).toBe(2);
-    await new Promise((done) => setTimeout(done, 200));
+    // Two rounds on: the failure, and what it would say, have reached
+    // the page.
+    await clock.advance(100);
+    await clock.advance(100);
     expect(page.getByText("Couldn't undo").query()).toBeNull();
   });
 

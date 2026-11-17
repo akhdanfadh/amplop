@@ -5,8 +5,9 @@ import { render } from "vitest-browser-react";
 import { Button } from "./button";
 import { Popover, PopoverTrigger } from "./popover";
 import { ToggleGroup, ToggleGroupItem } from "./toggle-group";
-import { Tooltip, TooltipTrigger } from "./tooltip";
+import { Tooltip, TooltipTrigger, restMs } from "./tooltip";
 import { applyTheme, type Theme } from "@/lib/theme";
+import { fakeClock } from "@/test/clock";
 
 // ThemeChoice is a popover holding a three-way theme choice, as the member
 // menu is; its name differs from its button's, which React Aria would
@@ -107,6 +108,7 @@ describe("ToggleGroup in a Popover", () => {
   it("removes a pressed item's tooltip even as the pick switches the theme", async () => {
     // A theme switch pauses fades (src/styles.css); a cancelled exit
     // animation would leave the closing tooltip on screen for good.
+    const clock = fakeClock();
     await render(
       <PopoverTrigger>
         <Button>Member menu</Button>
@@ -117,6 +119,7 @@ describe("ToggleGroup in a Popover", () => {
     );
     await userEvent.click(page.getByRole("button", { name: "Member menu" }));
     await userEvent.hover(page.getByRole("radio", { name: "dark" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toBeVisible();
 
     await userEvent.click(page.getByRole("radio", { name: "dark" }));

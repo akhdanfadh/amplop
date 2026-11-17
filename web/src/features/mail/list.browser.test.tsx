@@ -5,11 +5,13 @@ import { cdp, page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { Toaster } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
+import { doubleClickTime } from "@/lib/double-click";
 import { appRouter } from "@/test/app-router";
+import { fakeClock, type Clock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { pointTo } from "@/test/pointer";
 import { held } from "@/test/server";
-import { currentMail, refreshNewest } from "./conversations";
+import { checkingEveryMs, currentMail, refreshNewest } from "./conversations";
 
 const serverError = 500;
 
@@ -49,6 +51,40 @@ async function anchored(api: MailApi): Promise<void> {
   );
 }
 
+// toLastRowUntil moves to the last row, as toLastRow does, again until
+// reached passes: an End pressed as the list settles can go nowhere.
+async function toLastRowUntil(reached: () => void | Promise<void>): Promise<void> {
+  await vi.waitFor(
+    async () => {
+      await toLastRow();
+      await reached();
+    },
+    { timeout: 10_000 },
+  );
+}
+
+// guardOver waits until the list's press guard, held by a row's action
+// before the call, is over (usePressGuard).
+//
+// NOTE: a wait in real time, as long as the guard itself. The guard reads
+// performance.now(), which fakeClock leaves real (clock.ts), so no test
+// can move a clock past it.
+async function guardOver(): Promise<void> {
+  const from = performance.now();
+  await expect.poll(() => performance.now() - from).toBeGreaterThanOrEqual(doubleClickTime);
+}
+
+// rounds moves clock on by 100 ms, times over, the page drawing after
+// each. A check that nothing more happens uses it: what follows a read's
+// answer takes the page's turn (the answer) and then the clock's
+// (TanStack Query's setTimeout(0)), so each move lets one more round of
+// it run, where one long move would let one.
+async function rounds(clock: Clock, times: number): Promise<void> {
+  if (times === 0) return;
+  await clock.advance(100);
+  await rounds(clock, times - 1);
+}
+
 const one = [listedAccount(1, "ana@example.com")];
 
 describe("ConversationList", () => {
@@ -65,17 +101,13 @@ describe("ConversationList", () => {
 
     const end = page.getByText("That's everything inbok has copied.", { exact: false });
     // Each move to the last row loads the next page.
-    await vi.waitFor(
-      async () => {
-        await toLastRow();
-        expect(end.query()).not.toBeNull();
-      },
-      { timeout: 10_000 },
-    );
+    await toLastRowUntil(() => expect(end.query()).not.toBeNull());
     await expect.element(end).toBeVisible();
     // The oldest is the last row once everything is loaded.
-    await toLastRow();
-    await expect.element(page.getByRole("row", { name: /Subject 0,/ })).toHaveFocus();
+    const oldest = page.getByRole("row", { name: /Subject 0,/ });
+    await toLastRowUntil(async () => {
+      await expect.element(oldest).toHaveFocus();
+    });
     // Every read was a page: none asked for the whole place.
     const reads = api.requests.filter((r) => r.startsWith("/api/v0/conversations?"));
     expect(reads.every((r) => r.includes("limit="))).toBe(true);
@@ -104,13 +136,9 @@ describe("ConversationList", () => {
     const last = page.getByRole("row", { name: /Subject 10,/ });
     // End again until it lands: one pressed as the list settles can go
     // nowhere. The first page's last row is the last until it does.
-    await vi.waitFor(
-      async () => {
-        await toLastRow();
-        await expect.element(last).toHaveFocus();
-      },
-      { timeout: 10_000 },
-    );
+    await toLastRowUntil(async () => {
+      await expect.element(last).toHaveFocus();
+    });
     await anchored(api);
     api.conversations.push(conversation(100), conversation(101));
     await refreshNewest(client);
@@ -503,7 +531,7 @@ describe("a hovered row's actions", () => {
     await expect
       .poll(() => router.state.location.pathname)
       .toBe(`/mail/inbox/${conversation(2).id}`);
-    await new Promise((done) => setTimeout(done, 500));
+    await expect.element(row).toHaveAttribute("aria-current", "page");
     await userEvent.unhover(row);
     await userEvent.hover(row);
     await userEvent.click(row.getByRole("button", { name: "Mark unread" }));
@@ -534,7 +562,7 @@ describe("a hovered row's actions", () => {
     // The second press lands on Mark read, which took Mark unread's place.
     await userEvent.dblClick(row.getByRole("button", { name: "Mark unread" }));
     await expect.element(row.getByRole("button", { name: "Mark read" })).toBeInTheDocument();
-    await new Promise((done) => setTimeout(done, 500));
+    await guardOver();
     // Archive, then a press on the row that slid under the pointer.
     const second = page.getByRole("row", { name: /Subject 2,/ });
     await userEvent.unhover(second);
@@ -547,7 +575,7 @@ describe("a hovered row's actions", () => {
     ]);
     expect(router.state.location.pathname).toBe("/mail/inbox");
     // Then presses act again.
-    await new Promise((done) => setTimeout(done, 500));
+    await guardOver();
     await userEvent.click(row);
     await expect
       .poll(() => router.state.location.pathname)
@@ -568,7 +596,7 @@ describe("a hovered row's actions", () => {
     await expect.element(mark).toHaveFocus();
     expect(api.actions).toEqual([{ action: "read", ids: [conversation(1).id] }]);
     // Then the keys act again.
-    await new Promise((done) => setTimeout(done, 500));
+    await guardOver();
     await userEvent.keyboard("{Enter}");
     await expect.element(row.getByRole("button", { name: "Mark read" })).toHaveFocus();
     expect(api.actions).toEqual([
@@ -695,6 +723,7 @@ describe("the Inbox chip", () => {
 
 describe("the list's failures", () => {
   it("keeps its rows and stops when an older page fails, then tries again", async () => {
+    const clock = fakeClock();
     const api = mailApi(
       Array.from({ length: 300 }, (_, n) => conversation(n)),
       one,
@@ -703,12 +732,12 @@ describe("the list's failures", () => {
     await expect.element(page.getByRole("row", { name: /Subject 299,/ })).toBeVisible();
     api.failOlder = serverError;
     const before = api.requests.length;
-    await toLastRow();
     const failed = page
       .getByRole("alert")
       .filter({ hasText: "Couldn't load older conversations." });
+    await toLastRowUntil(() => expect(failed.query()).not.toBeNull());
     await expect.element(failed).toBeVisible();
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await rounds(clock, 15);
     // No storm: the failed page, not a read of the whole place.
     const reads = api.requests.slice(before).filter((r) => r.startsWith("/api/v0/conversations?"));
     expect(reads.length).toBeLessThanOrEqual(2);
@@ -723,6 +752,7 @@ describe("the list's failures", () => {
   });
 
   it("keeps its rows when a refresh finds the session ended", async () => {
+    const clock = fakeClock();
     const api = mailApi([conversation(1)], one);
     // A new message with something typed is work the page holds, so the
     // session-end rule keeps the page instead of opening sign-in.
@@ -737,7 +767,7 @@ describe("the list's failures", () => {
     // The session-end rule answers with a banner over the page kept to
     // copy from: the rows stay to copy from too.
     await expect.element(page.getByRole("region", { name: "Signed out" })).toBeVisible();
-    await new Promise((done) => setTimeout(done, 300));
+    await rounds(clock, 3);
     await expect.element(row).toBeVisible();
   });
 
@@ -828,8 +858,7 @@ describe("the list's order and refreshes", () => {
     );
     const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
-    await toLastRow();
-    await anchored(api);
+    await toLastRowUntil(() => anchored(api));
     const box = grid().element();
     const top = box.getBoundingClientRect().top + 4;
     const atTop = () =>
@@ -856,8 +885,7 @@ describe("the list's order and refreshes", () => {
     );
     const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
-    await toLastRow();
-    await anchored(api);
+    await toLastRowUntil(() => anchored(api));
     api.conversations.push(conversation(100));
     await refreshNewest(client);
     const button = page.getByRole("button", { name: "1 new conversation" });
@@ -954,6 +982,7 @@ describe("Check for new mail", () => {
   });
 
   it("does nothing more once the member signs out while it checks", async () => {
+    const clock = fakeClock();
     const api = mailApi([conversation(1)], checkAccounts());
     // A refusal would show a toast naming the previous member's account.
     api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };
@@ -975,7 +1004,7 @@ describe("Check for new mail", () => {
     await render(<Toaster />);
     answer.resolve();
     await answer.promise;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await rounds(clock, 3);
 
     // No toast names the previous member's account, and no mail came back
     // for them, nor its refresh timers.
@@ -984,10 +1013,11 @@ describe("Check for new mail", () => {
   });
 
   it("takes a check started moments ago as started, and reads the mail again soon", async () => {
+    const clock = fakeClock();
     const api = mailApi([conversation(1)], checkAccounts());
     api.refuseSync[1] = { status: 429, type: "/api/v0/problems/sync-throttled" };
     // Only the throttled account, so the re-read comes from it alone.
-    await open(api, "/mail/inbox?account=1");
+    const { client } = await open(api, "/mail/inbox?account=1");
     await expect.element(grid().getByRole("row").first()).toBeVisible();
     // The list's pages, and the accounts, whose status the page shows.
     const lists = () =>
@@ -998,10 +1028,16 @@ describe("Check for new mail", () => {
     const accountsBefore = accounts();
 
     await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+    // The check's answer, which starts the re-reads.
+    await expect.poll(() => api.requests.some((request) => request.endsWith("/sync"))).toBe(true);
+    await expect.poll(() => client.isMutating()).toBe(0);
+    await clock.advance(0);
+    expect(lists()).toBe(listsBefore);
 
     // The first re-read comes 2 s after the check, well before the lists'
     // own 30 s timer.
-    await expect.poll(lists, { timeout: 4000 }).toBeGreaterThan(listsBefore);
+    await clock.advance(checkingEveryMs);
+    await expect.poll(lists).toBeGreaterThan(listsBefore);
     expect(accounts()).toBeGreaterThan(accountsBefore);
     expect(api.syncs).toEqual([]);
     expect(page.getByText("Couldn't check for new mail").elements()).toHaveLength(0);

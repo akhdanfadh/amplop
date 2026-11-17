@@ -173,12 +173,23 @@ export function sent(api: TotpApi): string[] {
 export const passwordField = () => page.getByLabelText("Password", { exact: true });
 export const codeField = () => page.getByRole("textbox", { name: "Authenticator code" });
 
+// endStepEntrance ends the entrance of the step now on screen, 200 ms of
+// sliding in (stepEnter, components/step-change.ts), so the next press
+// does not wait it out: Playwright presses only what has stopped moving.
+function endStepEntrance(): void {
+  for (const animation of document.getAnimations()) {
+    if (animation instanceof CSSAnimation && animation.animationName === "enter")
+      animation.finish();
+  }
+}
+
 // toQr enters the password on the setup's password step.
 export async function toQr(): Promise<void> {
   await expect.element(passwordField()).toHaveFocus();
   await userEvent.fill(passwordField(), password);
   await userEvent.click(page.getByRole("button", { name: "Continue" }));
   await expect.element(page.getByRole("heading", { name: /Scan this QR code/ })).toHaveFocus();
+  endStepEntrance();
 }
 
 // toCodes checks the first code on the QR step.
@@ -189,4 +200,5 @@ export async function toCodes(): Promise<void> {
   await expect
     .element(page.getByRole("heading", { level: 2, name: "Save your backup codes" }))
     .toHaveFocus();
+  endStepEntrance();
 }

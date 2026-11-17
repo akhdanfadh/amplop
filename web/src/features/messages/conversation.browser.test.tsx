@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import {
   ConversationView,
@@ -321,12 +321,14 @@ describe("ConversationView", () => {
     const name = page.getByText("Bartholomew Fitzgerald").element();
 
     // Below the name, and on one line.
-    expect(address.getBoundingClientRect().top).toBeGreaterThan(
-      name.getBoundingClientRect().bottom - 1,
-    );
-    expect(address.getBoundingClientRect().height).toBeLessThan(
-      2 * Number.parseFloat(getComputedStyle(address).lineHeight),
-    );
+    await vi.waitFor(() => {
+      expect(address.getBoundingClientRect().top).toBeGreaterThan(
+        name.getBoundingClientRect().bottom - 1,
+      );
+      expect(address.getBoundingClientRect().height).toBeLessThan(
+        2 * Number.parseFloat(getComputedStyle(address).lineHeight),
+      );
+    });
   });
 
   it("ends with the reply editor, answering the newest message", async () => {
@@ -346,8 +348,10 @@ describe("ConversationView", () => {
     await expect.element(editor.getByText("ana@example.com")).toBeVisible();
     // Below the newest message, the last thing in the view.
     const newest = page.getByRole("article", { name: /Ben/ }).element();
-    expect(editor.element().getBoundingClientRect().top).toBeGreaterThan(
-      newest.getBoundingClientRect().bottom - 1,
+    await vi.waitFor(() =>
+      expect(editor.element().getBoundingClientRect().top).toBeGreaterThan(
+        newest.getBoundingClientRect().bottom - 1,
+      ),
     );
   });
 
@@ -356,10 +360,13 @@ describe("ConversationView", () => {
 
     // Class merging keeps the view's sizes over the components' own.
     const fold = page.getByRole("button", { name: "Fold the message from Ana Lima" }).element();
-    const avatar = fold.firstElementChild?.getBoundingClientRect();
-    expect([avatar?.width, avatar?.height]).toEqual([36, 36]);
-    const details = page.getByRole("button", { name: "Details" }).element().getBoundingClientRect();
-    expect([details.width, details.height]).toEqual([20, 20]);
+    const details = page.getByRole("button", { name: "Details" }).element();
+    await vi.waitFor(() => {
+      const avatar = fold.firstElementChild?.getBoundingClientRect();
+      expect([avatar?.width, avatar?.height]).toEqual([36, 36]);
+      const button = details.getBoundingClientRect();
+      expect([button.width, button.height]).toEqual([20, 20]);
+    });
   });
 
   it("opens the editor below an older message from its own Reply", async () => {
@@ -376,8 +383,10 @@ describe("ConversationView", () => {
     await expect.element(editor.getByText("ben@example.com")).toBeVisible();
     // Below Ben's message, above the newest.
     const newest = page.getByRole("article", { name: /Ana Lima/ }).element();
-    expect(editor.element().getBoundingClientRect().bottom).toBeLessThan(
-      newest.getBoundingClientRect().top + 1,
+    await vi.waitFor(() =>
+      expect(editor.element().getBoundingClientRect().bottom).toBeLessThan(
+        newest.getBoundingClientRect().top + 1,
+      ),
     );
     // One editor: every Reply hides until it closes.
     await expect
@@ -485,9 +494,11 @@ describe("ConversationView", () => {
       .element(page.getByText("Body of 00000000-0000-4000-8000-000000000002"))
       .toBeVisible();
     await expect.element(shown).toHaveFocus();
-    const pane = document.querySelector("[data-pane]")?.getBoundingClientRect().top ?? 0;
-    const row = shown.element().closest("li")?.getBoundingClientRect().top ?? 0;
-    expect(Math.round(row - pane)).toBe(48);
+    await vi.waitFor(() => {
+      const pane = document.querySelector("[data-pane]")?.getBoundingClientRect().top ?? 0;
+      const row = shown.element().closest("li")?.getBoundingClientRect().top ?? 0;
+      expect(Math.round(row - pane)).toBe(48);
+    });
     await userEvent.keyboard("{Enter}");
     await expect
       .element(page.getByText("Body of 00000000-0000-4000-8000-000000000002"))
@@ -510,8 +521,10 @@ describe("ConversationView", () => {
 
     const line = page.getByRole("button", { name: /^In reply to first\.last/ });
     await expect.element(line).toBeVisible();
-    const pane = document.querySelector("[data-pane]")?.getBoundingClientRect();
-    expect(line.element().getBoundingClientRect().right).toBeLessThanOrEqual(pane?.right ?? 0);
+    await vi.waitFor(() => {
+      const pane = document.querySelector("[data-pane]")?.getBoundingClientRect();
+      expect(line.element().getBoundingClientRect().right).toBeLessThanOrEqual(pane?.right ?? 0);
+    });
   });
 
   it("opens a message the line names even when its row was already in sight", async () => {
@@ -523,12 +536,13 @@ describe("ConversationView", () => {
       .element(page.getByText("Body of 00000000-0000-4000-8000-000000000001"))
       .toBeVisible();
     // It flashes, so the press shows even with the message in sight.
-    const row = page
-      .getByRole("button", { name: "Fold the message from Ana Lima" })
-      .first()
-      .element()
-      .closest("li");
-    expect(row && getComputedStyle(row).animationName).toBe("flash-selection");
+    // The flash starts a frame after the press.
+    await expect
+      .poll(() => {
+        const row = firstAnaRow();
+        return row && getComputedStyle(row).animationName;
+      })
+      .toBe("flash-selection");
   });
 
   it("keeps the toolbar's faded subject from taking the pointer or a selection", async () => {
@@ -566,7 +580,11 @@ describe("ConversationView", () => {
 
     await userEvent.click(line);
     await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
-    await new Promise((done) => setTimeout(done, 600));
+    // The first flash, a CSS animation no fake clock moves, is moved on
+    // itself, past where the second one's start is looked for below.
+    const first = firstAnaRow()?.getAnimations()[0];
+    if (!first) throw new Error("the row has no flash");
+    first.currentTime = 600;
     await userEvent.click(line);
 
     await expect
@@ -633,13 +651,19 @@ describe("ConversationView", () => {
 
     // One Reply, on the sender's line, wide and then narrow, where it keeps
     // focus.
-    expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
+    await vi.waitFor(() =>
+      expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2),
+    );
     const pane = document.querySelector<HTMLElement>("[data-pane]");
-    if (pane) pane.style.width = "390px";
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!pane) throw new Error("the view has no pane");
+    pane.style.width = "390px";
 
-    expect(page.getByRole("button", { name: "Reply", exact: true }).elements()).toHaveLength(2);
-    expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
-    expect(document.activeElement).toBe(button);
+    // The pane's width decides the layout in CSS alone, so a look after
+    // the change sees the narrow one.
+    await vi.waitFor(() => {
+      expect(page.getByRole("button", { name: "Reply", exact: true }).elements()).toHaveLength(2);
+      expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
+      expect(document.activeElement).toBe(button);
+    });
   });
 });

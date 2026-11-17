@@ -374,7 +374,7 @@ const newestEveryMs = 30_000;
 // how long after it starts: a check that finds a few messages ends within
 // seconds, so its mail and counts show (the same as Connected accounts'
 // Check now).
-const checkingEveryMs = 2_000;
+export const checkingEveryMs = 2_000;
 export const checkingForMs = 30_000;
 
 // PlaceCount is one account's place with its unread count, as List Places

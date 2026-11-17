@@ -5,6 +5,9 @@ import {
   getListOutgoingMessagesQueryKey,
 } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
+import { repeatableWriteRetry } from "@/api/retry";
+import { ApiError } from "@/api/transport";
+import { fakeClock } from "@/test/clock";
 import { listedAccount, outgoingMessage } from "@/test/mail-api";
 import {
   type Asked,
@@ -238,14 +241,20 @@ describe("ComposeForm", () => {
       lost,
       accepted,
     ]);
-    const { sent } = await show();
+    const clock = fakeClock();
+    const { sent, client } = await show();
     await write();
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
-    // The 502 is repeated by itself after a second; the 500 is not.
-    await expect
-      .element(page.getByRole("alert"), { timeout: 5_000 })
-      .toMatchTextContent("Sending again is safe");
+    // The 502 is repeated by itself after the first repeat's wait; the 500
+    // is not. The wait runs once the send counts its failure.
+    await expect.poll(() => client.getMutationCache().getAll().at(-1)?.state.failureCount).toBe(1);
+    expect(posts(server)).toHaveLength(1);
+    await clock.advance(
+      repeatableWriteRetry.retryDelay(0, new ApiError("http", { status: badGateway })),
+    );
+    await expect.poll(() => posts(server)).toHaveLength(2);
+    await expect.element(page.getByRole("alert")).toMatchTextContent("Sending again is safe");
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
     await expect.poll(() => sent).toEqual([message]);

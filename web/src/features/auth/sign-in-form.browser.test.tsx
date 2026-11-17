@@ -89,7 +89,7 @@ describe("SignInForm", () => {
 
     await expect.element(forgot).toHaveFocus();
     const label = page.getByText("Password", { exact: true }).element();
-    expect(Math.abs(top(forgot.element()) - top(label))).toBeLessThan(8);
+    await expect.poll(() => Math.abs(top(forgot.element()) - top(label))).toBeLessThan(8);
   });
 
   it.each([

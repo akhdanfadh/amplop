@@ -3,10 +3,14 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ConversationRow, PlaceCount } from "@/api/generated/model";
+import { searchAfterMs } from "@/features/mail/search-box";
 import { appRouter } from "@/test/app-router";
+import { fakeClock, type Clock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const label = "11111111-1111-4111-8111-111111111111";
+// How late the Back of "searches the latest words..." lands.
+const backAfterMs = 300;
 
 let api: MailApi;
 
@@ -112,17 +116,46 @@ function searches(): string[] {
   return api.requests.filter((request) => request.startsWith("/api/v0/conversations/search"));
 }
 
+// rounds moves clock on by 100 ms, times over, the page drawing after
+// each. A check that nothing more happens uses it: what a timer began
+// takes the page's turn and then the clock's (TanStack Query's
+// setTimeout(0)), so each move lets one more round of it run.
+async function rounds(clock: Clock, times: number): Promise<void> {
+  if (times === 0) return;
+  await clock.advance(100);
+  await rounds(clock, times - 1);
+}
+
+// rested moves clock past the wait the box gives typing before it
+// searches, and two rounds on, so a search the wait began has moved the
+// page and reached the server.
+async function rested(clock: Clock): Promise<void> {
+  await clock.advance(searchAfterMs);
+  await rounds(clock, 2);
+}
+
+// drawn waits until the label's page names its account, under its
+// heading. A test with a fake clock waits for it before it types: the
+// page learns its account from a read that answers a moment after it
+// opens, on the clock's next move, and the box then drops what was typed
+// (useSearchBox: typing for the page before).
+async function drawn(): Promise<void> {
+  await expect.element(page.getByRole("main").getByText("ana@example.com")).toBeVisible();
+}
+
 describe("search", () => {
   it("shows results once two characters rest, keeping the box focused", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/inbox");
     await userEvent.click(box());
     await userEvent.keyboard("i");
     // One character searches nothing.
-    await new Promise((done) => setTimeout(done, 400));
+    await rested(clock);
     expect(searches()).toEqual([]);
     expect(router.state.location.pathname).toBe("/mail/inbox");
 
     await userEvent.keyboard("nv");
+    await clock.advance(searchAfterMs);
     await expect.element(results()).toBeVisible();
     expect(router.state.location.pathname).toBe("/mail/search");
     expect(router.state.location.search).toEqual({ q: "inv" });
@@ -131,17 +164,20 @@ describe("search", () => {
   });
 
   it("drops typing not yet searched when the member opens another place", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/inbox");
-    // In one step, so the press lands within the 200 ms the box waits,
+    // In one step, so the press lands within the time the box waits,
     // however busy the machine.
     await userEvent.fill(box(), "invoice");
     await userEvent.click(page.getByRole("link", { name: "Starred" }));
-    await new Promise((done) => setTimeout(done, 450));
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/starred");
+    await rested(clock);
     expect(router.state.location.pathname).toBe("/mail/starred");
     await expect.element(box()).toHaveValue("");
   });
 
   it("shows the words of a search Back returns to, not what was being typed", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/search?q=invoice");
     await router.navigate({
       to: "/mail/$place",
@@ -150,9 +186,10 @@ describe("search", () => {
     });
     await userEvent.click(box());
     await userEvent.keyboard(" plan");
-    // Within the 200 ms the box waits, the history moves back.
+    // Within the time the box waits, the history moves back.
     router.history.back();
-    await new Promise((done) => setTimeout(done, 450));
+    await expect.poll(() => router.state.location.search).toEqual({ q: "invoice" });
+    await rested(clock);
     expect(router.state.location.search).toEqual({ q: "invoice" });
     await expect.element(box()).toHaveValue("invoice");
   });
@@ -199,10 +236,12 @@ describe("search", () => {
   });
 
   it("keeps the last results on screen until the next arrive", async () => {
+    const clock = fakeClock();
     await open("/mail/search?q=lunch");
     await expect.element(results().getByRole("row", { name: /Lunch/ })).toBeVisible();
     const grid = results().element();
     await userEvent.fill(box(), "invoice");
+    await clock.advance(searchAfterMs);
     await expect.element(results().getByRole("row", { name: /Your invoice/ })).toBeVisible();
     expect(results().element()).toBe(grid);
   });
@@ -330,24 +369,30 @@ describe("search", () => {
   });
 
   it("searches the latest words submitted while picking's Back is still under way", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/inbox");
     await userEvent.fill(box(), "invoice");
+    await clock.advance(searchAfterMs);
     await expect.element(results().getByRole("row", { name: /Invoice from Shop/ })).toBeVisible();
     await pickResult(/Invoice from Shop/);
     await expect.element(pickedBar()).toBeVisible();
+    // Picking's history entry, added a moment after the pick.
+    await expect.poll(() => router.history.location.state.picking).toBeDefined();
     // A browser's Back lands a moment later; this one, later still.
     const back = router.history.back.bind(router.history);
     router.history.back = () => {
-      setTimeout(back, 300);
+      setTimeout(back, backAfterMs);
     };
 
     await userEvent.fill(box(), "invoice shop");
     await userEvent.keyboard("{Enter}");
     await userEvent.fill(box(), "your invoice");
     await userEvent.keyboard("{Enter}");
+    await clock.advance(backAfterMs);
 
     await expect.poll(() => router.state.location.search).toMatchObject({ q: "your invoice" });
-    await new Promise((done) => setTimeout(done, 500));
+    // Past each late Back, and what the words before would do after it.
+    await rounds(clock, 5);
     expect(router.state.location.search).toMatchObject({ q: "your invoice" });
     router.history.back = back;
     router.history.back();
@@ -355,14 +400,19 @@ describe("search", () => {
   });
 
   it("ends picking before new words search, so Back leaves the search", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/inbox");
     await userEvent.fill(box(), "invoice");
+    await clock.advance(searchAfterMs);
     await expect.element(results().getByRole("row", { name: /Invoice from Shop/ })).toBeVisible();
     await pickResult(/Invoice from Shop/);
     await expect.element(pickedBar()).toBeVisible();
+    // Picking's history entry, added a moment after the pick.
+    await expect.poll(() => router.history.location.state.picking).toBeDefined();
 
     // The result matches the new words too, but they are a new search.
     await userEvent.fill(box(), "invoice shop");
+    await clock.advance(searchAfterMs);
     await expect.poll(() => router.state.location.search).toMatchObject({ q: "invoice shop" });
     await expect.element(pickedBar()).not.toBeInTheDocument();
     await expect
@@ -411,10 +461,13 @@ describe("search", () => {
   });
 
   it("searches the label it starts in, and names it in the box", async () => {
+    const clock = fakeClock();
     const router = await open(`/mail/${label}?account=1`);
     await expect.element(box()).toHaveAttribute("placeholder", "Search Receipts");
+    await drawn();
     await userEvent.click(box());
     await userEvent.keyboard("invoice");
+    await clock.advance(searchAfterMs);
     await expect.element(results()).toBeVisible();
     expect(router.state.location.search).toEqual({ account: 1, q: "invoice", place: [label] });
     await expect.element(results().getByRole("row", { name: /invoice/i })).toHaveLength(1);
@@ -422,9 +475,12 @@ describe("search", () => {
   });
 
   it("returns to the place it started from on Escape, the box still focused", async () => {
+    const clock = fakeClock();
     const router = await open(`/mail/${label}?account=1`);
+    await drawn();
     await userEvent.click(box());
     await userEvent.keyboard("invoice");
+    await clock.advance(searchAfterMs);
     await expect.element(results()).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.poll(() => router.state.location.pathname).toBe(`/mail/${label}`);
@@ -433,9 +489,11 @@ describe("search", () => {
   });
 
   it("returns to the place with the box focused after its clear button", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/inbox");
     await userEvent.click(box());
     await userEvent.keyboard("lunch");
+    await clock.advance(searchAfterMs);
     await expect.element(results()).toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Clear search" }));
     await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
@@ -559,10 +617,12 @@ describe("search", () => {
   });
 
   it("says when search isn't answering, with Try again", async () => {
+    const clock = fakeClock();
     await open("/mail/inbox");
     api.failSearch = 503;
     await userEvent.click(box());
     await userEvent.keyboard("lunch");
+    await clock.advance(searchAfterMs);
     await expect
       .element(page.getByText("Search isn't answering right now. Try again in a moment."))
       .toBeVisible();
@@ -644,11 +704,13 @@ describe("search", () => {
   });
 
   it("opens from the phone's top bar and gives focus back on leaving", async () => {
+    const clock = fakeClock();
     const router = await open("/mail/inbox", 390);
     const opener = page.getByRole("button", { name: "Search", exact: true });
     await userEvent.click(opener);
     await expect.element(box()).toHaveFocus();
     await userEvent.keyboard("lunch");
+    await clock.advance(searchAfterMs);
     await expect.element(results()).toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Close search" }));
     await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");

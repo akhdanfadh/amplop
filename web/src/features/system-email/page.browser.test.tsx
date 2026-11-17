@@ -10,6 +10,7 @@ import {
   type TotpStatus,
 } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
+import { pressInDialog } from "@/test/dialog";
 import {
   adminSession,
   data,
@@ -278,10 +279,7 @@ describe("System email", () => {
 
     // The leave warning asks, since the typed settings go with the page.
     await userEvent.click(banner.getByRole("link", { name: "sign in" }));
-    await expect.element(button("Discard changes")).toBeVisible();
-    // The dialog ignores a press within a double-click of opening.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    await userEvent.click(button("Discard changes"));
+    await pressInDialog("Discard changes");
 
     await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
     expect(router.state.location.pathname).toBe("/sign-in");

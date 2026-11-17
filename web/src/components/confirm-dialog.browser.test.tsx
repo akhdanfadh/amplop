@@ -27,8 +27,9 @@ describe("ConfirmDialog", () => {
     const { rerender } = await render(<Held pending={false} />);
     const idle = page.getByRole("button", { name: "Open registration" });
     await expect.element(idle).toBeVisible();
-    // Past the dialog's opening zoom, so widths are at full scale.
-    await new Promise((done) => setTimeout(done, 400));
+    // Past the dialog's opening zoom, so widths are at full scale: React
+    // Aria marks the dialog as entering until that animation ends.
+    await expect.poll(() => document.querySelector("[data-entering]")).toBeNull();
     const width = idle.element().getBoundingClientRect().width;
 
     await rerender(<Held pending />);

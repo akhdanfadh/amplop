@@ -6,13 +6,17 @@ import type { ConversationRow } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { shortcutModifier } from "@/lib/shortcut";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 
 let api: MailApi;
 
+// How late a slow place's list answers.
+const lateMs = 400;
+
 // open renders the app wide, or width wide, at /mail/<place>/<id of
 // rows[open]>, over rows, one account's, and returns its router. A list of
-// slowPlace answers its pages 400 ms late, as a real server can.
+// slowPlace answers its pages lateMs late, as a real server can.
 async function open(
   rows: ConversationRow[],
   index: number,
@@ -24,7 +28,7 @@ async function open(
   api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
   api.server.on("GET", "/api/v0/conversations", async ({ url }, earlier) => {
     if (slowPlace && url.searchParams.get("place") === slowPlace) {
-      await new Promise((done) => setTimeout(done, 400));
+      await new Promise((done) => setTimeout(done, lateMs));
     }
     return earlier();
   });
@@ -172,6 +176,7 @@ describe("the reading pane's actions", () => {
       conversation(2),
       conversation(1, { trash: true, inbox: false, allMail: false }),
     ];
+    const clock = fakeClock();
     const router = await open(rows, 0, "inbox", "trash");
 
     await userEvent.click(toolbar().getByRole("button", { name: "Delete" }));
@@ -179,6 +184,9 @@ describe("the reading pane's actions", () => {
     await userEvent.click(
       page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: /Trash/ }).first(),
     );
+    // Trash's first page is asked for, and answers late.
+    await expect.poll(() => api.requests.some((r) => r.includes("place=trash"))).toBe(true);
+    await clock.advance(lateMs);
 
     await expect.element(list().getByRole("row", { name: /Subject 3/ })).toBeVisible();
     await expect.element(list().getByRole("row", { name: /Subject 1/ })).toBeVisible();
@@ -465,6 +473,7 @@ describe("the reading pane's actions", () => {
   });
 
   it("says nothing of an Undo that fails after sign-out", async () => {
+    const clock = fakeClock();
     const rows = [conversation(2), conversation(1)];
     const router = await open(rows, 0);
     await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
@@ -477,7 +486,10 @@ describe("the reading pane's actions", () => {
     changes.release();
 
     await expect.poll(() => api.actions.at(-1)?.action).toBe("changes");
-    await new Promise((done) => setTimeout(done, 200));
+    // Two rounds on: the failure, and what it would say, have reached
+    // the page.
+    await clock.advance(100);
+    await clock.advance(100);
     expect(page.getByText("Couldn't undo").query()).toBeNull();
   });
 

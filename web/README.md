@@ -1459,6 +1459,95 @@ latter. `make check` runs both projects, headless.
 The project uses TypeScript 7. If your VS Code still checks types with
 TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
 
+### Time
+
+A test never waits out one of the app's timers in real time: a poll, a
+delay, a press guard, a timeout. It fakes the clock with `fakeClock()`
+(`src/test/clock.ts`) and moves it by the app's own constant, never a
+copied number:
+
+```ts
+const clock = fakeClock();
+const reads = serve({ outbox: [[sending], [sent]], message: [sending] });
+const { result } = await read();
+await expect.poll(() => result.current.message?.status).toBe("sending");
+
+await clock.advance(sendPollMs);
+await expect.poll(() => result.current.message?.status).toBe("sent");
+// Nothing is read again once the send ended.
+await clock.advance(sendPollMs);
+expect(reads.outbox).toBe(2);
+```
+
+`fakeClock` fakes `setTimeout`, `setInterval`, and `Date` together, for
+a browser test or a unit test, and leaves frames
+(`requestAnimationFrame`), `performance.now`, and microtasks real, since
+React and React Aria draw on those. Time then stands still until the
+test moves it. `clock.advance(ms)` runs each timer that comes due, in
+order, and returns once the page has drawn what they changed. The setup
+puts the real clock back after each test. Only two kinds of test call
+`vi.useFakeTimers` themselves: the transport's unit tests
+(`src/api/retry.test.ts`, `retry-after.test.ts`, `timeout.test.ts`,
+`offline.test.ts`), and `src/features/messages/frame.browser.test.tsx`,
+which fakes only the date, with its reason beside the call.
+
+A wait that proves nothing happened moves the clock past where it would
+have happened, then checks with a plain `expect`, as the last two lines
+above do. It never sleeps: a sleep as long as the app's own window comes
+up short on a busy machine.
+
+What a test author must know about a fake clock in browser mode
+(`clock.ts` says how each was checked):
+
+- Call `fakeClock()` before the test renders. A timer the app set on the
+  real clock stays real.
+- Vitest's own waits run on the real clock: a retrying assertion still
+  retries, and a hanging test still times out.
+- `expect.element` and `expect.poll` leave the clock alone when they
+  pass at the first look. Each failed look moves it: `expect.poll` by
+  50 ms, `expect.element` by 0, 20, 50, 100, 100, then 500 ms a look
+  while its element is missing. So while an assertion waits, fake time
+  runs about as fast as real time, in steps of up to 500 ms.
+  `vi.waitFor` moves it 50 ms before every look, the first too.
+- An action on an element (`click`, `fill`, `hover`) moves the clock
+  50 ms for each 50 ms of real time it takes: usually nothing, more on
+  a busy machine. `userEvent.keyboard`, `userEvent.tab`,
+  `page.viewport`, and `locator.elements()` never move it. A check that
+  something has not happened yet, e.g. no tooltip at 499 ms, holds only
+  with nothing but those between the clock's moves; `pointTo`
+  (`src/test/pointer.ts`) hovers without a round trip for that.
+- TanStack Query hands a result to its components through
+  `setTimeout(0)`, so under a fake clock an answer, or the page a click
+  opens, shows only once the clock moves, by any amount. A retrying
+  assertion does that by itself. So wait for what an action shows before
+  moving the clock past the next timer.
+- A poll that comes due while its read is still running joins that read.
+  Between two polls, wait for the first one's answer: what it shows, or
+  `client.isFetching()` back at 0.
+- `advance` gives the page a turn after each timer it runs, so a long
+  move across a short interval is slow: 16 s across a 100 ms poll took
+  0.6 s.
+- The transport gives up on a request after 15 s of the fake clock, so
+  an answer held across a longer move fails as a timeout. A fake
+  server's handler that waits with `setTimeout` waits on the fake clock.
+
+One app timer reads a clock `fakeClock` leaves real: an alert dialog's
+confirming button ignores a mouse or touch press within a double-click
+(`doubleClickTime`) of the dialog opening, by `performance.now`. A test
+gets past it with `pressInDialog("Discard")` (`src/test/dialog.ts`),
+which waits for the button named exactly that in the open alert dialog,
+focuses it, and presses Enter: a keyboard press counts at once. No test
+sleeps through the guard or clicks that button, except the guard's own
+tests (`src/components/ui/alert-dialog.browser.test.tsx`), which set
+`performance.now` themselves.
+
+A CSS transition or animation is real time too. A test waits for its
+end by what React Aria marks, e.g. nothing `data-entering` before a
+size is read, and a position that moves is read inside a retried
+assertion. Escape closes an open tooltip first, and the pointer rests
+where the last click was, so a test that closes a drawer or dialog it
+opened by a click presses its button, or moves the pointer away first.
+
 ## Styling and components
 
 How screens look, are laid out, and are worded (tokens, components,

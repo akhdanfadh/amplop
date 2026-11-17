@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { appRouter } from "@/test/app-router";
@@ -31,13 +31,17 @@ describe("the setup reminders in the app", () => {
     const topBar = heading.element().closest("header");
     expect(topBar).not.toBeNull();
 
-    // Top bar, then the reminders, then the page, each below the last.
-    const section = reminders.element().getBoundingClientRect();
-    const content = reminders.element().nextElementSibling?.getBoundingClientRect();
-    expect(topBar!.getBoundingClientRect().bottom).toBeLessThanOrEqual(section.top);
-    expect(section.bottom).toBeLessThanOrEqual(content!.top);
-    // The banner wraps within the window rather than widening the page.
-    expect(section.right).toBeLessThanOrEqual(phoneWidth);
-    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(phoneWidth);
+    // The page may still be laying out when the heading shows, so the
+    // boxes are read again on every look.
+    await vi.waitFor(() => {
+      // Top bar, then the reminders, then the page, each below the last.
+      const section = reminders.element().getBoundingClientRect();
+      const content = reminders.element().nextElementSibling?.getBoundingClientRect();
+      expect(topBar!.getBoundingClientRect().bottom).toBeLessThanOrEqual(section.top);
+      expect(section.bottom).toBeLessThanOrEqual(content!.top);
+      // The banner wraps within the window rather than widening the page.
+      expect(section.right).toBeLessThanOrEqual(phoneWidth);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(phoneWidth);
+    });
   });
 });

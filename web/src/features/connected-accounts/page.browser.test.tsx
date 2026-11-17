@@ -10,7 +10,9 @@ import type {
   ListedSessions,
   TotpStatus,
 } from "@/api/generated/model";
+import { pressInDialog } from "@/test/dialog";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
 import { listedAccount } from "@/test/mail-api";
 import {
   adminSession,
@@ -23,6 +25,7 @@ import {
   type Asked,
   type Server,
 } from "@/test/server";
+import { idleRefresh, syncNowRefresh } from "./sync";
 
 const accepted = 202;
 const unauthorized = 401;
@@ -133,15 +136,6 @@ const refused: ListedAccount = {
   needsReconnectSince: "2026-11-10T09:00:00Z",
   allowedActions: ["reconnect", "rename", "disconnect"],
 };
-
-// fakeClock makes the timers the page and its reads use fake, while still
-// running on real time, so a test can jump ahead a minute.
-function fakeClock(): void {
-  vi.useFakeTimers({
-    shouldAdvanceTime: true,
-    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
-  });
-}
 
 describe("Connected accounts", () => {
   it("offers each account the actions the server allows it", async () => {
@@ -281,9 +275,7 @@ describe("Connected accounts", () => {
     const dialog = page.getByRole("alertdialog");
     await expect.element(dialog).toHaveAccessibleName("Disconnect Work?");
     await expect.element(dialog.getByRole("button", { name: "Cancel" })).toHaveFocus();
-    // A keyboard press counts at once, unlike a click within a
-    // double-click of the dialog opening.
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect
       .poll(() => sent(state.server.requests))
@@ -306,8 +298,7 @@ describe("Connected accounts", () => {
     await open(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect.element(page.getByText("Work was already disconnected.")).toBeVisible();
     await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
@@ -407,7 +398,7 @@ describe("Connected accounts", () => {
   });
 
   it("stops waiting for a check after 30 seconds", async () => {
-    fakeClock();
+    const clock = fakeClock();
     const { server } = api([home]);
     await open(server);
     // The list never shows the check.
@@ -417,7 +408,7 @@ describe("Connected accounts", () => {
     await expect
       .element(page.getByRole("button", { name: "Checking... ana@home.example" }))
       .toBeVisible();
-    await vi.advanceTimersByTimeAsync(30_000);
+    await clock.advance(syncNowRefresh);
 
     await expect
       .element(page.getByRole("button", { name: "Check now ana@home.example" }))
@@ -453,8 +444,7 @@ describe("Connected accounts", () => {
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
-    await expect.element(dialog).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
     await expect.element(dialog.getByRole("alert")).toHaveTextContent(
       // A fault may have come after the account went, so it is unknown.
       "Something went wrong on our side. Couldn't confirm whether Work is disconnected. Check the list before trying again.",
@@ -479,12 +469,16 @@ describe("Connected accounts", () => {
     const dialog = page.getByRole("alertdialog");
     await expect.element(dialog).toBeVisible();
 
-    const box = dialog.element().getBoundingClientRect();
-    for (const button of dialog.getByRole("button").elements()) {
-      const edge = button.getBoundingClientRect();
-      expect(edge.left).toBeGreaterThanOrEqual(box.left);
-      expect(edge.right).toBeLessThanOrEqual(box.right);
-    }
+    // The dialog is still opening when it first shows, so the boxes are
+    // read again on every look.
+    await vi.waitFor(() => {
+      const box = dialog.element().getBoundingClientRect();
+      for (const button of dialog.getByRole("button").elements()) {
+        const edge = button.getBoundingClientRect();
+        expect(edge.left).toBeGreaterThanOrEqual(box.left);
+        expect(edge.right).toBeLessThanOrEqual(box.right);
+      }
+    });
     // Heard whole, the question mark included.
     await expect.element(dialog).toHaveAccessibleName(`Disconnect ${long.email}?`);
   });
@@ -502,8 +496,7 @@ describe("Connected accounts", () => {
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
-    await expect.element(dialog).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect.element(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
     await expect.element(dialog.getByText("Disconnecting...")).toBeVisible();
@@ -521,8 +514,7 @@ describe("Connected accounts", () => {
     const release = holdReads(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
     await expect.element(page.getByText("Work is disconnected.")).toBeVisible();
     state.accounts = [{ ...home, name: "Home" }];
     release();
@@ -542,8 +534,7 @@ describe("Connected accounts", () => {
     await open(server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect
       .element(page.getByRole("alertdialog").getByRole("alert"))
@@ -575,7 +566,7 @@ describe("the sync banner", () => {
   });
 
   it("follows a stop and a recovery on any signed-in page", async () => {
-    fakeClock();
+    const clock = fakeClock();
     const state = api([home]);
     await open(state.server, "/settings/security", false);
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
@@ -585,12 +576,12 @@ describe("the sync banner", () => {
     await expect.element(landmark).not.toBeInTheDocument();
 
     state.syncStopped = true;
-    await vi.advanceTimersByTimeAsync(60_000);
+    await clock.advance(idleRefresh);
     await expect.element(banner).toBeVisible();
     // A landmark only while it shows.
     await expect.element(landmark).toBeVisible();
     state.syncStopped = false;
-    await vi.advanceTimersByTimeAsync(60_000);
+    await clock.advance(idleRefresh);
 
     await expect.element(banner).not.toBeInTheDocument();
     await expect.element(landmark).not.toBeInTheDocument();

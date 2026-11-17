@@ -3,6 +3,7 @@ import { createLiveQueryCollection } from "@tanstack/react-db";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import type { ConversationMessage, ConversationRow, PlaceCount } from "@/api/generated/model";
+import { fakeClock, type Clock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 import { testQueryClient } from "@/test/query-client";
 import { data, held, problem } from "@/test/server";
@@ -13,6 +14,15 @@ import { Reader } from "./reader";
 import { placeWhere } from "./rules";
 
 let current: QueryClient | undefined;
+
+// quiet moves clock on by 100 ms in two moves, the page drawing after
+// each, for a check that nothing more happens: what a read's answer
+// begins takes the page's turn and then the clock's (TanStack Query's
+// setTimeout(0)), so each move lets one more round of it run.
+async function quiet(clock: Clock): Promise<void> {
+  await clock.advance(50);
+  await clock.advance(50);
+}
 
 afterEach(() => {
   // The tab's own visibility again, if a test hid it.
@@ -150,6 +160,7 @@ describe("Reader", () => {
   });
 
   it("keeps a conversation shown when a later read finds it gone", async () => {
+    const clock = fakeClock();
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     answer(api, row.id, (read) =>
@@ -170,7 +181,7 @@ describe("Reader", () => {
           .some((query) => query.state.status === "error"),
       )
       .toBe(true);
-    await new Promise((done) => setTimeout(done, 100));
+    await quiet(clock);
 
     // A reply being typed stays; Page not found waits for a fresh open.
     await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
@@ -208,17 +219,19 @@ describe("Reader, opening", () => {
   });
 
   it("leaves a read conversation as it is", async () => {
+    const clock = fakeClock();
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     withMessage(api, row);
     await app(api, row.id, "from-list");
 
     await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
-    await new Promise((done) => setTimeout(done, 100));
+    await quiet(clock);
     expect(api.actions).toEqual([]);
   });
 
   it("waits for the tab to show", async () => {
+    const clock = fakeClock();
     let visibility: DocumentVisibilityState = "hidden";
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -229,7 +242,7 @@ describe("Reader, opening", () => {
     withMessage(api, row);
     await app(api, row.id, "from-list");
     await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
-    await new Promise((done) => setTimeout(done, 100));
+    await quiet(clock);
     expect(api.actions).toEqual([]);
 
     visibility = "visible";
@@ -239,6 +252,7 @@ describe("Reader, opening", () => {
   });
 
   it("leaves an account that takes no actions as it is, offering none", async () => {
+    const clock = fakeClock();
     const row = conversation(1, { unread: true });
     // Usable, as when no Google client is set up: only allowedActions says.
     const account = {
@@ -259,7 +273,7 @@ describe("Reader, opening", () => {
     const marks = page.getByRole("grid", { name: "Labels" });
     await expect.element(marks.getByRole("row", { name: "Inbox" })).toBeVisible();
     expect(marks.getByRole("button").query()).toBeNull();
-    await new Promise((done) => setTimeout(done, 100));
+    await quiet(clock);
     expect(api.actions).toEqual([]);
   });
 
@@ -280,6 +294,7 @@ describe("Reader, opening", () => {
   });
 
   it("leaves an account that needs reconnecting as it is", async () => {
+    const clock = fakeClock();
     const row = conversation(1, { unread: true });
     const account = {
       ...listedAccount(1, "ana@example.com"),
@@ -291,7 +306,7 @@ describe("Reader, opening", () => {
     await app(api, row.id, "from-list");
 
     await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
-    await new Promise((done) => setTimeout(done, 100));
+    await quiet(clock);
     expect(api.actions).toEqual([]);
   });
 
