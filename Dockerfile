@@ -22,6 +22,7 @@ ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b233
 FROM ${PNPM_IMAGE} AS web
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+COPY web/patches/ ./patches/
 # Cache ids are shared by every build on the machine; inbok's own id keeps
 # its package store apart from other projects'.
 RUN --mount=type=cache,id=inbok-pnpm,target=/var/cache/pnpm \
