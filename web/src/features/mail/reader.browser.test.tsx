@@ -1,18 +1,14 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { createLiveQueryCollection } from "@tanstack/react-db";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRouter,
-} from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { cleanup } from "vitest-browser-react";
 import type { ConversationMessage, ConversationRow, PlaceCount } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { testQueryClient } from "@/test/query-client";
+import { data, held, problem } from "@/test/server";
+import { stubRouter } from "@/test/stub-router";
 import { runAction } from "./actions";
 import { mailData, placeKey, refreshNewest } from "./conversations";
 import { Reader } from "./reader";
@@ -29,10 +25,10 @@ afterEach(async () => {
 });
 
 // app renders the reading pane for id on api, opened from an open Inbox
-// list holding its row or from a link, and returns its router.
+// list holding its row or from a link.
 async function app(api: MailApi, id: string, opened: "from-list" | "from-link" = "from-link") {
-  vi.stubGlobal("fetch", vi.fn(api.fetch));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  api.server.install();
+  const client = testQueryClient();
   current = client;
   // The mail page's collections, which its list and sidebar start.
   const { placeCounts } = mailData(client);
@@ -50,43 +46,34 @@ async function app(api: MailApi, id: string, opened: "from-list" | "from-link" =
     list.subscribeChanges(() => {});
     await list.preload();
   }
-  const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-    component: () => (
-      <Reader
-        conversationId={id}
-        list={{
-          places: ["inbox"],
-          account: undefined,
-          key: "inbox ",
-          back: { to: "/mail/$place", params: { place: "inbox" } },
-        }}
-      />
-    ),
-  });
-  const router = createRouter({
-    routeTree: root,
-    history: createMemoryHistory(),
-    context: { queryClient: client },
-    Wrap: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
-  });
-  await render(<RouterProvider router={router} />);
-  void appRoot;
-  return router;
+  await stubRouter(
+    <Reader
+      conversationId={id}
+      list={{
+        places: ["inbox"],
+        account: undefined,
+        key: "inbox ",
+        back: { to: "/mail/$place", params: { place: "inbox" } },
+      }}
+    />,
+    { client },
+  );
 }
 
 // answer makes api answer the read of conversation id by detail, a
-// function of the read's number from 1, and everything else as before.
+// function of the read's number from 1, a message's content as one with
+// nothing to show, and everything else as before.
 function answer(api: MailApi, id: string, detail: (read: number) => Response) {
-  const fetch = api.fetch;
   let reads = 0;
-  api.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : input.toString();
-    if (url.endsWith(`/conversations/${id}`)) return detail(++reads);
-    if (url.includes("/content"))
-      return Response.json({ data: { remote: "none", attachments: [], bodies: [] } });
-    return fetch(input, init);
-  };
+  api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
+    params.id === id ? detail(++reads) : earlier(),
+  );
+  api.server.on("GET", "/api/v0/messages/{id}/content", () => data(noContent));
 }
+
+// A message's content with nothing to show, as Get Message Content
+// answers it.
+const noContent = { remote: "none", attachments: [], bodies: [] };
 
 // onlyMessage returns the one message of row, as Get Conversation reads
 // it.
@@ -117,9 +104,7 @@ function withMessage(api: MailApi, row: ConversationRow): () => number {
   let reads = 0;
   answer(api, row.id, (read) => {
     reads = read;
-    return Response.json({
-      data: { conversation: row, messages: [onlyMessage(row)], providerUrl: null },
-    });
+    return data({ conversation: row, messages: [onlyMessage(row)], providerUrl: null });
   });
   return () => reads;
 }
@@ -127,24 +112,14 @@ function withMessage(api: MailApi, row: ConversationRow): () => number {
 // withProviderUrl makes api answer the read of row with its message and
 // providerUrl, its address in Gmail.
 function withProviderUrl(api: MailApi, row: ConversationRow, providerUrl: string): void {
-  answer(api, row.id, () =>
-    Response.json({ data: { conversation: row, messages: [onlyMessage(row)], providerUrl } }),
-  );
-}
-
-// problem returns a Problem Details response of status.
-function problem(status: number, type: string): Response {
-  return Response.json(
-    { type: `/api/v0/problems/${type}`, status, title: "Refused", detail: "Refused." },
-    { status, headers: { "Content-Type": "application/problem+json" } },
-  );
+  answer(api, row.id, () => data({ conversation: row, messages: [onlyMessage(row)], providerUrl }));
 }
 
 describe("Reader", () => {
   it("is Page not found for a listed conversation that no longer exists", async () => {
     const gone = conversation(1);
     const api = mailApi([gone], [listedAccount(1, "ana@example.com")]);
-    answer(api, gone.id, () => problem(404, "conversation-not-found"));
+    answer(api, gone.id, () => problem(404, "/api/v0/problems/conversation-not-found"));
     await app(api, gone.id, "from-list");
     await expect.element(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   });
@@ -170,18 +145,15 @@ describe("Reader", () => {
       answers: null,
       attachments: false,
     };
-    const detail = Response.json({
-      data: { conversation: row, messages: [message], providerUrl: null },
-    });
-    const fetch = api.fetch;
-    api.fetch = async (input) => {
-      const url = input instanceof Request ? input.url : input.toString();
-      if (url.endsWith(`/conversations/${row.id}`)) return detail.clone();
-      // The message's content, which the view reads for an open message.
-      if (url.includes(`/messages/${message.id}/content`))
-        return Response.json({ data: { remote: "none", attachments: [], bodies: [] } });
-      return fetch(input);
-    };
+    api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
+      params.id === row.id
+        ? data({ conversation: row, messages: [message], providerUrl: null })
+        : earlier(),
+    );
+    // The message's content, which the view reads for an open message.
+    api.server.on("GET", "/api/v0/messages/{id}/content", ({ params }, earlier) =>
+      params.id === message.id ? data(noContent) : earlier(),
+    );
     await app(api, row.id);
 
     await expect.element(page.getByRole("heading", { level: 2, name: row.subject })).toHaveFocus();
@@ -206,12 +178,12 @@ describe("Reader", () => {
   it("draws the subject from the list's row while the messages load", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-    const fetch = api.fetch;
     // The read never answers.
-    api.fetch = async (input) =>
-      (input instanceof Request ? input.url : input.toString()).endsWith(`/conversations/${row.id}`)
-        ? new Promise<Response>(() => {})
-        : fetch(input);
+    const never = held();
+    api.server.on("GET", "/api/v0/conversations/{id}", async ({ params }, earlier) => {
+      if (params.id === row.id) await never.promise;
+      return earlier();
+    });
     await app(api, row.id, "from-list");
 
     await expect.element(page.getByRole("heading", { level: 2, name: row.subject })).toBeVisible();
@@ -221,7 +193,7 @@ describe("Reader", () => {
   it("keeps the subject, and says why with Try again, when the messages can't be read", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-    answer(api, row.id, () => problem(500, "internal-error"));
+    answer(api, row.id, () => problem(500, "/api/v0/problems/internal-error"));
     await app(api, row.id, "from-list");
 
     await expect.element(page.getByRole("heading", { level: 2, name: row.subject })).toBeVisible();
@@ -254,8 +226,8 @@ describe("Reader", () => {
     };
     answer(api, row.id, (read) =>
       read === 1
-        ? Response.json({ data: { conversation: row, messages: [message], providerUrl: null } })
-        : problem(404, "conversation-not-found"),
+        ? data({ conversation: row, messages: [message], providerUrl: null })
+        : problem(404, "/api/v0/problems/conversation-not-found"),
     );
     await app(api, row.id);
     await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
@@ -444,10 +416,8 @@ describe("Reader, opening", () => {
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     answer(api, row.id, (read) =>
       read === 1
-        ? Response.json({
-            data: { conversation: row, messages: [onlyMessage(row)], providerUrl: null },
-          })
-        : problem(503, "service-busy"),
+        ? data({ conversation: row, messages: [onlyMessage(row)], providerUrl: null })
+        : problem(503, "/api/v0/problems/service-busy"),
     );
     await app(api, row.id);
     const toolbar = page.getByRole("toolbar", { name: "Conversation actions" });
@@ -464,22 +434,15 @@ describe("Reader, opening", () => {
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     answer(api, row.id, (read) =>
       read === 1
-        ? Response.json({
-            data: { conversation: row, messages: [onlyMessage(row)], providerUrl: null },
-          })
-        : problem(503, "service-busy"),
+        ? data({ conversation: row, messages: [onlyMessage(row)], providerUrl: null })
+        : problem(503, "/api/v0/problems/service-busy"),
     );
     // The action's answer, a failure, waits to be let go.
-    let answerAction: (() => void) | undefined;
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.includes("/conversations/actions")) return fetch(input, init);
-      await new Promise<void>((done) => {
-        answerAction = done;
-      });
-      return problem(500, "internal");
-    };
+    const action = held();
+    api.server.on("POST", "/api/v0/conversations/actions", async () => {
+      await action.promise;
+      return problem(500, "/api/v0/problems/internal-error");
+    });
     await app(api, row.id);
     await expect.element(page.getByRole("toolbar", { name: "Conversation actions" })).toBeVisible();
     const mail = mailData(current!);
@@ -487,11 +450,11 @@ describe("Reader, opening", () => {
       { client: current!, conversations: mail.conversations, placeCounts: mail.placeCounts },
       { action: "star", ids: [row.id] },
     );
-    await vi.waitFor(() => expect(answerAction).toBeDefined());
+    await expect.poll(() => api.requests).toContain("/api/v0/conversations/actions");
     expect(mail.conversations.get(row.id)?.starred).toBe(true);
 
     await refreshNewest(current!);
-    answerAction?.();
+    action.resolve();
     await expect(starring).rejects.toMatchObject({ status: 500 });
 
     expect(mail.conversations.get(row.id)?.starred).toBe(false);
@@ -502,10 +465,8 @@ describe("Reader, opening", () => {
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     answer(api, row.id, (read) =>
       read === 1
-        ? Response.json({
-            data: { conversation: row, messages: [onlyMessage(row)], providerUrl: null },
-          })
-        : problem(404, "not-found"),
+        ? data({ conversation: row, messages: [onlyMessage(row)], providerUrl: null })
+        : problem(404, "/api/v0/problems/not-found"),
     );
     await app(api, row.id);
     await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
