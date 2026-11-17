@@ -1,29 +1,29 @@
-import "@/zod-config";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Outlet,
-  RouterProvider,
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import type { ListedAccount } from "@/api/generated/model";
-import { RouteError } from "@/components/route-states";
-import { SyncStopped } from "@/features/connected-accounts/sync-stopped";
-import { ComposeStore } from "@/features/outgoing-messages/compose-store";
-import { Route as App } from "@/routes/_app";
-import {
-  Route as ConnectedAccounts,
-  connectedAccountsLoader,
-} from "@/routes/_app/settings/connected-accounts";
+import { cleanup, render } from "vitest-browser-react";
+import { RouterProvider } from "@tanstack/react-router";
+import type {
+  AccountProviders,
+  ConnectedAccounts,
+  CurrentSession,
+  ListedAccount,
+  ListedSessions,
+  TotpStatus,
+} from "@/api/generated/model";
+import { appRouter } from "@/test/app-router";
 import { listedAccount } from "@/test/mail-api";
-import { watchSessionEnd } from "@/features/auth/session-end";
+import {
+  adminSession,
+  data,
+  fakeServer,
+  held,
+  lose,
+  memberSession,
+  problem,
+  type Asked,
+  type Server,
+} from "@/test/server";
 
-const ok = 200;
 const accepted = 202;
 const unauthorized = 401;
 const notFound = 404;
@@ -31,206 +31,115 @@ const tooManyRequests = 429;
 const fault = 500;
 const listPath = "/api/v0/connected-accounts";
 
-// Server is what the test API holds and how it answers: accounts as the
-// list shows them, offered whether Gmail is, role the member's; throttled
-// refuses Check now as requested moments ago; gone answers a disconnect
-// as if the account had been removed already; hold holds the list's reads
-// until it settles, holdSync a Check now's answer, after the server acted,
-// and holdProviders the providers' reads; readsFailFrom answers the list's
-// reads from the nth on with a fault, providersFailFrom the providers';
-// listStatus and providersStatus answer those reads with that status;
-// holdDelete holds a disconnect's answer, after the server acted;
-// deleteFails answers the next disconnect with a fault, loseDelete drops
-// its answer after the server acted; ended answers every request with a
-// 401; sent lists every request.
-type Server = {
-  accounts: ListedAccount[];
-  offered?: boolean;
-  role?: "member" | "admin";
-  syncStopped?: boolean;
-  throttled?: boolean;
-  gone?: boolean;
-  hold?: Promise<void>;
-  holdSync?: Promise<void>;
-  holdProviders?: Promise<void>;
-  readsFailFrom?: number;
-  providersFailFrom?: number;
-  listStatus?: number;
-  providersStatus?: number;
-  deleteFails?: boolean;
-  holdDelete?: Promise<void>;
-  loseDelete?: boolean;
-  ended?: boolean;
-  sent: string[];
-};
+// What Security, another signed-in page, reads.
+const twoFactorOff: TotpStatus = { status: "off", backupCodesLeft: 0, backupCodesWaiting: false };
+const browsers: ListedSessions = { sessions: [] };
 
-function json(data: unknown, status = ok, headers: Record<string, string> = {}): Response {
-  return Response.json(data, {
-    status,
-    headers: {
-      "Content-Type": status < 300 ? "application/json" : "application/problem+json",
-      ...headers,
-    },
+// Api is the fake server and what it holds: accounts as the list shows
+// them, and syncStopped, whether syncing has stopped on this inbok. A test
+// changes either as another tab or the server would.
+type Api = { server: Server; accounts: ListedAccount[]; syncStopped: boolean };
+
+// api returns a fake server that holds accounts for session, a member's
+// when left out, and offers Gmail unless offered is false. A Check now
+// lands at once, and a disconnect removes its account.
+function api(
+  accounts: ListedAccount[],
+  { offered = true, session = memberSession }: { offered?: boolean; session?: CurrentSession } = {},
+): Api {
+  const server = fakeServer(session);
+  const state: Api = { server, accounts, syncStopped: false };
+  const providers: AccountProviders = { offered: offered ? ["gmail"] : [] };
+  server.on("GET", "/api/v0/connected-accounts", () => {
+    const list: ConnectedAccounts = { accounts: state.accounts, syncStopped: state.syncStopped };
+    return data(list);
   });
-}
-
-function problem(status: number, type: string, detail: string, headers = {}): Response {
-  return json({ type: `/api/v0/problems/${type}`, status, title: "", detail }, status, headers);
-}
-
-// answer answers one request as the API would, changing server.
-function answer(server: Server, method: string, path: string): Response {
-  if (server.ended) return problem(unauthorized, "unauthorized", "");
-  if (path === "/api/v0/sessions/current")
-    return json({
-      data: {
-        email: "ana@example.com",
-        emailVerified: true,
-        role: server.role ?? "member",
-        totpRequired: false,
-      },
-    });
-  if (path === listPath && server.listStatus)
-    return problem(server.listStatus, "refused", "The list couldn't be read.");
-  if (path === `${listPath}/providers` && server.providersStatus)
-    return problem(server.providersStatus, "refused", "The providers couldn't be read.");
-  if (path === `${listPath}/providers`) {
-    const reads = server.sent.filter((sent) => sent === `GET ${listPath}/providers`).length;
-    if (server.providersFailFrom !== undefined && reads >= server.providersFailFrom)
-      return problem(fault, "internal-error", "Something went wrong on our side.");
-  }
-  if (path === listPath) {
-    const reads = server.sent.filter((sent) => sent === `GET ${listPath}`).length;
-    if (server.readsFailFrom !== undefined && reads >= server.readsFailFrom)
-      return problem(fault, "internal-error", "Something went wrong on our side.");
-    return json({ data: { accounts: server.accounts, syncStopped: server.syncStopped ?? false } });
-  }
-  if (path === `${listPath}/providers`)
-    return json({ data: { offered: server.offered === false ? [] : ["gmail"] } });
-  const sync = /^\/api\/v0\/connected-accounts\/(\d+)\/sync$/.exec(path);
-  if (sync) {
-    if (server.throttled)
-      return problem(tooManyRequests, "sync-throttled", "Requested moments ago.", {
-        "Retry-After": "12",
-      });
-    const id = Number(sync[1]);
-    const before = server.accounts.find((a) => a.id === id);
+  server.on("GET", "/api/v0/connected-accounts/providers", () => data(providers));
+  server.on("POST", "/api/v0/connected-accounts/{id}/sync", ({ params }) => {
+    const id = Number(params.id);
+    const before = state.accounts.find((a) => a.id === id);
     // The check lands at once, a minute after the last: the next read
     // shows it.
-    const checks = server.sent.filter((sent) => sent.endsWith("/sync")).length;
+    const checks = server.requests.filter((asked) => asked.path.endsWith("/sync")).length - 1;
     const checkedAt = new Date(Date.UTC(2026, 10, 16, 9, checks)).toISOString();
-    server.accounts = server.accounts.map((a) =>
+    state.accounts = state.accounts.map((a) =>
       a.id === id ? { ...a, sync: { ...a.sync, lastSyncedAt: checkedAt } } : a,
     );
-    return json({ data: before?.sync }, accepted);
-  }
-  const one = /^\/api\/v0\/connected-accounts\/(\d+)$/.exec(path);
-  if (one && method === "DELETE") {
-    if (server.deleteFails) {
-      server.deleteFails = false;
-      return problem(fault, "internal-error", "Something went wrong on our side.");
-    }
-    const id = Number(one[1]);
-    const removed = server.accounts.find((a) => a.id === id);
-    server.accounts = server.accounts.filter((a) => a.id !== id);
-    if (server.gone || !removed)
-      return problem(notFound, "connected-account-not-found", "The account does not exist.");
-    return json({ data: { account: removed } });
-  }
-  return problem(notFound, "not-found", "");
+    return data(before?.sync, accepted);
+  });
+  server.on("DELETE", "/api/v0/connected-accounts/{id}", ({ params }) => {
+    const id = Number(params.id);
+    const removed = state.accounts.find((a) => a.id === id);
+    state.accounts = state.accounts.filter((a) => a.id !== id);
+    return removed ? data({ account: removed }) : accountGone();
+  });
+  server.on("GET", "/api/v0/totp", () => data(twoFactorOff));
+  server.on("GET", "/api/v0/sessions", () => data(browsers));
+  return state;
 }
 
-// open renders Connected accounts at path in a router of its own, under
-// the real signed-in guard, its requests answered by server, and the sync
-// banner the frame shows above it, as on every signed-in page, e.g. the
-// bare /settings/other. It waits for the page unless loaded is false, and
-// returns the router and its query client.
+// accountGone says the account does not exist, as the API does.
+const accountGone = () =>
+  problem(notFound, "/api/v0/problems/connected-account-not-found", {
+    detail: "The account does not exist.",
+  });
+
+// serverFault is a server fault, as the API words one.
+const serverFault = () =>
+  problem(fault, "/api/v0/problems/internal-error", {
+    detail: "Something went wrong on our side.",
+  });
+
+// refuse answers with status: an ended session's 401, or else a fault.
+const refuse = (status: number) =>
+  status === unauthorized
+    ? problem(unauthorized, "/api/v0/problems/unauthenticated")
+    : serverFault();
+
+// sent lists requests as e.g. "GET /api/v0/connected-accounts".
+const sent = (requests: Asked[]) =>
+  requests.map((request) => `${request.method} ${request.url.pathname}`);
+
+// holdReads holds the list's reads on server from now until the returned
+// function is called.
+function holdReads(server: Server): () => void {
+  const reads = held();
+  server.on("GET", "/api/v0/connected-accounts", async (_, earlier) => {
+    await reads.promise;
+    return earlier();
+  });
+  return reads.resolve;
+}
+
+// The page open now: its router, whose reads end with the test, and its
+// server.
+let opened: { router: Awaited<ReturnType<typeof appRouter>>; server: Server } | undefined;
+
+// open renders the app at path, Connected accounts when left out, its
+// requests answered by server. It waits for Connected accounts' heading
+// unless loaded is false, and returns the router and its query client.
 async function open(server: Server, path = "/settings/connected-accounts", loaded = true) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
-      async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const address = input instanceof Request ? input.url : input.toString();
-        const requestPath = new URL(address, location.href).pathname;
-        if (server.hold && method === "GET" && requestPath === listPath) await server.hold;
-        if (server.holdProviders && requestPath === `${listPath}/providers`)
-          await server.holdProviders;
-        const answered = answer(server, method, requestPath);
-        server.sent.push(`${method} ${requestPath}`);
-        if (server.holdSync && requestPath.endsWith("/sync")) await server.holdSync;
-        if (server.holdDelete && method === "DELETE") await server.holdDelete;
-        if (server.loseDelete && method === "DELETE") {
-          server.loseDelete = false;
-          throw new TypeError("Failed to fetch");
-        }
-        return answered;
-      },
-    ),
-  );
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRouteWithContext<{ queryClient: QueryClient; compose: ComposeStore }>()({
-    component: () => (
-      <>
-        <SyncStopped />
-        <Outlet />
-      </>
-    ),
-  });
-  const app = createRoute({
-    getParentRoute: () => root,
-    id: "_app",
-    component: Outlet,
-    beforeLoad: App.options.beforeLoad,
-  });
-  const settings = createRoute({ getParentRoute: () => app, path: "settings", component: Outlet });
-  const router = createRouter({
-    routeTree: root.addChildren([
-      app.addChildren([
-        settings.addChildren([
-          createRoute({
-            getParentRoute: () => settings,
-            path: "connected-accounts",
-            validateSearch: ConnectedAccounts.options.validateSearch,
-            loader: connectedAccountsLoader,
-            component: ConnectedAccounts.options.component,
-          }),
-          createRoute({
-            getParentRoute: () => settings,
-            path: "other",
-            component: () => "Another settings page",
-          }),
-        ]),
-      ]),
-      createRoute({ getParentRoute: () => root, path: "/sign-in", component: () => "Sign in" }),
-    ]),
-    history: createMemoryHistory({ initialEntries: [path] }),
-    defaultErrorComponent: RouteError,
-    defaultStaleReloadMode: "blocking",
-    defaultPreloadStaleTime: 0,
-    context: { queryClient, compose: new ComposeStore() },
-  });
-  // As the app's router does (router.tsx).
-  watchSessionEnd(queryClient, router);
-  await render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
-  const opened = { router, client: queryClient };
-  if (!loaded) return opened;
-  await expect.element(page.getByRole("heading", { name: "Connected accounts" })).toBeVisible();
-  return opened;
+  const router = await appRouter(path, server);
+  opened = { router, server };
+  await render(<RouterProvider router={router} />);
+  const result = { router, client: router.options.context.queryClient };
+  if (!loaded) return result;
+  await expect
+    .element(page.getByRole("heading", { level: 1, name: "Connected accounts" }))
+    .toBeVisible();
+  return result;
 }
 
-// held returns a promise and the function that settles it.
-function held(): { until: Promise<void>; release: () => void } {
-  const settle: { done?: () => void } = {};
-  const until = new Promise<void>((done) => {
-    settle.done = done;
-  });
-  return { until, release: () => settle.done?.() };
-}
+afterEach(async () => {
+  // The page reads the list on a timer, and a read still running would
+  // reach the real network once the fetch stub is gone: the page goes
+  // first, then its reads.
+  await cleanup();
+  const queryClient = opened?.router.options.context.queryClient;
+  await queryClient?.cancelQueries();
+  queryClient?.clear();
+  opened = undefined;
+});
 
 const work = { ...listedAccount(1, "ana@work.example"), name: "Work" };
 const home = listedAccount(2, "ana@home.example");
@@ -252,7 +161,7 @@ function fakeClock(): void {
 
 describe("Connected accounts", () => {
   it("offers each account the actions the server allows it", async () => {
-    await open({ accounts: [work, refused], sent: [] });
+    await open(api([work, refused]).server);
 
     await expect
       .element(page.getByRole("button", { name: "Check now ana@work.example" }))
@@ -269,7 +178,7 @@ describe("Connected accounts", () => {
 
   it("says why nothing can be connected while Gmail isn't offered", async () => {
     const unoffered: ListedAccount = { ...work, allowedActions: ["rename", "disconnect"] };
-    await open({ accounts: [unoffered], offered: false, sent: [] });
+    await open(api([unoffered], { offered: false }).server);
 
     await expect
       .element(page.getByText(/^Your administrator hasn't set up Gmail on this inbok/))
@@ -279,7 +188,7 @@ describe("Connected accounts", () => {
   });
 
   it("tells an administrator where Gmail is set up when nothing can be connected", async () => {
-    await open({ accounts: [], offered: false, role: "admin", sent: [] });
+    await open(api([], { offered: false, session: adminSession }).server);
 
     await expect
       .element(page.getByRole("heading", { name: "Gmail can't be connected yet" }))
@@ -291,7 +200,7 @@ describe("Connected accounts", () => {
   });
 
   it("says how to start when no account is connected", async () => {
-    await open({ accounts: [], sent: [] });
+    await open(api([]).server);
 
     await expect
       .element(page.getByRole("heading", { name: "Connect your first account" }))
@@ -300,20 +209,16 @@ describe("Connected accounts", () => {
   });
 
   it("keeps Check now turning until the list shows the check", async () => {
-    let release: (() => void) | undefined;
-    const server: Server = { accounts: [home], sent: [] };
-    const { client } = await open(server);
-    server.hold = new Promise((resolve) => {
-      release = resolve;
-    });
+    const state = api([home]);
+    const { client } = await open(state.server);
+    const release = holdReads(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Check now ana@home.example" }));
 
     await expect
       .element(page.getByRole("button", { name: "Checking... ana@home.example" }))
       .toBeVisible();
-    release?.();
-    server.hold = undefined;
+    release();
     await expect
       .element(page.getByRole("button", { name: "Check now ana@home.example" }))
       .toBeVisible();
@@ -322,7 +227,7 @@ describe("Connected accounts", () => {
     await expect.element(said).toBeInTheDocument();
     // Once: a full sync starting after it, whose count moves with every
     // read, isn't said again.
-    server.accounts = server.accounts.map((a) => ({
+    state.accounts = state.accounts.map((a) => ({
       ...a,
       sync: { ...a.sync, status: "running" as const, messagesSoFar: 120 },
     }));
@@ -330,11 +235,11 @@ describe("Connected accounts", () => {
     await expect.element(page.getByText(/120 messages so far/)).toBeInTheDocument();
     await expect.element(said).toBeInTheDocument();
     expect(said.element().textContent).not.toMatch(/Copying/);
-    expect(server.sent).toContain("POST /api/v0/connected-accounts/2/sync");
+    expect(sent(state.server.requests)).toContain("POST /api/v0/connected-accounts/2/sync");
   });
 
   it("says each check's own outcome when two follow each other", async () => {
-    await open({ accounts: [home], sent: [] });
+    await open(api([home]).server);
     const said = page.getByRole("status").filter({ hasText: "ana@home.example:" });
     const check = page.getByRole("button", { name: "Check now ana@home.example" });
 
@@ -348,7 +253,14 @@ describe("Connected accounts", () => {
   });
 
   it("says a check started moments ago in words when it is refused for that", async () => {
-    await open({ accounts: [home], throttled: true, sent: [] });
+    const { server } = api([home]);
+    server.on("POST", "/api/v0/connected-accounts/{id}/sync", () =>
+      problem(tooManyRequests, "/api/v0/problems/sync-throttled", {
+        detail: "Requested moments ago.",
+        retryAfter: 12,
+      }),
+    );
+    await open(server);
 
     await userEvent.click(page.getByRole("button", { name: "Check now ana@home.example" }));
 
@@ -358,7 +270,7 @@ describe("Connected accounts", () => {
   });
 
   it("renames in place, then gives focus back to the pencil", async () => {
-    await open({ accounts: [work], sent: [] });
+    await open(api([work]).server);
     const pencil = page.getByRole("button", { name: "Rename ana@work.example" });
 
     await userEvent.click(pencil);
@@ -378,8 +290,8 @@ describe("Connected accounts", () => {
   });
 
   it("disconnects after asking, then moves focus to the next account", async () => {
-    const server: Server = { accounts: [work, home], sent: [] };
-    await open(server);
+    const state = api([work, home]);
+    await open(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
@@ -389,16 +301,25 @@ describe("Connected accounts", () => {
     // double-click of the dialog opening.
     await userEvent.keyboard("{Tab}{Enter}");
 
-    await expect.poll(() => server.sent).toContain("DELETE /api/v0/connected-accounts/1");
+    await expect
+      .poll(() => sent(state.server.requests))
+      .toContain("DELETE /api/v0/connected-accounts/1");
     await expect.element(page.getByText("Work is disconnected.")).toBeVisible();
     await expect
       .element(page.getByRole("button", { name: "Rename ana@home.example" }))
       .toHaveFocus();
-    expect(server.accounts.map((a) => a.id)).toEqual([2]);
+    expect(state.accounts.map((a) => a.id)).toEqual([2]);
   });
 
   it("says an account was already disconnected when the server no longer has it", async () => {
-    await open({ accounts: [work], gone: true, sent: [] });
+    const state = api([work]);
+    // Another tab disconnected it since the list was read: the server
+    // removes it and says it was not there.
+    state.server.on("DELETE", "/api/v0/connected-accounts/{id}", async (_, earlier) => {
+      await earlier();
+      return accountGone();
+    });
+    await open(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     await expect.element(page.getByRole("alertdialog")).toBeVisible();
@@ -411,7 +332,7 @@ describe("Connected accounts", () => {
 
   it("reports Google's return as a problem to fix, and drops it from the address", async () => {
     const { router } = await open(
-      { accounts: [], sent: [] },
+      api([]).server,
       "/settings/connected-accounts?outcome=gmail-not-granted",
     );
 
@@ -422,8 +343,9 @@ describe("Connected accounts", () => {
   });
 
   it("keeps the list and says so when a refresh fails", async () => {
-    const server: Server = { accounts: [home], readsFailFrom: 1, sent: [] };
-    const { client } = await open(server);
+    const state = api([home]);
+    const { client } = await open(state.server);
+    state.server.on("GET", "/api/v0/connected-accounts", serverFault);
 
     void client.refetchQueries();
 
@@ -435,65 +357,64 @@ describe("Connected accounts", () => {
       .toBeVisible();
   });
 
-  it("opens sign-in when the session has ended", async () => {
-    const server: Server = { accounts: [home], sent: [] };
-    await open(server);
-    server.ended = true;
-
-    await userEvent.click(page.getByRole("button", { name: "Check now ana@home.example" }));
-
-    await expect.element(page.getByText("Sign in")).toBeVisible();
-  });
-
-  it("returns here after sign-in when a refresh finds the session ended", async () => {
-    const server: Server = { accounts: [home], sent: [] };
-    const { router, client } = await open(server);
-    server.ended = true;
-
-    // The page and the frame's banner both read the list, so both see the
-    // 401; sign-in must still return to the page.
-    void client.refetchQueries();
-
-    await expect.element(page.getByText("Sign in")).toBeVisible();
-    expect(router.state.location.pathname).toBe("/sign-in");
-    expect(router.state.location.search).toEqual({ redirect: "/settings/connected-accounts" });
-  });
-
   it.each([
     ["the list faults, then the session ends", fault, unauthorized],
     ["the session ends, then the list faults", unauthorized, fault],
   ])("opens sign-in when one read ends the session: %s", async (_, list, providers) => {
     const answered = held();
-    const server: Server = {
-      accounts: [home],
-      listStatus: list,
-      providersStatus: providers,
-      holdProviders: answered.until,
-      sent: [],
-    };
+    const frameRead = held();
+    const { server } = api([home]);
+    // The frame's own read of the list, once it draws, waits.
+    server.on("GET", "/api/v0/connected-accounts", async () => {
+      await frameRead.promise;
+      return refuse(unauthorized);
+    });
+    server.once("GET", "/api/v0/connected-accounts", () => refuse(list));
+    server.on("GET", "/api/v0/connected-accounts/providers", async () => {
+      await answered.promise;
+      return refuse(providers);
+    });
     const opening = open(server, "/settings/connected-accounts", false);
     // The providers answer once the list has.
-    await expect.poll(() => server.sent).toContain(`GET ${listPath}`);
-    answered.release();
-    await opening;
+    await expect.poll(() => sent(server.requests)).toContain(`GET ${listPath}`);
+    answered.resolve();
+    const { router } = await opening;
 
-    await expect.element(page.getByText("Sign in")).toBeVisible();
+    // The page says the session ended, not that a read failed.
+    await expect.element(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
+    await expect
+      .element(page.getByRole("link", { name: "Sign in" }))
+      .toHaveAttribute("href", "/sign-in?redirect=%2Fsettings%2Fconnected-accounts");
+
+    // The frame's read finds the session ended too, on a page that has
+    // drawn, so the rule opens sign-in.
+    server.session = undefined;
+    frameRead.resolve();
+    await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
+    expect(router.state.location.pathname).toBe("/sign-in");
+    expect(router.state.location.search).toEqual({ redirect: "/settings/connected-accounts" });
   });
 
   it("keeps Check now's newer list when the request's own answer comes later", async () => {
     const answered = held();
-    const server: Server = { accounts: [home], holdSync: answered.until, sent: [] };
+    const { server } = api([home]);
+    // The server checks at once, and its answer waits.
+    server.on("POST", "/api/v0/connected-accounts/{id}/sync", async (_, earlier) => {
+      const answer = await earlier();
+      await answered.promise;
+      return answer;
+    });
     const { client } = await open(server);
     await expect.element(page.getByText(/13 Nov 2026/)).toBeVisible();
 
     await userEvent.click(page.getByRole("button", { name: "Check now ana@home.example" }));
-    await expect.poll(() => server.sent).toContain(`POST ${listPath}/2/sync`);
+    await expect.poll(() => sent(server.requests)).toContain(`POST ${listPath}/2/sync`);
     // A read after the check lands first; later reads fail, so nothing
     // would put the newer time back.
     await client.refetchQueries();
     await expect.element(page.getByText(/13 Nov 2026/)).not.toBeInTheDocument();
-    server.readsFailFrom = 0;
-    answered.release();
+    server.on("GET", "/api/v0/connected-accounts", serverFault);
+    answered.resolve();
 
     await expect
       .element(page.getByRole("button", { name: "Check now ana@home.example" }))
@@ -503,11 +424,10 @@ describe("Connected accounts", () => {
 
   it("stops waiting for a check after 30 seconds", async () => {
     fakeClock();
-    const reads = held();
-    const server: Server = { accounts: [home], sent: [] };
+    const { server } = api([home]);
     await open(server);
     // The list never shows the check.
-    server.hold = reads.until;
+    const release = holdReads(server);
 
     await userEvent.click(page.getByRole("button", { name: "Check now ana@home.example" }));
     await expect
@@ -522,25 +442,30 @@ describe("Connected accounts", () => {
     expect(
       page.getByRole("status").filter({ hasText: "ana@home.example:" }).elements(),
     ).toHaveLength(0);
-    reads.release();
+    release();
   });
 
   it("says when the providers can't be refreshed, and reads them again", async () => {
-    const server: Server = { accounts: [home], providersFailFrom: 1, sent: [] };
+    const { server } = api([home]);
     const { client } = await open(server);
+    // The next read fails, and those after it answer.
+    server.once("GET", "/api/v0/connected-accounts/providers", serverFault);
 
     void client.refetchQueries();
     const failure = page.getByRole("alert");
     await expect.element(failure.getByText(/^Couldn't refresh this page/)).toBeVisible();
-    server.providersFailFrom = undefined;
     await userEvent.click(failure.getByRole("button", { name: "Try again" }));
 
     await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
-    expect(server.sent.filter((sent) => sent === `GET ${listPath}/providers`)).toHaveLength(3);
+    expect(
+      sent(server.requests).filter((request) => request === `GET ${listPath}/providers`),
+    ).toHaveLength(3);
   });
 
   it("shows a failed disconnect in its dialog, where pressing again retries", async () => {
-    await open({ accounts: [work], deleteFails: true, sent: [] });
+    const { server } = api([work]);
+    server.once("DELETE", "/api/v0/connected-accounts/{id}", serverFault);
+    await open(server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
@@ -564,7 +489,7 @@ describe("Connected accounts", () => {
     // Wide enough for the dialog's buttons to sit side by side, where a
     // long label would push past its edge.
     await page.viewport(1024, 768);
-    await open({ accounts: [long], sent: [] });
+    await open(api([long]).server);
 
     await userEvent.click(page.getByRole("button", { name: /^Disconnect bartholomew/ }));
     const dialog = page.getByRole("alertdialog");
@@ -582,7 +507,14 @@ describe("Connected accounts", () => {
 
   it("holds the dialog while a disconnect is under way", async () => {
     const answered = held();
-    await open({ accounts: [work], holdDelete: answered.until, sent: [] });
+    const { server } = api([work]);
+    // The server disconnects at once, and its answer waits.
+    server.on("DELETE", "/api/v0/connected-accounts/{id}", async (_, earlier) => {
+      const answer = await earlier();
+      await answered.promise;
+      return answer;
+    });
+    await open(server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
@@ -593,25 +525,23 @@ describe("Connected accounts", () => {
     await expect.element(dialog.getByText("Disconnecting...")).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.element(dialog).toBeVisible();
-    answered.release();
+    answered.resolve();
     await expect.element(dialog).not.toBeInTheDocument();
   });
 
   it("reads the whole list again after a disconnect", async () => {
-    const reads = held();
-    const server: Server = { accounts: [work, home], sent: [] };
-    await open(server);
+    const state = api([work, home]);
+    await open(state.server);
     // The read after the disconnect waits; meanwhile another tab names the
     // other account.
-    server.hold = reads.until;
+    const release = holdReads(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     await expect.element(page.getByRole("alertdialog")).toBeVisible();
     await userEvent.keyboard("{Tab}{Enter}");
     await expect.element(page.getByText("Work is disconnected.")).toBeVisible();
-    server.accounts = server.accounts.map((a) => (a.id === home.id ? { ...a, name: "Home" } : a));
-    server.hold = undefined;
-    reads.release();
+    state.accounts = [{ ...home, name: "Home" }];
+    release();
 
     await expect
       .element(page.getByRole("listitem").getByText("Home", { exact: true }))
@@ -619,7 +549,13 @@ describe("Connected accounts", () => {
   });
 
   it("asks for a look at the list when a disconnect's answer is lost", async () => {
-    await open({ accounts: [work], loseDelete: true, sent: [] });
+    const { server } = api([work]);
+    // The server disconnects, and its answer is lost.
+    server.once("DELETE", "/api/v0/connected-accounts/{id}", async (_, earlier) => {
+      await earlier();
+      return lose();
+    });
+    await open(server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     await expect.element(page.getByRole("alertdialog")).toBeVisible();
@@ -635,7 +571,9 @@ describe("Connected accounts", () => {
 
 describe("the sync banner", () => {
   it("says syncing stopped, and who can fix it", async () => {
-    await open({ accounts: [home], syncStopped: true, sent: [] });
+    const state = api([home]);
+    state.syncStopped = true;
+    await open(state.server);
 
     await expect
       .element(
@@ -645,27 +583,29 @@ describe("the sync banner", () => {
   });
 
   it("tells an administrator where to look", async () => {
-    await open({ accounts: [home], syncStopped: true, role: "admin", sent: [] });
+    const state = api([home], { session: adminSession });
+    state.syncStopped = true;
+    await open(state.server);
 
     await expect.element(page.getByText(/Check that its worker is running\./)).toBeVisible();
   });
 
   it("follows a stop and a recovery on any signed-in page", async () => {
     fakeClock();
-    const server: Server = { accounts: [home], sent: [] };
-    await open(server, "/settings/other", false);
-    await expect.element(page.getByText("Another settings page")).toBeVisible();
+    const state = api([home]);
+    await open(state.server, "/settings/security", false);
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
     const banner = page.getByText(/stopped getting new mail/);
 
     const landmark = page.getByRole("region", { name: "Mail sync stopped" });
     await expect.element(landmark).not.toBeInTheDocument();
 
-    server.syncStopped = true;
+    state.syncStopped = true;
     await vi.advanceTimersByTimeAsync(60_000);
     await expect.element(banner).toBeVisible();
     // A landmark only while it shows.
     await expect.element(landmark).toBeVisible();
-    server.syncStopped = false;
+    state.syncStopped = false;
     await vi.advanceTimersByTimeAsync(60_000);
 
     await expect.element(banner).not.toBeInTheDocument();
