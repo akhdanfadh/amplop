@@ -1,10 +1,9 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { OutgoingMessageSummary, PlaceCount } from "@/api/generated/model";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { listedAccount, mailApi } from "@/test/mail-api";
 import { data } from "@/test/server";
@@ -37,25 +36,15 @@ function message(
   };
 }
 
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
-
 // open renders the app at the Inbox, wide, so the mail sidebar is open,
 // for a member with one account, whose Outbox read answers with messages
 // and List Places with places. It returns the app's router.
 async function open(messages: OutgoingMessageSummary[], places: PlaceCount[] = []) {
-  await page.viewport(1440, 900);
   const api = mailApi([], [listedAccount(1, "ana@example.com")]);
   api.places = places;
   api.server.on("GET", "/api/v0/outgoing-messages", () => data({ messages }));
   const router = await appRouter("/mail/inbox", api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 

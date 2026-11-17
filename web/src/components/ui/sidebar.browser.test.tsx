@@ -205,7 +205,6 @@ function LabelsFrame() {
 
 describe("Sidebar", () => {
   it("collapses to the rail and back with Ctrl+B in a wide window", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await expect.element(page.getByRole("navigation", { name: "Mail" })).toBeVisible();
     expect(navWidth()).toBe(240);
@@ -221,7 +220,6 @@ describe("Sidebar", () => {
   });
 
   it("takes Cmd+B too, but not Ctrl+Alt+B or a held key", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.keyboard("{Meta>}b{/Meta}");
     expect(state()).toBe("collapsed");
@@ -241,7 +239,6 @@ describe("Sidebar", () => {
   });
 
   it("follows the key in a non-Latin layout, the letter in a Latin one", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     // Cyrillic: the B key types "и".
     press({ key: "и", code: "KeyB", ctrlKey: true });
@@ -262,7 +259,6 @@ describe("Sidebar", () => {
   });
 
   it("keeps focus in the sidebar when the rail hides the focused part", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     const wordmark = page.getByRole("link", { name: "inbok" });
     wordmark.element().focus();
@@ -283,7 +279,6 @@ describe("Sidebar", () => {
   });
 
   it("leaves Ctrl+B to a text field and to Ctrl+Shift+B", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.click(page.getByRole("textbox", { name: "Search mail" }));
     await userEvent.keyboard("{Control>}b{/Control}");
@@ -353,7 +348,6 @@ describe("Sidebar", () => {
   });
 
   it("leaves Ctrl+B alone in an open popover", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.click(page.getByRole("button", { name: "Member menu" }));
     await expect.element(page.getByRole("dialog", { name: "Member menu" })).toBeVisible();
@@ -426,7 +420,6 @@ describe("Sidebar", () => {
   });
 
   it("marks the open item with a bar and aria-current, not bold, which means unread", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     const link = page.getByRole("link", { name: "Inbox" });
     await expect.element(link).toHaveAttribute("aria-current", "page");
@@ -442,7 +435,6 @@ describe("Sidebar", () => {
   });
 
   it("marks the current one of a set that is not a page with the bar alone", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -478,7 +470,6 @@ describe("Sidebar", () => {
   });
 
   it("keeps a nested open item's tint while hovered", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -504,7 +495,6 @@ describe("Sidebar", () => {
   });
 
   it("cuts a long name short before its count, which keeps its width", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -539,7 +529,6 @@ describe("Sidebar", () => {
   });
 
   it("names each icon in a tooltip on the rail", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.keyboard("{Control>}b{/Control}");
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
@@ -547,7 +536,6 @@ describe("Sidebar", () => {
   });
 
   it("ends a group's label with its action, which the rail hides", async () => {
-    await page.viewport(1440, 900);
     await render(<LabelsFrame />);
     const label = page.getByText("Labels").element().getBoundingClientRect();
     const action = page.getByRole("button", { name: "Add label" }).element();
@@ -563,7 +551,6 @@ describe("Sidebar", () => {
   });
 
   it("keeps a group's items in place on the rail, its label a hairline", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     const members = page.getByRole("button", { name: "Members" }).element();
     const before = members.getBoundingClientRect().top;
@@ -577,7 +564,6 @@ describe("Sidebar", () => {
   });
 
   it("names the shortcut in the trigger's tooltip", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     // The keyboard reaches the trigger after the wordmark; focus opens its
     // tooltip.
@@ -655,7 +641,6 @@ describe("Sidebar", () => {
   });
 
   it("shows an open item's detail on hover, and its name on the rail", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     // React Aria shows tooltips on hover once the pointer is in use.
     await userEvent.click(page.getByText("The list"));
@@ -669,7 +654,6 @@ describe("Sidebar", () => {
   });
 
   it("shows a sub item's detail on hover", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">

@@ -1,24 +1,14 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { shortcutModifier } from "@/lib/shortcut";
 import { appRouter } from "@/test/app-router";
-import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
-import { data } from "@/test/server";
+import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // open renders the app wide, or width wide, at /mail/<place>/<id of
 // rows[open]>, over rows, one account's, and returns its router. A list of
@@ -40,7 +30,6 @@ async function open(
   });
   const router = await appRouter(`/mail/${place}/${rows[index].id}`, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   await expect.element(toolbar()).toBeVisible();
   return router;
 }
@@ -90,31 +79,7 @@ function hold(path: "/api/v0/conversations/actions" | "/api/v0/conversations/cha
 // withMessage makes api answer the read of row with one message, so the
 // pane offers Reply.
 function withMessage(row: ConversationRow): void {
-  api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) => {
-    if (params.id !== row.id) return earlier();
-    const message = {
-      id: "00000000-0000-4000-8000-000000000901",
-      date: row.date,
-      subject: row.subject,
-      preview: "Hello",
-      from: [{ name: "Bo Tan", address: "bo@example.com" }],
-      to: [{ name: "", address: "ana@example.com" }],
-      cc: [],
-      replyTo: [],
-      labelIds: [],
-      spam: false,
-      trash: false,
-      sent: false,
-      starred: false,
-      unread: false,
-      answers: null,
-      attachments: false,
-    };
-    return data({ conversation: row, messages: [message], providerUrl: null });
-  });
-  api.server.on("GET", "/api/v0/messages/{id}/content", () =>
-    data({ remote: "none", attachments: [], bodies: [] }),
-  );
+  api.messages[row.id] = [message(row)];
 }
 
 // press sends a key press to target, as from the keyboard, and returns
@@ -349,10 +314,8 @@ describe("the reading pane's actions", () => {
     // e.g. Settings, then Back to mail, a link to the conversation.
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-    await page.viewport(1440, 900);
     const router = await appRouter("/mail/starred", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await router.navigate({
       to: "/mail/$place/$conversationId",
       params: { place: "inbox", conversationId: rows[0].id },
@@ -367,10 +330,8 @@ describe("the reading pane's actions", () => {
   it("goes back through history to the list whose row opened the conversation", async () => {
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-    await page.viewport(1440, 900);
     const router = await appRouter("/mail/inbox", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await userEvent.click(list().getByRole("row", { name: /Subject 2/ }));
     await expect.element(toolbar()).toBeVisible();
 
@@ -385,10 +346,8 @@ describe("the reading pane's actions", () => {
     // Another page, then the first conversation by its address.
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-    await page.viewport(1440, 900);
     const router = await appRouter("/mail/starred", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await router.navigate({
       to: "/mail/$place/$conversationId",
       params: { place: "inbox", conversationId: rows[0].id },
@@ -621,9 +580,9 @@ describe("the Undo bar's keys", () => {
     }
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }).last());
-    const message = page.getByRole("textbox", { name: "Message" });
-    await expect.element(message).toHaveFocus();
-    expect(press(message.element(), ctrlZ)).toBe(false);
+    const editor = page.getByRole("textbox", { name: "Message" });
+    await expect.element(editor).toHaveFocus();
+    expect(press(editor.element(), ctrlZ)).toBe(false);
 
     expect(api.actions.map((a) => a.action)).toEqual(["archive"]);
     await expect.element(bar()).toBeVisible();

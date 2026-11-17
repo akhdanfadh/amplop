@@ -46,28 +46,19 @@ async function open(api: TotpApi, start = "/settings/security/two-factor") {
 
 describe("two-factor setup", () => {
   it("links the QR code's address on a narrow page, not on a wide one with a mouse", async () => {
-    // The tests after this one keep the size this one started with, even
-    // when it fails partway.
-    const { innerWidth, innerHeight } = window;
-    try {
-      await page.viewport(390, 844);
-      await open(off());
-      await toQr();
-      // Hidden links leave the accessibility tree, so the locator includes them.
-      const addToApp = page.getByRole("link", {
-        name: "Add to authenticator app",
-        includeHidden: true,
-      });
-      await expect.element(addToApp).toBeVisible();
-      await expect
-        .element(addToApp)
-        .toHaveAttribute("href", expect.stringMatching(/^otpauth:\/\//));
+    await page.viewport(390, 844);
+    await open(off());
+    await toQr();
+    // Hidden links leave the accessibility tree, so the locator includes them.
+    const addToApp = page.getByRole("link", {
+      name: "Add to authenticator app",
+      includeHidden: true,
+    });
+    await expect.element(addToApp).toBeVisible();
+    await expect.element(addToApp).toHaveAttribute("href", expect.stringMatching(/^otpauth:\/\//));
 
-      await page.viewport(1440, 900);
-      await expect.element(addToApp).not.toBeVisible();
-    } finally {
-      await page.viewport(innerWidth, innerHeight);
-    }
+    await page.viewport(1440, 900);
+    await expect.element(addToApp).not.toBeVisible();
   });
 
   it("asks for the password, shows the QR code and the codes, and turns on at I've saved", async () => {

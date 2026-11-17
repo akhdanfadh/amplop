@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { localStore } from "./local-store";
 
 afterEach(() => {
+  // The browser's own Storage again, before the setup's cleanup clears it.
   vi.restoreAllMocks();
-  localStorage.clear();
 });
 
 describe("localStore", () => {

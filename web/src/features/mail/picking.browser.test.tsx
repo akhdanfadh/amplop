@@ -1,23 +1,16 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
 
-afterEach(async () => {
+afterEach(() => {
   gated = false;
   waiting = [];
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
 });
 
 // Whether open's actions wait to be answered, and the ones waiting, each
@@ -39,7 +32,6 @@ async function open(
   });
   const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   await expect.element(list()).toBeVisible();
   return router;
 }

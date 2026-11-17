@@ -112,7 +112,6 @@ function systemEmailReads(server: Server): number {
 
 afterEach(() => {
   systemEmail = "none";
-  onlineManager.setOnline(true);
   focusManager.setFocused(undefined);
 });
 

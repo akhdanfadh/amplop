@@ -1,29 +1,22 @@
-import { QueryClient } from "@tanstack/react-query";
 import { createLiveQueryCollection } from "@tanstack/react-db";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { getListPlacesQueryKey } from "@/api/generated/inbok";
 import type { PlaceCount } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { testQueryClient } from "@/test/query-client";
+import { data, held } from "@/test/server";
 import { runAction, type ActionMail } from "./actions";
 import { mailData, placeKey, refreshNewest, toConversation } from "./conversations";
 import { placeWhere } from "./rules";
-
-let current: QueryClient | undefined;
-
-afterEach(() => {
-  if (current) clearAccountCache(current);
-  current = undefined;
-});
 
 const inbox: PlaceCount = { accountId: 1, name: null, parent: null, place: "inbox", unread: 1 };
 
 // openInbox serves api and returns the mail of a client with an open
 // Inbox list and the places read, as a mail page has them.
 async function openInbox(api: MailApi): Promise<ActionMail> {
-  vi.stubGlobal("fetch", vi.fn(api.fetch));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  current = client;
+  api.server.install();
+  const client = testQueryClient();
   const { conversations, placeCounts } = mailData(client);
   const list = createLiveQueryCollection((q) =>
     q
@@ -44,21 +37,15 @@ describe("runAction", () => {
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     const mail = await openInbox(api);
     // The refresh reads the conversation unread, and answers once let go.
-    let answerRefresh: (() => void) | undefined;
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.includes("/conversations?")) return fetch(input, init);
-      const before = Response.json({ data: { conversations: [{ ...row, unread: true }] } });
-      return new Promise((done) => {
-        answerRefresh = () => done(before);
-      });
-    };
-    vi.stubGlobal("fetch", vi.fn(api.fetch));
+    const refresh = held();
+    api.server.on("GET", "/api/v0/conversations", async () => {
+      await refresh.promise;
+      return data({ conversations: [{ ...row, unread: true }] });
+    });
     const refreshed = refreshNewest(mail.client);
 
     await runAction(mail, { action: "read", ids: [row.id] });
-    answerRefresh?.();
+    refresh.resolve();
     await refreshed;
 
     expect(mail.conversations.get(row.id)?.unread).toBe(false);
@@ -108,21 +95,15 @@ describe("runAction", () => {
     api.placesAfter = [{ ...inbox, unread: 0 }];
     const mail = await openInbox(api);
     // The read gives the count before the action, and answers once let go.
-    let answerRead: (() => void) | undefined;
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.endsWith("/places")) return fetch(input, init);
-      const before = Response.json({ data: { places: [inbox] } });
-      return new Promise((done) => {
-        answerRead = () => done(before);
-      });
-    };
-    vi.stubGlobal("fetch", vi.fn(api.fetch));
+    const counts = held();
+    api.server.on("GET", "/api/v0/places", async () => {
+      await counts.promise;
+      return data({ places: [inbox] });
+    });
     const read = mail.client.refetchQueries({ queryKey: getListPlacesQueryKey() });
 
     await runAction(mail, { action: "read", ids: [row.id] });
-    answerRead?.();
+    counts.resolve();
     await read;
 
     expect(mail.placeCounts.get(placeKey(1, "inbox"))?.unread).toBe(0);
@@ -153,14 +134,13 @@ describe("runAction", () => {
     const mail = await openInbox(api);
     // Each action is applied at once, and its answer waits to be let go.
     const answers: (() => void)[] = [];
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.includes("/conversations/actions")) return fetch(input, init);
-      const answer = await fetch(input, init);
-      return new Promise((done) => answers.push(() => done(answer)));
-    };
-    vi.stubGlobal("fetch", vi.fn(api.fetch));
+    api.server.on("POST", "/api/v0/conversations/actions", async (_asked, earlier) => {
+      const answer = await earlier();
+      const wait = held();
+      answers.push(wait.resolve);
+      await wait.promise;
+      return answer;
+    });
 
     const first = runAction(mail, { action: "read", ids: [rows[0].id] });
     await vi.waitFor(() => expect(answers).toHaveLength(1));
@@ -219,19 +199,16 @@ describe("runAction", () => {
     api.refuse = { [row.id]: "needs-reconnect" };
     const mail = await openInbox(api);
     // The first action's answer waits to be let go.
-    let answerFirst: (() => void) | undefined;
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.includes("/conversations/actions") || answerFirst) return fetch(input, init);
-      const answer = await fetch(input, init);
-      return new Promise((done) => {
-        answerFirst = () => done(answer);
-      });
-    };
-    vi.stubGlobal("fetch", vi.fn(api.fetch));
+    const answerFirst = held();
+    let applied = false;
+    api.server.once("POST", "/api/v0/conversations/actions", async (_asked, earlier) => {
+      const answer = await earlier();
+      applied = true;
+      await answerFirst.promise;
+      return answer;
+    });
     const first = runAction(mail, { action: "star", ids: [row.id] });
-    await vi.waitFor(() => expect(answerFirst).toBeDefined());
+    await vi.waitFor(() => expect(applied).toBe(true));
     // Waits for the first's answer.
     const second = runAction(mail, { action: "unstar", ids: [row.id] });
 
@@ -242,7 +219,7 @@ describe("runAction", () => {
     const { placeCounts } = mailData(mail.client);
     placeCounts.subscribeChanges(() => {});
     await placeCounts.preload();
-    answerFirst?.();
+    answerFirst.resolve();
     await Promise.allSettled([first, second]);
 
     expect(mail.client.getQueryData(getListPlacesQueryKey())).toEqual({

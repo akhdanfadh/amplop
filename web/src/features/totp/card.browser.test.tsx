@@ -58,26 +58,19 @@ describe("two-factor setup card", () => {
   });
 
   it("names the account and links the QR code's address on a narrow page only", async () => {
-    // The tests after this one keep the size this one started with, even
-    // when it fails partway.
-    const { innerWidth, innerHeight } = window;
-    try {
-      await page.viewport(390, 844);
-      await openCard(off("admin"));
-      await expect.element(page.getByText("ana@example.com")).toBeVisible();
-      await toQr();
-      // Hidden links leave the accessibility tree, so the locator includes them.
-      const addToApp = page.getByRole("link", {
-        name: "Add to authenticator app",
-        includeHidden: true,
-      });
-      await expect.element(addToApp).toBeVisible();
+    await page.viewport(390, 844);
+    await openCard(off("admin"));
+    await expect.element(page.getByText("ana@example.com")).toBeVisible();
+    await toQr();
+    // Hidden links leave the accessibility tree, so the locator includes them.
+    const addToApp = page.getByRole("link", {
+      name: "Add to authenticator app",
+      includeHidden: true,
+    });
+    await expect.element(addToApp).toBeVisible();
 
-      await page.viewport(1440, 900);
-      await expect.element(addToApp).not.toBeVisible();
-    } finally {
-      await page.viewport(innerWidth, innerHeight);
-    }
+    await page.viewport(1440, 900);
+    await expect.element(addToApp).not.toBeVisible();
   });
 
   it("stays on the card after Cancel setup and says to remove the app's entry", async () => {

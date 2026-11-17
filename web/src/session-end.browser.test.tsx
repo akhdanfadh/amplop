@@ -1,32 +1,17 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
-import type {
-  ConversationMessage,
-  ConversationRow,
-  ListedSessions,
-  TotpStatus,
-} from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { render } from "vitest-browser-react";
+import type { ConversationRow, ListedSessions, TotpStatus } from "@/api/generated/model";
 import { refreshNewest } from "@/features/mail/conversations";
 import { appRouter } from "@/test/app-router";
-import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 import { data, fakeServer, memberSession } from "@/test/server";
 
 // The tests of the one rule for a session that ends on an open page
 // (watchSessionEnd, web/README.md "Routes"), through the app's own pages.
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 const twoFactorOff: TotpStatus = { status: "off", backupCodesLeft: 0, backupCodesWaiting: false };
 
@@ -45,43 +30,14 @@ const browsers: ListedSessions = {
   ],
 };
 
-// The one message of row, from Bo, for the reply to answer.
-function message(row: ConversationRow): ConversationMessage {
-  return {
-    id: "00000000-0000-4000-8000-000000000901",
-    date: row.date,
-    subject: row.subject,
-    preview: "Hello",
-    from: [{ name: "Bo Tan", address: "bo@example.com" }],
-    to: [{ name: "", address: "ana@example.com" }],
-    cc: [],
-    replyTo: [],
-    labelIds: [],
-    spam: false,
-    trash: false,
-    sent: false,
-    starred: false,
-    unread: false,
-    answers: null,
-    attachments: false,
-  };
-}
-
 // open renders the app at address, width wide, over row and one account,
 // with row's message and its content, and returns its router.
 async function open(address: string, row: ConversationRow, width = 1440) {
   await page.viewport(width, 900);
   api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-  api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
-    params.id === row.id
-      ? data({ conversation: row, messages: [message(row)], providerUrl: null })
-      : earlier(),
-  );
-  api.server.on("GET", "/api/v0/messages/{id}/content", () =>
-    data({ remote: "none", attachments: [], bodies: [] }),
-  );
+  // The one message of row, from Bo, for the reply to answer.
+  api.messages[row.id] = [message(row)];
   const router = await appRouter(address, api.server);
-  current = router;
   await render(<RouterProvider router={router} />);
   return router;
 }
@@ -214,15 +170,15 @@ describe("an ended session", () => {
     // Security's own reads: two-factor authentication off, one browser.
     server.on("GET", "/api/v0/totp", () => data(twoFactorOff));
     server.on("GET", "/api/v0/sessions", () => data(browsers));
-    current = await appRouter("/settings/security", server);
-    await render(<RouterProvider router={current} />);
+    const router = await appRouter("/settings/security", server);
+    await render(<RouterProvider router={router} />);
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
 
     server.session = undefined;
-    await current.options.context.queryClient.refetchQueries({ type: "active" });
+    await router.options.context.queryClient.refetchQueries({ type: "active" });
 
     await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
-    expect(current.state.location.search).toEqual({ redirect: "/settings/security" });
+    expect(router.state.location.search).toEqual({ redirect: "/settings/security" });
   });
 
   it("opens sign-in from the Outbox, which says why and returns there", async () => {

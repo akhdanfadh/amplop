@@ -149,7 +149,6 @@ async function show(message: AnsweredMessage = answered) {
 
 describe("ConversationReply", () => {
   it("offers Reply all only when someone else received the message", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show({ ...answered, to: [{ name: "", address: "studio@example.com" }] });
 
@@ -158,7 +157,6 @@ describe("ConversationReply", () => {
   });
 
   it("opens from the receiving account, to the sender, with focus in the message", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show();
 
@@ -184,7 +182,6 @@ describe("ConversationReply", () => {
   });
 
   it("sends with Ctrl+Enter, with a key, and shows how the send goes", async () => {
-    await page.viewport(1440, 900);
     const server = serve({ statuses: [saved("sending"), saved("sent")] });
     await show();
 
@@ -209,7 +206,6 @@ describe("ConversationReply", () => {
   });
 
   it("names the send shortcut in Send's tooltip, which describes the button", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show();
 
@@ -226,7 +222,6 @@ describe("ConversationReply", () => {
   });
 
   it("keeps the typed text when the answered message was deleted", async () => {
-    await page.viewport(1440, 900);
     serve({
       reply: () =>
         problem(notFound, "/api/v0/problems/message-not-found", {
@@ -245,7 +240,6 @@ describe("ConversationReply", () => {
   });
 
   it("asks before discarding typed text, then returns focus to Reply", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show();
 
@@ -265,7 +259,6 @@ describe("ConversationReply", () => {
   // Discard then drops only the editor: the reply may already be on its
   // way, which the member should know before the editor goes.
   it("asks before discarding a reply an unanswered send may have saved, even unedited", async () => {
-    await page.viewport(1440, 900);
     serve({
       reply: () => data(saved("failed", "refused"), created),
       statuses: [saved("failed", "refused")],
@@ -299,7 +292,6 @@ describe("ConversationReply", () => {
   });
 
   it("discards an untouched editor at once", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show();
 
@@ -311,7 +303,6 @@ describe("ConversationReply", () => {
   });
 
   it("says when the reply goes from an account that didn't receive the message", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show();
 
@@ -329,7 +320,6 @@ describe("ConversationReply", () => {
   });
 
   it("names each From account by its address and the name the member chose", async () => {
-    await page.viewport(1440, 900);
     serve({ accounts: [{ ...studio, name: "Studio" }, personal] });
     await show();
 
@@ -362,7 +352,6 @@ describe("ConversationReply", () => {
   });
 
   it("adds a Bcc row on demand, with focus in it", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show();
 
@@ -376,7 +365,6 @@ describe("ConversationReply", () => {
   });
 
   it("asks for an account when the receiving one needs reconnecting", async () => {
-    await page.viewport(1440, 900);
     serve({
       accounts: [
         {
@@ -401,7 +389,6 @@ describe("ConversationReply", () => {
   });
 
   it("says the accounts can't send yet when the receiving one is usable but can't", async () => {
-    await page.viewport(1440, 900);
     // As when no Google client is set up: usable, yet without send.
     const cannotSend = { ...studio, allowedActions: ["rename" as const, "disconnect" as const] };
     serve({ accounts: [cannotSend, { ...personal, allowedActions: cannotSend.allowedActions }] });
@@ -421,7 +408,6 @@ describe("ConversationReply", () => {
   });
 
   it("sends a refused reply again with the member's edits, from its own account", async () => {
-    await page.viewport(1440, 900);
     const server = serve({
       reply: () => data(saved("failed", "refused"), created),
       statuses: [saved("failed", "refused")],
@@ -466,7 +452,6 @@ describe("ConversationReply", () => {
   });
 
   it("offers no Edit and send or Dismiss for a refused reply the API allows neither", async () => {
-    await page.viewport(1440, 900);
     const refused: OutgoingMessage = { ...saved("failed", "refused"), allowedActions: [] };
     serve({
       reply: () => data(refused, created),
@@ -516,7 +501,6 @@ describe("ConversationReply", () => {
   });
 
   it("sends with Ctrl+Enter from an address still being typed, keeping it", async () => {
-    await page.viewport(1440, 900);
     const server = serve();
     await show();
 
@@ -531,7 +515,6 @@ describe("ConversationReply", () => {
   });
 
   it("says when the status can't be read again, with Try again", async () => {
-    await page.viewport(1440, 900);
     serve({ statuses: [saved("sending")], failReadsFrom: 1 });
     await show();
 
@@ -546,7 +529,6 @@ describe("ConversationReply", () => {
   });
 
   it("answers the message it opened on, though a newer one arrives", async () => {
-    await page.viewport(1440, 900);
     const server = serve();
     await show();
 
@@ -560,7 +542,6 @@ describe("ConversationReply", () => {
   });
 
   it("moves focus to From when the server refuses the account", async () => {
-    await page.viewport(1440, 900);
     serve({
       reply: () =>
         problem(422, "/api/v0/problems/validation-error", {
@@ -577,7 +558,6 @@ describe("ConversationReply", () => {
   });
 
   it("offers no reply to a message whose ID isn't one", async () => {
-    await page.viewport(1440, 900);
     serve();
     await show({ ...answered, id: "../outgoing-messages" });
 

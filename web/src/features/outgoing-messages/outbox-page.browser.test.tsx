@@ -1,12 +1,11 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
-import { mailApi } from "@/test/mail-api";
+import { mailApi, outgoingMessage } from "@/test/mail-api";
 import { data, problem, type Server } from "@/test/server";
 import { noMessageOpen } from "./text";
 
@@ -37,25 +36,12 @@ const studio: ListedAccount = {
 const personal: ListedAccount = { ...studio, id: 8, email: "me@example.org", name: null, color: 3 };
 
 // A message Gmail took, from Studio.
-const sent: OutgoingMessage = {
+const sent = outgoingMessage({
   id: "019a0000-0000-7000-8000-0000000000a1",
-  connectedAccountId: studio.id,
-  from: studio.email,
-  to: ["ana@example.com"],
-  cc: [],
-  bcc: [],
-  subject: "Lunch",
-  body: "Noon?",
   status: "sent",
-  failure: null,
-  createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:05Z",
-  sentAgainAs: null,
-  dismissedAt: null,
   outstanding: false,
-  reply: false,
-  allowedActions: [],
-};
+});
 // A message Gmail refused, to two people and one more in Cc.
 const refused: OutgoingMessage = {
   ...sent,
@@ -193,24 +179,14 @@ function internalProblem(status: number): Response {
   return problem(status, "/api/v0/problems/internal-error", { title: "", detail: "" });
 }
 
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
 // show renders the app at path, an Outbox address, through its real routes,
 // at the window's width. It returns the router.
 async function show(path = "/mail/outbox", width = 1280) {
   await page.viewport(width, 800);
   const router = await appRouter(path, withOutbox(mailApi([], api.accounts).server));
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
-
-afterEach(async () => {
-  // Unmounted first, so no list starts reading again once its data ends.
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 describe("OutboxPage", () => {
   it("lists each message by its recipients, subject, and status", async () => {

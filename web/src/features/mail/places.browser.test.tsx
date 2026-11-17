@@ -77,7 +77,6 @@ describe("mailPage", () => {
 
 describe("MailFrame", () => {
   it("keeps the last loaded page in mail through a page not found and a visit to settings", async () => {
-    await page.viewport(1440, 900);
     const api = mailApi([], []);
     // What Security, settings' first page, reads.
     api.server.on("GET", "/api/v0/totp", () => data(twoFactorOff));

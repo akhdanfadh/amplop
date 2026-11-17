@@ -5,7 +5,7 @@ import {
   getListOutgoingMessagesQueryKey,
 } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
-import { listedAccount } from "@/test/mail-api";
+import { listedAccount, outgoingMessage } from "@/test/mail-api";
 import {
   type Asked,
   type Server,
@@ -34,25 +34,7 @@ const stale: ListedAccount = {
 };
 
 // The message the server saves.
-const message: OutgoingMessage = {
-  id: "019a0000-0000-7000-8000-0000000000bb",
-  status: "waiting",
-  failure: null,
-  from: studio.email,
-  connectedAccountId: studio.id,
-  to: ["ana@example.com"],
-  cc: [],
-  bcc: [],
-  subject: "Lunch",
-  body: "Noon?",
-  createdAt: "2026-11-16T08:00:00Z",
-  sentAt: null,
-  sentAgainAs: null,
-  dismissedAt: null,
-  outstanding: true,
-  reply: false,
-  allowedActions: [],
-};
+const message = outgoingMessage({ id: "019a0000-0000-7000-8000-0000000000bb" });
 
 // accepted is Send Message's answer once the server saved the message.
 function accepted(): Response {

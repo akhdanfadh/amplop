@@ -4,8 +4,11 @@ import {
   ConversationActionBody,
   ConversationChangesBody,
   type ConversationChange,
+  type ConversationMessage,
   type ConversationRow,
   type ListedAccount,
+  type MessageContent,
+  type OutgoingMessage,
   type PlaceCount,
   type ProblemType,
 } from "@/api/generated/model";
@@ -63,8 +66,66 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
   };
 }
 
+// message returns the one message of row, read, from Bo Tan to
+// ana@example.com, with row's date and subject, as Get Conversation lists
+// it; changes override any field.
+export function message(
+  row: ConversationRow,
+  changes: Partial<ConversationMessage> = {},
+): ConversationMessage {
+  return {
+    id: "00000000-0000-4000-8000-000000000901",
+    date: row.date,
+    subject: row.subject,
+    preview: "Hello",
+    from: [{ name: "Bo Tan", address: "bo@example.com" }],
+    to: [{ name: "", address: "ana@example.com" }],
+    cc: [],
+    replyTo: [],
+    labelIds: [],
+    spam: false,
+    trash: false,
+    sent: false,
+    starred: false,
+    unread: false,
+    answers: null,
+    attachments: false,
+    ...changes,
+  };
+}
+
+// A message's content with nothing to show, as Get Message Content
+// answers it.
+export const noContent: MessageContent = { remote: "none", attachments: [], bodies: [] };
+
+// outgoingMessage returns a message the server saved, waiting to be sent:
+// "Lunch", from studio@example.com, account 7, to ana@example.com, saved
+// at 08:00 on 16 November 2026; changes override any field.
+export function outgoingMessage(changes: Partial<OutgoingMessage> = {}): OutgoingMessage {
+  return {
+    id: "019a0000-0000-7000-8000-0000000000aa",
+    status: "waiting",
+    failure: null,
+    from: "studio@example.com",
+    connectedAccountId: 7,
+    to: ["ana@example.com"],
+    cc: [],
+    bcc: [],
+    subject: "Lunch",
+    body: "Noon?",
+    createdAt: "2026-11-16T08:00:00Z",
+    sentAt: null,
+    sentAgainAs: null,
+    dismissedAt: null,
+    outstanding: true,
+    reply: false,
+    allowedActions: [],
+    ...changes,
+  };
+}
+
 // MailApi is a fake inbok API for mail pages, its routes on server, where
-// a test adds its own, and its fetch server's: it pages conversations as
+// a test adds its own: it pages conversations as
 // List Conversations does, counts new ones, lists accounts and places, and
 // answers a signed-in session; it applies actions and changes as the
 // server's rows show them, answers each with the changes that undo it, and
@@ -90,9 +151,13 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // labelWrites records each, method and path; refuseLabel, while set,
 // refuses the next as a 422 at body.name, or with a status alone, and
 // deleteOnly, while set, deletes that many labels of a delete before it
-// fails, as a delete Gmail stopped part way does.
+// fails, as a delete Gmail stopped part way does. It answers a
+// conversation's read with the messages listed for its ID in messages,
+// none unless a test lists them, and every message's content as one with
+// nothing to show.
 export type MailApi = {
   conversations: ConversationRow[];
+  messages: Record<string, ConversationMessage[]>;
   accounts: ListedAccount[];
   places: PlaceCount[];
   placesAfter: PlaceCount[] | undefined;
@@ -114,7 +179,6 @@ export type MailApi = {
   refuseLabel: string | number | undefined;
   deleteOnly: number | undefined;
   server: Server;
-  fetch: Server["fetch"];
 };
 
 // mailApi returns a MailApi holding conversations and accounts.
@@ -122,6 +186,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
   const server = fakeServer(memberSession);
   const api: MailApi = {
     conversations,
+    messages: {},
     accounts,
     places: [],
     placesAfter: undefined,
@@ -150,7 +215,6 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
       return server.requests.map((asked) => asked.path);
     },
     server,
-    fetch: server.fetch,
   };
 
   server.on("GET", "/api/v0/conversations", ({ url }) => {
@@ -207,9 +271,10 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
   server.on("GET", "/api/v0/conversations/{id}", ({ params }) => {
     const found = api.conversations.find((c) => c.id === params.id);
     return found
-      ? data({ conversation: found, messages: [], providerUrl: null })
+      ? data({ conversation: found, messages: api.messages[found.id] ?? [], providerUrl: null })
       : problem(notFound);
   });
+  server.on("GET", "/api/v0/messages/{id}/content", () => data(noContent));
   server.on("POST", "/api/v0/connected-accounts/{id}/sync", ({ params }) => {
     const id = Number(params.id);
     const refusal = api.refuseSync[id];

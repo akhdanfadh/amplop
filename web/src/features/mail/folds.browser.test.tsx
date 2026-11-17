@@ -1,5 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { testQueryClient } from "@/test/query-client";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
 
@@ -89,11 +89,6 @@ function last(): Set<string> | null {
   const parsed: unknown = JSON.parse(text);
   return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
 }
-
-afterEach(() => {
-  sessionStorage.removeItem(tabKey);
-  localStorage.removeItem(lastKey);
-});
 
 describe("the sidebar's folds", () => {
   it("start from what this tab kept, whatever another tab chose", async () => {
@@ -237,7 +232,7 @@ describe("the sidebar's folds", () => {
 
     // Only this load's own clearing reaches its rows: once refused, they
     // live in its memory alone.
-    clearAccountCache(new QueryClient());
+    clearAccountCache(testQueryClient());
 
     await expect.poll(() => result.current.size).toBe(0);
   });

@@ -1,36 +1,20 @@
 import type { ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { describe, expect, it } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { OutgoingMessage, OutgoingMessageSummary } from "@/api/generated/model";
+import { outgoingMessage } from "@/test/mail-api";
+import { testQueryClient } from "@/test/query-client";
+import { data, fakeServer, memberSession, problem } from "@/test/server";
 import { useOutgoingMessage } from "./outbox";
 import { sendPollMs } from "./poll";
 
-const ok = 200;
 const internalError = 500;
 const serviceUnavailable = 503;
 
 // A message saved and waiting to be sent.
-const waiting: OutgoingMessage = {
-  id: "019a0000-0000-7000-8000-0000000000aa",
-  status: "waiting",
-  failure: null,
-  from: "studio@example.com",
-  connectedAccountId: 7,
-  to: ["ana@example.com"],
-  cc: [],
-  bcc: [],
-  subject: "Lunch",
-  body: "Noon?",
-  createdAt: "2026-11-16T08:00:00Z",
-  sentAt: null,
-  sentAgainAs: null,
-  dismissedAt: null,
-  outstanding: true,
-  reply: false,
-  allowedActions: [],
-};
+const waiting = outgoingMessage();
 const sending: OutgoingMessage = { ...waiting, status: "sending" };
 const sent: OutgoingMessage = { ...waiting, status: "sent", sentAt: "2026-11-16T08:00:05Z" };
 // Another message, e.g. the copy a Send again saved.
@@ -44,7 +28,7 @@ function summary({ body: _body, ...rest }: OutgoingMessage): OutgoingMessageSumm
   return rest;
 }
 
-// serve stubs the API: each read of the Outbox lists the next of outbox,
+// serve installs a fake server: each read of the Outbox lists the next of outbox,
 // the last one repeating, and each read of the message answers with the
 // next of message, the first after firstMessageMs; an entry that is a
 // number answers with that status. It returns the reads made so far.
@@ -58,34 +42,28 @@ function serve({
   firstMessageMs?: number;
 }): Reads {
   const reads: Reads = { outbox: 0, message: 0 };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(url: string) => Promise<Response>>(async (url) => {
-      const isOutbox = url === "/api/v0/outgoing-messages";
-      const answers = isOutbox ? outbox : message;
-      const answer = answers[Math.min(isOutbox ? reads.outbox : reads.message, answers.length - 1)];
-      if (isOutbox) reads.outbox++;
-      else reads.message++;
-      if (!isOutbox && reads.message === 1)
-        await new Promise((resolve) => setTimeout(resolve, firstMessageMs));
-      if (typeof answer === "number")
-        return Response.json(
-          { type: "/api/v0/problems/service-busy", status: answer, title: "", detail: "" },
-          { status: answer, headers: { "Content-Type": "application/problem+json" } },
-        );
-      return Response.json(
-        { data: Array.isArray(answer) ? { messages: answer.map(summary) } : answer },
-        { status: ok },
-      );
-    }),
-  );
+  const server = fakeServer(memberSession).install();
+  server.on("GET", "/api/v0/outgoing-messages", () => {
+    const answer = outbox[Math.min(reads.outbox++, outbox.length - 1)];
+    return typeof answer === "number" ? busy(answer) : data({ messages: answer.map(summary) });
+  });
+  server.on("GET", "/api/v0/outgoing-messages/{id}", async () => {
+    const answer = message[Math.min(reads.message++, message.length - 1)];
+    if (reads.message === 1) await new Promise((resolve) => setTimeout(resolve, firstMessageMs));
+    return typeof answer === "number" ? busy(answer) : data(answer);
+  });
   return reads;
+}
+
+// busy answers a read with status, as a busy server does.
+function busy(status: number): Response {
+  return problem(status, "/api/v0/problems/service-busy", { title: "", detail: "" });
 }
 
 // read renders useOutgoingMessage for the message. It returns the hook's
 // result and the query client.
 async function read() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = testQueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );

@@ -1,9 +1,9 @@
-import { onlineManager, type QueryClient } from "@tanstack/react-query";
+import { onlineManager } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { cdp, page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
-import { Toaster, closeToasts } from "@/components/ui/toast";
+import { Toaster } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
@@ -13,25 +13,11 @@ import { currentMail, refreshNewest } from "./conversations";
 
 const serverError = 500;
 
-// The query client of the test running, whose mail clearAccountCache
-// ends, refresh timer included.
-let current: QueryClient | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  // Unmounted first, so no list starts reading again once its mail ends.
-  await cleanup();
-  if (current) clearAccountCache(current);
-  current = undefined;
-});
-
 // open renders the app 1440 px wide at address, the Inbox when left out,
 // over api, and returns its router and its query client.
 async function open(api: MailApi, address = "/mail/inbox") {
-  await page.viewport(1440, 900);
   const router = await appRouter(address, api.server);
   const client = router.options.context.queryClient;
-  current = client;
   await render(<RouterProvider router={router} />);
   return { client, router };
 }
@@ -986,7 +972,6 @@ describe("Check for new mail", () => {
     // e.g. sign-in, has the app's toasts.
     await cleanup();
     clearAccountCache(client);
-    current = undefined;
     await render(<Toaster />);
     answer.resolve();
     await answer.promise;

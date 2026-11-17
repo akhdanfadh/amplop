@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -19,10 +19,6 @@ function Held({ pending }: { pending: boolean }) {
     />
   );
 }
-
-afterEach(async () => {
-  await page.viewport(414, 896);
-});
 
 describe("ConfirmDialog", () => {
   it("keeps its button's width while the change is saved", async () => {

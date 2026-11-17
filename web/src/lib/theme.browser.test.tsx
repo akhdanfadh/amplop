@@ -4,7 +4,6 @@ import { applyTheme, readTheme, storeTheme, themeKey, themeScript } from "./them
 const html = document.documentElement;
 
 afterEach(() => {
-  localStorage.clear();
   html.classList.remove("dark");
   document.body.replaceChildren();
 });

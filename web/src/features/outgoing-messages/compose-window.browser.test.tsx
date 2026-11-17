@@ -1,9 +1,8 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type {
-  ConversationMessage,
   ConversationRow,
   ListedAccount,
   ListedSessions,
@@ -12,7 +11,7 @@ import type {
 } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
-import { conversation, mailApi, type MailApi } from "@/test/mail-api";
+import { conversation, mailApi, message, outgoingMessage, type MailApi } from "@/test/mail-api";
 import { data, fakeServer, memberSession, problem } from "@/test/server";
 import { ComposeStore } from "./compose-store";
 import { editNote } from "./text";
@@ -41,25 +40,12 @@ const studio: ListedAccount = {
 };
 
 // The message the server saves, which Gmail has already taken.
-const saved: OutgoingMessage = {
+const saved = outgoingMessage({
   id: "019a0000-0000-7000-8000-0000000000cc",
   status: "sent",
-  failure: null,
-  from: studio.email,
-  connectedAccountId: studio.id,
-  to: ["ana@example.com"],
-  cc: [],
-  bcc: [],
-  subject: "Lunch",
-  body: "Noon?",
-  createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:01Z",
-  sentAgainAs: null,
-  dismissedAt: null,
   outstanding: false,
-  reply: false,
-  allowedActions: [],
-};
+});
 
 const twoFactorOff: TotpStatus = { status: "off", backupCodesLeft: 0, backupCodesWaiting: false };
 
@@ -77,28 +63,6 @@ const browsers: ListedSessions = {
     },
   ],
 };
-
-// message returns the one message of row, from Bo, for a reply to answer.
-function message(row: ConversationRow): ConversationMessage {
-  return {
-    id: "00000000-0000-4000-8000-000000000901",
-    date: row.date,
-    subject: row.subject,
-    preview: "Hello",
-    from: [{ name: "Bo Tan", address: "bo@example.com" }],
-    to: [{ name: "", address: "studio@example.com" }],
-    cc: [],
-    replyTo: [],
-    labelIds: [],
-    spam: false,
-    trash: false,
-    sent: false,
-    starred: false,
-    unread: false,
-    answers: null,
-    attachments: false,
-  };
-}
 
 // The API's answers as open sets them: conversation, when given, is the
 // member's one conversation, with one message; accounts are the member's; sent is
@@ -128,13 +92,6 @@ const refused: OutgoingMessage = {
 const refusedPage = `/mail/outbox/${refused.id}`;
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // open renders the app at address, the Inbox by default, with answers, by
 // default for a member whose one account is Studio, Send Message saving
@@ -143,16 +100,8 @@ async function open(address = "/mail/inbox", answers: Partial<Answers> = {}) {
   const { accounts = [studio], sent = saved, again, conversation: row } = answers;
   api = mailApi(row ? [row] : [], accounts);
   const { server } = api;
-  if (row) {
-    server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
-      params.id === row.id
-        ? data({ conversation: row, messages: [message(row)], providerUrl: null })
-        : earlier(),
-    );
-    server.on("GET", "/api/v0/messages/{id}/content", () =>
-      data({ remote: "none", attachments: [], bodies: [] }),
-    );
-  }
+  // The one message of row, from Bo to Studio, for a reply to answer.
+  if (row) api.messages[row.id] = [message(row, { to: [{ name: "", address: studio.email }] })];
   server.on(
     "GET",
     "/api/v0/outgoing-messages",
@@ -171,7 +120,6 @@ async function open(address = "/mail/inbox", answers: Partial<Answers> = {}) {
   );
   const router = await appRouter(address, server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 

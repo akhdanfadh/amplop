@@ -1,14 +1,10 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, expect, it } from "vite-plus/test";
+import { expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import { NotFound, RoutePending } from "@/components/route-states";
 import { appRouter } from "@/test/app-router";
 import { fakeServer } from "@/test/server";
-
-afterEach(async () => {
-  await cleanup();
-});
 
 // fiberKeys returns the keys React gives an element it renders, e.g.
 // "__reactFiber$x1y2", a private name with a fixed prefix.

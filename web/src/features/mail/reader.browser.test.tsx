@@ -2,10 +2,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { createLiveQueryCollection } from "@tanstack/react-db";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup } from "vitest-browser-react";
 import type { ConversationMessage, ConversationRow, PlaceCount } from "@/api/generated/model";
-import { clearAccountCache } from "@/features/auth/session-cache";
-import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 import { testQueryClient } from "@/test/query-client";
 import { data, held, problem } from "@/test/server";
 import { stubRouter } from "@/test/stub-router";
@@ -16,10 +14,7 @@ import { placeWhere } from "./rules";
 
 let current: QueryClient | undefined;
 
-afterEach(async () => {
-  await cleanup();
-  if (current) clearAccountCache(current);
-  current = undefined;
+afterEach(() => {
   // The tab's own visibility again, if a test hid it.
   Reflect.deleteProperty(document, "visibilityState");
 });
@@ -61,41 +56,18 @@ async function app(api: MailApi, id: string, opened: "from-list" | "from-link" =
 }
 
 // answer makes api answer the read of conversation id by detail, a
-// function of the read's number from 1, a message's content as one with
-// nothing to show, and everything else as before.
+// function of the read's number from 1, and everything else as before.
 function answer(api: MailApi, id: string, detail: (read: number) => Response) {
   let reads = 0;
   api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
     params.id === id ? detail(++reads) : earlier(),
   );
-  api.server.on("GET", "/api/v0/messages/{id}/content", () => data(noContent));
 }
 
-// A message's content with nothing to show, as Get Message Content
-// answers it.
-const noContent = { remote: "none", attachments: [], bodies: [] };
-
-// onlyMessage returns the one message of row, as Get Conversation reads
-// it.
+// onlyMessage returns the one message of row, unread as row is, as
+// Get Conversation reads it.
 function onlyMessage(row: ConversationRow): ConversationMessage {
-  return {
-    id: "00000000-0000-4000-8000-000000000901",
-    date: row.date,
-    subject: row.subject,
-    preview: "Hello",
-    from: [{ name: "Bo Tan", address: "bo@example.com" }],
-    to: [{ name: "", address: "ana@example.com" }],
-    cc: [],
-    replyTo: [],
-    labelIds: [],
-    spam: false,
-    trash: false,
-    sent: false,
-    starred: false,
-    unread: row.unread,
-    answers: null,
-    attachments: false,
-  };
+  return message(row, { unread: row.unread });
 }
 
 // withMessage makes api answer the read of row with its message, and
@@ -127,33 +99,7 @@ describe("Reader", () => {
   it("shows the conversation in the view, its messages once read", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-    const message: ConversationMessage = {
-      id: "00000000-0000-4000-8000-000000000901",
-      date: row.date,
-      subject: row.subject,
-      preview: "Hello",
-      from: [{ name: "Bo Tan", address: "bo@example.com" }],
-      to: [{ name: "", address: "ana@example.com" }],
-      cc: [],
-      replyTo: [],
-      labelIds: [],
-      spam: false,
-      trash: false,
-      sent: false,
-      starred: false,
-      unread: false,
-      answers: null,
-      attachments: false,
-    };
-    api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
-      params.id === row.id
-        ? data({ conversation: row, messages: [message], providerUrl: null })
-        : earlier(),
-    );
-    // The message's content, which the view reads for an open message.
-    api.server.on("GET", "/api/v0/messages/{id}/content", ({ params }, earlier) =>
-      params.id === message.id ? data(noContent) : earlier(),
-    );
+    api.messages[row.id] = [message(row)];
     await app(api, row.id);
 
     await expect.element(page.getByRole("heading", { level: 2, name: row.subject })).toHaveFocus();
@@ -206,27 +152,9 @@ describe("Reader", () => {
   it("keeps a conversation shown when a later read finds it gone", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-    const message: ConversationMessage = {
-      id: "00000000-0000-4000-8000-000000000901",
-      date: row.date,
-      subject: row.subject,
-      preview: "Hello",
-      from: [{ name: "Bo Tan", address: "bo@example.com" }],
-      to: [{ name: "", address: "ana@example.com" }],
-      cc: [],
-      replyTo: [],
-      labelIds: [],
-      spam: false,
-      trash: false,
-      sent: false,
-      starred: false,
-      unread: false,
-      answers: null,
-      attachments: false,
-    };
     answer(api, row.id, (read) =>
       read === 1
-        ? data({ conversation: row, messages: [message], providerUrl: null })
+        ? data({ conversation: row, messages: [message(row)], providerUrl: null })
         : problem(404, "/api/v0/problems/conversation-not-found"),
     );
     await app(api, row.id);

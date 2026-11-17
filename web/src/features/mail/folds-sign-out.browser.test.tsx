@@ -1,5 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
-import { afterEach, expect, it } from "vite-plus/test";
+import { testQueryClient } from "@/test/query-client";
+import { expect, it } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { accountFold, setUnfolded, useUnfolded } from "./folds";
@@ -10,17 +10,12 @@ import { accountFold, setUnfolded, useUnfolded } from "./folds";
 const tabKey = "inbok-sidebar-folds";
 const lastKey = "inbok-sidebar-last-folds";
 
-afterEach(() => {
-  sessionStorage.removeItem(tabKey);
-  localStorage.removeItem(lastKey);
-});
-
 it("ends the folds with the member's session, in this tab and for new ones", async () => {
   const { result } = await renderHook(() => useUnfolded());
   setUnfolded(accountFold(7), true);
   await expect.poll(() => [...result.current]).toEqual(["account:7"]);
 
-  clearAccountCache(new QueryClient());
+  clearAccountCache(testQueryClient());
 
   await expect.poll(() => result.current.size).toBe(0);
   expect(sessionStorage.getItem(tabKey)).toBe("{}");

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import {
   ConversationView,
@@ -81,10 +81,6 @@ function read(server: Server): string[] {
     .filter((asked) => asked.url.pathname.endsWith("/content"))
     .map((asked) => asked.params.id);
 }
-
-afterEach(async () => {
-  await page.viewport(414, 896);
-});
 
 // Harness holds the view in a box width pixels wide and 600 high, the
 // pane, with a button that removes the first message, as a sync would,

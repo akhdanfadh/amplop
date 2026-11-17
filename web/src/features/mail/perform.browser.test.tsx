@@ -1,11 +1,11 @@
-import { QueryClient } from "@tanstack/react-query";
 import { createLiveQueryCollection } from "@tanstack/react-db";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
-import { closeToasts, Toaster } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { render } from "vitest-browser-react";
+import { Toaster } from "@/components/ui/toast";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { testQueryClient } from "@/test/query-client";
+import { held } from "@/test/server";
 import type { ActionMail } from "./actions";
 import { mailData, toConversation, type Conversation } from "./conversations";
 import { perform } from "./perform";
@@ -13,41 +13,23 @@ import { placeWhere } from "./rules";
 import { UndoBar } from "./undo";
 import { labelWords, moveWords } from "./words";
 
-let current: QueryClient | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current);
-  current = undefined;
-});
-
 // Labels' ids, as List Places gives them.
 const work = "00000000-0000-4000-8000-0000000000a1";
 const travel = "00000000-0000-4000-8000-0000000000a2";
 
-// openInbox serves api, holding the answer to the held-th request to
-// Change Conversations (counting from 0) until released, and returns the
-// mail of a client with an open Inbox list, as a mail page has it, beside
-// the app's toasts.
-async function openInbox(api: MailApi, held: number) {
+// openInbox serves api, keeping the nth request to Change Conversations
+// (counting from 0) from the server until released, and returns the mail
+// of a client with an open Inbox list, as a mail page has it, beside the
+// app's toasts.
+async function openInbox(api: MailApi, nth: number) {
   let changes = 0;
-  const gate: { open?: () => void } = {};
-  const waiting = new Promise<void>((done) => {
-    gate.open = done;
+  const gate = held();
+  api.server.install();
+  api.server.on("POST", "/api/v0/conversations/changes", async (_asked, earlier) => {
+    if (changes++ === nth) await gate.promise;
+    return earlier();
   });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (new URL(url, location.href).pathname === "/api/v0/conversations/changes") {
-        if (changes++ === held) await waiting;
-      }
-      return api.fetch(input, init);
-    }),
-  );
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  current = client;
+  const client = testQueryClient();
   const { conversations, placeCounts } = mailData(client);
   const list = createLiveQueryCollection((q) =>
     q
@@ -61,7 +43,7 @@ async function openInbox(api: MailApi, held: number) {
   await Promise.all([list.preload(), placeCounts.preload()]);
   await render(<Toaster />);
   const mail: ActionMail = { client, conversations, placeCounts };
-  return { mail, release: () => gate.open?.(), sent: () => changes };
+  return { mail, release: gate.resolve, sent: () => changes };
 }
 
 // remove runs taking conversations out of labels, named names, as the
@@ -83,36 +65,27 @@ function remove(
   });
 }
 
-// holdLater holds api's answer to a request to path, the next one after
-// skip others, until release lets it go, then gives outcome: the answer,
+// holdLater keeps a request to path, the next one after skip others, from
+// api's server until release lets it go, then gives outcome: the answer,
 // or a failure; reached reports whether that request is held.
 function holdLater(
   api: MailApi,
-  path: string,
+  path: "/api/v0/conversations/actions" | "/api/v0/conversations/changes",
   outcome: "answer" | "fail",
   skip = 0,
 ): { release: () => void; reached: () => boolean } {
-  const gate: { open?: () => void } = {};
-  const waiting = new Promise<void>((done) => {
-    gate.open = done;
-  });
-  let held = false;
+  const gate = held();
+  let reached = false;
   let seen = 0;
-  const fetch = vi.mocked(globalThis.fetch).getMockImplementation();
-  if (!fetch) throw new Error("fetch is not served.");
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (!held && new URL(url, location.href).pathname === path && seen++ === skip) {
-        held = true;
-        await waiting;
-        if (outcome === "fail") api.failAction = 500;
-      }
-      return fetch(input, init);
-    }),
-  );
-  return { release: () => gate.open?.(), reached: () => held };
+  api.server.on("POST", path, async (_asked, earlier) => {
+    if (!reached && seen++ === skip) {
+      reached = true;
+      await gate.promise;
+      if (outcome === "fail") api.failAction = 500;
+    }
+    return earlier();
+  });
+  return { release: gate.resolve, reached: () => reached };
 }
 
 // moveTo returns the move of the conversation id from the Inbox to Work,

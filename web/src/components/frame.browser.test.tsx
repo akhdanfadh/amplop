@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import type { CurrentSession } from "@/api/generated/model";
 import { ComposeProvider, ComposeStore } from "@/features/outgoing-messages/compose-store";
@@ -91,10 +91,6 @@ function frame(): Promise<void> {
   );
 }
 
-afterEach(() => {
-  localStorage.clear();
-});
-
 describe("Frame", () => {
   it("gives focus to the sidebar's button when the window outgrows the open drawer", async () => {
     serve();
@@ -146,7 +142,6 @@ describe("Frame", () => {
 
   it("names the member in a tooltip on the rail, whose button opens the member menu", async () => {
     serve();
-    await page.viewport(1440, 900);
     localStorage.setItem("inbok-sidebar-open", "false");
     await show();
     const member = page.getByRole("button", { name: "Member menu, ada@example.org" });
@@ -161,7 +156,6 @@ describe("Frame", () => {
 
   it("asks nothing for a step that keeps the page's address", async () => {
     serve();
-    await page.viewport(1440, 900);
     const router = await show();
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
 
@@ -173,7 +167,6 @@ describe("Frame", () => {
 
   it("signs out to sign-in past the page's leave warning, so nothing stays on screen", async () => {
     serve();
-    await page.viewport(1440, 900);
     const router = await show();
     await userEvent.click(page.getByRole("button", { name: /ada@example.org/ }));
     await userEvent.click(page.getByRole("button", { name: "Sign out" }));
@@ -185,7 +178,6 @@ describe("Frame", () => {
 
   it("asks before signing out while the compose window holds a message", async () => {
     const server = serve();
-    await page.viewport(1440, 900);
     const compose = new ComposeStore();
     compose.open();
     compose.setLoses("typed");
@@ -201,7 +193,6 @@ describe("Frame", () => {
 
   it("says what signing out while sending means, without claiming it wasn't sent", async () => {
     serve();
-    await page.viewport(1440, 900);
     const compose = new ComposeStore();
     compose.open();
     compose.setLoses("sending");
@@ -215,7 +206,6 @@ describe("Frame", () => {
 
   it("lets F6 move between the page and the compose window", async () => {
     serve();
-    await page.viewport(1440, 900);
     const compose = new ComposeStore();
     await show({
       compose,

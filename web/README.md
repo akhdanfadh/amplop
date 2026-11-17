@@ -1270,7 +1270,13 @@ Tests sit next to the code they test, in two Vitest projects set up in
   `render` from `vitest-browser-react`; find elements with `page` and
   interact with `userEvent` from `vite-plus/test/browser/context`, which
   send real browser input. `src/test/browser-setup.ts` loads the app's
-  stylesheet first. Message bodies for the message view's frame come from
+  stylesheet first. Every browser test starts 1440 px wide and 900 high
+  (`defaultViewport` in `src/test/viewport.ts`), the wide layout with the
+  sidebar beside the content: the browser project's `browser.viewport`
+  opens the page at that size and `browser-setup.ts` sets it again before
+  each test. A test about another width sets it with `page.viewport`,
+  with the numbers it means, and puts nothing back afterwards. Message
+  bodies for the message view's frame come from
   `src/test/message-server.ts`, which serves them on the test page's
   origin with the headers the Go server's body route sends.
 
@@ -1300,7 +1306,10 @@ rule, or root component. A component that needs no router gets none:
 `render`, inside a `QueryClientProvider` when it reads the API. Either
 way the query client is `testQueryClient()` (`src/test/query-client.ts`),
 which does not try a failed read again; `stubRouter` makes one unless
-the test passes its own as `client`.
+the test passes its own as `client`. Only the transport's own tests
+(`src/api/retry.test.ts`, `timeout.test.ts`, `offline.test.ts`) build a
+`QueryClient` themselves, from the options they test, and only they and
+`transport.test.ts` stub `fetch` by hand.
 
 A page's test sits in its feature's folder, e.g.
 `features/members/page.browser.test.tsx`, or
@@ -1366,6 +1375,13 @@ Mail pages use `mailApi` (`src/test/mail-api.ts`), which holds
 conversations, accounts, and places and answers mail's operations as the
 server does, on a fake server of its own: `appRouter(address,
 api.server)`, and `api.server.on(...)` for a route of the test's own.
+Its typed factories build the values several test files need, each
+taking what varies and the fields to override: `conversation(n)`,
+`listedAccount(id, email)`, `message(row)` (the one message of a
+conversation), and `outgoingMessage()`. `api.messages[row.id] =
+[message(row)]` gives a conversation's read its messages; a message's
+content answers as `noContent`, nothing to show, unless the test adds
+its own route.
 
 Cleanup is central. Before each test Vitest puts back every stubbed
 global and every spied method (`unstubGlobals` and `restoreMocks` in
@@ -1374,7 +1390,33 @@ real timers and checks the fake server's unanswered requests. So a test
 file calls none of `vi.unstubAllGlobals()`,
 `vi.restoreAllMocks()`, or `vi.useRealTimers()`, and makes its stubs and
 spies in the test or a `beforeEach`: one made once for the file lasts
-only until its first test.
+only until its first test. The two exceptions restore a spy as their
+test ends, because something reads the real thing before the next test:
+`src/lib/local-store.browser.test.tsx` (the cleanup below clears the
+real `Storage`) and `src/root.browser.test.tsx` (React Aria rereads the
+browser's language).
+
+After each browser test `src/test/browser-setup.ts` also, in this order:
+unmounts what the test rendered; ends the member's data in every query
+client the harness made, as the end of a session does
+(`clearTabAccountData`: mail's collections, the undo bar, the folds),
+and cancels the reads still running (`endQueryClients` in
+`src/test/query-client.ts`); closes the toasts; sets the connection
+back online; and clears `localStorage` and `sessionStorage`. The harness
+knows the clients `testQueryClient()` made and the client of
+`appRouter`'s router. So a test file adds no cleanup for rendering,
+query clients, toasts, the connection, or storage, and its own
+`afterEach` holds only what no other file needs, e.g. a class it put on
+`<html>` or its own module's state. Vitest runs the hooks after a test
+in reverse order of registration: the file's own, then
+`browser-setup.ts`'s, then `setup.ts`'s, so the page is gone and its
+reads are cancelled before the unanswered requests are checked.
+
+Without a fake server installed, a browser test's `fetch` refuses a
+request for `/api/` as a lost connection, so no test reaches a real
+server through the dev proxy. Such a request comes from work a test left
+running, e.g. a navigation whose loader had yet to run when the test
+ended.
 
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:
