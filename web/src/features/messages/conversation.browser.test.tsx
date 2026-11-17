@@ -1,44 +1,22 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
 import {
   ConversationView,
   type ConversationAccount,
   type ConversationMessage,
 } from "./conversation";
-import type { ListedAccount } from "@/api/generated/model";
+import type { ListedAccount, MessageContent } from "@/api/generated/model";
 import type { MailAddress } from "@/features/outgoing-messages/reply-defaults";
-
-const ok = 200;
+import { listedAccount, mailApi } from "@/test/mail-api";
+import { type Server, data } from "@/test/server";
+import { stubRouter } from "@/test/stub-router";
 
 const account: ConversationAccount = { id: 7, name: "Work", email: "me@example.com", color: 3 };
 // The account as the accounts read lists it, for the reply editor.
 const listed: ListedAccount = {
-  id: account.id,
-  provider: "gmail",
-  email: account.email,
+  ...listedAccount(account.id, account.email, account.color),
   name: account.name,
-  color: account.color,
-  status: "usable",
-  createdAt: "2026-11-01T00:00:00Z",
-  needsReconnectSince: null,
-  allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
-  sync: {
-    status: "complete",
-    failure: null,
-    failedAt: null,
-    lastSyncedAt: "2026-11-13T08:00:00Z",
-    messagesSoFar: null,
-  },
 };
 const me: MailAddress = { name: "Me", address: "me@example.com" };
 const ana: MailAddress = { name: "Ana Lima", address: "ana@example.com" };
@@ -78,40 +56,31 @@ function thread(count: number): ConversationMessage[] {
   return Array.from({ length: count }, (_, i) => message(i + 1));
 }
 
-// The message IDs whose content the view asked for.
-let read: string[] = [];
+// content returns the content of message id as Get Message Content
+// answers it: one text body, "Body of <id>", and no attachments.
+function content(id: string): MessageContent {
+  return {
+    remote: "none",
+    attachments: [],
+    bodies: [
+      {
+        type: "text",
+        partId: "0",
+        text: `Body of ${id}`,
+        clipped: false,
+        url: `/api/v0/messages/${id}/parts/0`,
+        remoteUrl: null,
+      },
+    ],
+  };
+}
 
-beforeEach(() => {
-  read = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(input: string) => Promise<Response>>(async (input) => {
-      if (input === "/api/v0/connected-accounts")
-        return Response.json({ data: { accounts: [listed], syncStopped: false } }, { status: ok });
-      const id = /\/messages\/([^/]+)\/content/.exec(input)?.[1] ?? "";
-      read.push(id);
-      return Response.json(
-        {
-          data: {
-            remote: "none",
-            attachments: [],
-            bodies: [
-              {
-                type: "text",
-                partId: "0",
-                text: `Body of ${id}`,
-                clipped: false,
-                url: `/api/v0/messages/${id}/parts/0`,
-                remoteUrl: null,
-              },
-            ],
-          },
-        },
-        { status: ok },
-      );
-    }),
-  );
-});
+// read returns the message IDs whose content the view asked server for.
+function read(server: Server): string[] {
+  return server.requests
+    .filter((asked) => asked.url.pathname.endsWith("/content"))
+    .map((asked) => asked.params.id);
+}
 
 afterEach(async () => {
   await page.viewport(414, 896);
@@ -155,7 +124,9 @@ function Harness({
 }
 
 // show draws the view of messages in Harness, inside a router, as a page
-// places it, with what else is given.
+// places it, with what else is given, over a signed-in member's server
+// that lists the account and answers each message's content. It returns
+// the server.
 async function show(
   messages: ConversationMessage[],
   width = 700,
@@ -163,22 +134,13 @@ async function show(
   nextStart?: string,
 ) {
   await page.viewport(width + 100, 800);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRoute();
-  const conversation = createRoute({
-    getParentRoute: () => root,
-    path: "/",
-    component: () => (
-      <QueryClientProvider client={client}>
-        <Harness messages={messages} width={width} slots={slots} nextStart={nextStart} />
-      </QueryClientProvider>
-    ),
-  });
-  const router = createRouter({
-    routeTree: root.addChildren([conversation]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-  });
-  return render(<RouterProvider router={router} />);
+  const { server } = mailApi([], [listed]);
+  server.on("GET", "/api/v0/messages/{id}/content", ({ params }) => data(content(params.id)));
+  server.install();
+  await stubRouter(
+    <Harness messages={messages} width={width} slots={slots} nextStart={nextStart} />,
+  );
+  return server;
 }
 
 // middle returns how far down the window element's middle is.
@@ -200,7 +162,7 @@ describe("ConversationView", () => {
   it("opens the newest and unread messages, and counts the folded middle", async () => {
     const messages = thread(12);
     messages[5] = message(6, { unread: true });
-    await show(messages);
+    const server = await show(messages);
 
     await expect.element(page.getByText(`Body of ${messages[11].id}`)).toBeVisible();
     await expect.element(page.getByText(`Body of ${messages[5].id}`)).toBeVisible();
@@ -209,7 +171,7 @@ describe("ConversationView", () => {
     await expect.element(page.getByRole("button", { name: "3 more messages" })).toBeVisible();
     expect(page.getByRole("button", { name: /Preview/ }).all()).toHaveLength(3);
     // Only open messages load their content.
-    expect(new Set(read)).toEqual(new Set([messages[5].id, messages[11].id]));
+    expect(new Set(read(server))).toEqual(new Set([messages[5].id, messages[11].id]));
   });
 
   it("opens the message it starts at, and another it is told to start at", async () => {
