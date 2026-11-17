@@ -1,21 +1,13 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { RouterProvider } from "@tanstack/react-router";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
+import { cleanup, render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
 import type { OutgoingMessageSummary, PlaceCount } from "@/api/generated/model";
-import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
-import { Route as appRoot } from "@/routes/__root";
-import { MailNav } from "./nav";
-
-const ok = 200;
+import { clearAccountCache } from "@/features/auth/session-cache";
+import { appRouter } from "@/test/app-router";
+import { listedAccount, mailApi } from "@/test/mail-api";
+import { data } from "@/test/server";
 
 // message returns an Outbox message with status, sent again as the
 // message sentAgainAs names, if any.
@@ -45,48 +37,35 @@ function message(
   };
 }
 
-// app returns a router whose page is the mail sidebar, inside the app's
-// root, whose Outbox read answers with messages and List Places with
-// places, and the sidebar's queries.
-function app(messages: OutgoingMessageSummary[], places: PlaceCount[] = []) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(input: RequestInfo | URL) => Promise<Response>>(async (input) =>
-      (input instanceof Request ? input.url : input.toString()).includes("/api/v0/places")
-        ? Response.json({ data: { places } }, { status: ok })
-        : Response.json({ data: { messages } }, { status: ok }),
-    ),
-  );
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-    component: appRoot.options.component,
-  });
-  const home = createRoute({
-    getParentRoute: () => root,
-    path: "/",
-    component: () => (
-      <QueryClientProvider client={client}>
-        <SidebarProvider open onOpenChange={() => {}}>
-          <Sidebar label="Mail">
-            <SidebarContent>
-              <MailNav />
-            </SidebarContent>
-          </Sidebar>
-        </SidebarProvider>
-      </QueryClientProvider>
-    ),
-  });
-  const router = createRouter({
-    routeTree: root.addChildren([home]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-    context: { queryClient: client },
-  });
-  return { router, client };
+let current: Awaited<ReturnType<typeof appRouter>> | undefined;
+
+afterEach(async () => {
+  await cleanup();
+  if (current) clearAccountCache(current.options.context.queryClient);
+  current = undefined;
+});
+
+// open renders the app at the Inbox, wide, so the mail sidebar is open,
+// for a member with one account, whose Outbox read answers with messages
+// and List Places with places. It returns the app's router.
+async function open(messages: OutgoingMessageSummary[], places: PlaceCount[] = []) {
+  await page.viewport(1440, 900);
+  const api = mailApi([], [listedAccount(1, "ana@example.com")]);
+  api.places = places;
+  api.server.on("GET", "/api/v0/outgoing-messages", () => data({ messages }));
+  const router = await appRouter("/mail/inbox", api.server);
+  await render(<RouterProvider router={router} />);
+  current = router;
+  return router;
+}
+
+// nav returns the mail sidebar.
+function nav() {
+  return page.getByRole("navigation", { name: "Mail" });
 }
 
 describe("MailNav", () => {
   it("counts the Outbox's messages not sent yet, not one sent again", async () => {
-    await page.viewport(1440, 900);
     const messages = [
       message("sent", "0193c8a0-0000-7000-8000-000000000001"),
       message("waiting", "0193c8a0-0000-7000-8000-000000000002"),
@@ -99,20 +78,19 @@ describe("MailNav", () => {
         "0193c8a0-0000-7000-8000-000000000001",
       ),
     ];
-    await render(<RouterProvider router={app(messages).router} />);
+    await open(messages);
     await expect
-      .element(page.getByRole("link", { name: "Outbox 3 not sent" }))
+      .element(nav().getByRole("link", { name: "Outbox 3 not sent" }))
       .toHaveAttribute("href", "/mail/outbox");
   });
 
   // Beside Sent, where its messages go, and above the accounts' labels,
   // so its count stays in sight.
   it("lists the Outbox among the views, after Sent", async () => {
-    await page.viewport(1440, 900);
-    await render(<RouterProvider router={app([]).router} />);
-    await expect.element(page.getByRole("link", { name: /^Outbox/ })).toBeVisible();
+    await open([]);
+    await expect.element(nav().getByRole("link", { name: /^Outbox/ })).toBeVisible();
 
-    const names = page
+    const names = nav()
       .getByRole("link")
       .elements()
       .map((link) => link.textContent);
@@ -121,22 +99,20 @@ describe("MailNav", () => {
   });
 
   it("shows the Outbox without a count when every message is sent", async () => {
-    await page.viewport(1440, 900);
-    const { router, client } = app([message("sent", "0193c8a0-0000-7000-8000-000000000001")]);
-    await render(<RouterProvider router={router} />);
+    const router = await open([message("sent", "0193c8a0-0000-7000-8000-000000000001")]);
+    const client = router.options.context.queryClient;
     await expect
       .poll(() => client.getQueryState(getListOutgoingMessagesQueryKey())?.status)
       .toBe("success");
     // React draws the answer on a following frame.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const outbox = page.getByRole("link", { name: /^Outbox/ });
+    const outbox = nav().getByRole("link", { name: /^Outbox/ });
     await expect.element(outbox).toHaveAccessibleName("Outbox");
     expect(outbox.element().querySelector("[data-slot=sidebar-menu-badge]")).toBeNull();
   });
 
   it("shows every account's unread Inbox count, in the weight of unread mail", async () => {
-    await page.viewport(1440, 900);
-    const { router } = app(
+    await open(
       [],
       [
         { accountId: 1, place: "inbox", name: null, parent: null, unread: 12847 },
@@ -144,12 +120,11 @@ describe("MailNav", () => {
         { accountId: 1, place: "spam", name: null, parent: null, unread: 9 },
       ],
     );
-    await render(<RouterProvider router={router} />);
 
-    const inbox = page.getByRole("link", { name: "Inbox 12,849 unread" });
+    const inbox = nav().getByRole("link", { name: "Inbox 12,849 unread" });
     await expect.element(inbox).toBeVisible();
     await expect.element(inbox).toHaveClass(/font-semibold/);
     // Only the Inbox counts among the views.
-    await expect.element(page.getByRole("link", { name: "Spam" })).toBeVisible();
+    await expect.element(nav().getByRole("link", { name: "Spam" })).toBeVisible();
   });
 });

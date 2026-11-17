@@ -147,6 +147,13 @@ The web app reads these from the contract; keep them stable:
 - `ApiError.status` is the actual HTTP status. Its optional `problem` is
   received data; use `status` for request decisions and preserve missing
   problems as missing.
+- No test declares an app route again (its id, path, guard, loader, or a
+  component from `src/routes`). A page's test opens it through `appRouter`
+  (`web/src/test/app-router.ts`), the app's own router, and fakes only the
+  server, with `fakeServer` (`web/src/test/server.ts`); a component's test
+  renders the component alone; only a test of the router's own machinery
+  (`route-states`, the setup gate, the root) makes up routes.
+  web/README.md "Checks and tests" has the rest.
 - `src/components/ui` is our code: edit a component to pass lint. Add
   one with `make web-add-ui NAME=dialog`.
 - Before upgrading `vite-plus` or adding a Vite plugin, read the NOTE

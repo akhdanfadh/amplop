@@ -1,218 +1,91 @@
-import "@/zod-config";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render } from "vitest-browser-react";
+import { RouterProvider } from "@tanstack/react-router";
 import {
-  Outlet,
-  RouterProvider,
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { NewSystemEmailSettings, type SystemEmailSettings } from "@/api/generated/model";
-import { Route as App } from "@/routes/_app";
+  NewSystemEmailSettings,
+  type ListedSessions,
+  type SystemEmailSettings,
+  type SystemEmailTestMessageResult,
+  type TotpStatus,
+} from "@/api/generated/model";
+import { appRouter } from "@/test/app-router";
 import {
-  Route as SystemEmail,
-  systemEmailLoader,
-} from "@/routes/_app/settings/_admin/system-email";
-import { ComposeStore } from "@/features/outgoing-messages/compose-store";
-import { watchSessionEnd } from "@/features/auth/session-end";
-import { SessionEndedBanner } from "@/features/auth/session-ended-banner";
-import { RouteError } from "@/components/route-states";
+  adminSession,
+  data,
+  fakeServer,
+  held,
+  lose,
+  problem,
+  testedSystemEmail as saved,
+  type Asked,
+  type Server,
+} from "@/test/server";
 
-const ok = 200;
-const unauthorized = 401;
-const saved: SystemEmailSettings = {
-  host: "smtp.example.com",
-  port: 465,
-  security: "tls",
-  username: "inbok@example.com",
-  hasPassword: true,
-  fromAddress: "inbok@example.com",
-  fromName: "inbok",
-  testedAt: "2026-11-12T09:38:00Z",
-};
+const fault = 500;
 
-// Server is what the test API holds and how it answers: settings is what
-// is saved; ended answers every request with a 401, and readsEnded every
-// request but the session read; readsFail answers the settings read with a
-// server fault; holdTest holds the test message's answer until it settles;
-// testFails fails a test; lose drops the answer
-// to one request, e.g. "PUT /api/v0/system-email", after the server acted
-// on it; sent lists every request, e.g. "GET /api/v0/system-email".
-type Server = {
-  settings?: SystemEmailSettings;
-  ended?: boolean;
-  readsEnded?: boolean;
-  readsFail?: boolean;
-  holdTest?: Promise<void>;
-  testFails?: boolean;
-  lose?: string;
-  sent: string[];
-  bodies: unknown[];
-};
+// What Security, the page a test leaves to, reads.
+const twoFactorOn: TotpStatus = { status: "on", backupCodesLeft: 10, backupCodesWaiting: false };
+const browsers: ListedSessions = { sessions: [] };
 
-function json(data: unknown, status = ok): Response {
-  return Response.json(data, {
-    status,
-    headers: { "Content-Type": status === ok ? "application/json" : "application/problem+json" },
-  });
-}
-
-// answer answers one request as the API would, changing server.
-function answer(server: Server, method: string, path: string, body: unknown): Response {
-  if (server.ended || (server.readsEnded && path !== "/api/v0/sessions/current"))
-    return json(
-      { type: "/api/v0/problems/unauthorized", status: unauthorized, title: "", detail: "" },
-      unauthorized,
-    );
-  if (path === "/api/v0/sessions/current")
-    return json({
-      data: { email: "ana@example.com", emailVerified: true, role: "admin", totpRequired: false },
-    });
-  if (path === "/api/v0/system-email" && method === "GET")
-    return server.readsFail
-      ? json(
-          {
-            type: "/api/v0/problems/internal-error",
-            status: 500,
-            title: "Internal Server Error",
-            detail: "Something went wrong on our side. Try again in a moment.",
-          },
-          500,
-        )
-      : json({ data: { settings: server.settings } });
-  if (path === "/api/v0/system-email" && method === "PUT") {
-    const input = NewSystemEmailSettings.parse(body);
-    const { password, ...rest } = input;
-    server.settings = {
+// api returns a fake server for an administrator, which holds settings as
+// the saved system email, nothing when left out. A save replaces them,
+// untested; a test message answers test and marks them tested when it is
+// accepted, untested when not.
+function api(
+  settings?: SystemEmailSettings,
+  test: SystemEmailTestMessageResult = { status: "accepted" },
+): Server {
+  const server = fakeServer(adminSession);
+  server.on("GET", "/api/v0/system-email", () => data({ settings }));
+  server.on("PUT", "/api/v0/system-email", ({ body }) => {
+    const { password, ...rest } = NewSystemEmailSettings.parse(body);
+    settings = {
       ...rest,
       username: rest.username ?? "",
-      hasPassword: Boolean(rest.username && (password || server.settings?.hasPassword)),
+      hasPassword: Boolean(rest.username && (password || settings?.hasPassword)),
       testedAt: null,
     };
-    return json({ data: { settings: server.settings } });
-  }
-  if (path === "/api/v0/system-email/test-message") {
-    if (server.settings && !server.testFails)
-      server.settings = { ...server.settings, testedAt: "2026-11-15T10:00:00Z" };
-    else if (server.settings) server.settings = { ...server.settings, testedAt: null };
-    return json({
-      data: server.testFails ? { status: "failed", reason: "auth" } : { status: "accepted" },
-    });
-  }
-  return json({ type: "about:blank", status: 404, title: "", detail: "" }, 404);
+    return data({ settings });
+  });
+  server.on("POST", "/api/v0/system-email/test-message", () => {
+    if (settings)
+      settings = {
+        ...settings,
+        testedAt: test.status === "accepted" ? "2026-11-15T10:00:00Z" : null,
+      };
+    return data(test);
+  });
+  server.on("GET", "/api/v0/totp", () => data(twoFactorOn));
+  server.on("GET", "/api/v0/sessions", () => data(browsers));
+  return server;
 }
 
-// open renders System email in a router of its own (web/README.md "Checks
-// and tests"), under the real signed-in guard, its
-// requests answered by server, with Security and sign-in to leave to.
-// It returns the router.
+// sent lists requests as e.g. "GET /api/v0/system-email".
+const sent = (requests: Asked[]) =>
+  requests.map((request) => `${request.method} ${request.url.pathname}`);
+
+// The page open now: its router, whose reads end with the test, and its
+// server.
+let opened: { router: Awaited<ReturnType<typeof appRouter>>; server: Server } | undefined;
+
+// open renders the app at System email, its requests answered by server,
+// and returns its router.
 async function open(server: Server) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
-      async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const address = input instanceof Request ? input.url : input.toString();
-        const path = new URL(address, location.href).pathname;
-        server.sent.push(`${method} ${path}`);
-        const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-        if (body !== undefined) server.bodies.push(body);
-        if (path === "/api/v0/system-email/test-message") await server.holdTest;
-        const answered = answer(server, method, path, body);
-        if (server.lose !== `${method} ${path}`) return answered;
-        server.lose = undefined;
-        throw new TypeError("Failed to fetch");
-      },
-    ),
-  );
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  opened = queryClient;
-  const root = createRootRouteWithContext<{ queryClient: QueryClient; compose: ComposeStore }>()({
-    component: Outlet,
-  });
-  // The routes' ids match the app's, as the page's own hooks name them.
-  const app = createRoute({
-    getParentRoute: () => root,
-    id: "_app",
-    component: Outlet,
-    beforeLoad: App.options.beforeLoad,
-  });
-  // The settings frame's signed-out banner, without the rest of the frame.
-  const settings = createRoute({
-    getParentRoute: () => app,
-    path: "settings",
-    component: () => (
-      <>
-        <SessionEndedBanner place="frame" />
-        <Outlet />
-      </>
-    ),
-  });
-  // The administrator guard has its own tests; this page's are about the
-  // page.
-  const admin = createRoute({ getParentRoute: () => settings, id: "_admin", component: Outlet });
-  const router = createRouter({
-    routeTree: root.addChildren([
-      app.addChildren([
-        settings.addChildren([
-          admin.addChildren([
-            createRoute({
-              getParentRoute: () => admin,
-              path: "system-email",
-              loader: systemEmailLoader,
-              component: SystemEmail.options.component,
-            }),
-          ]),
-          createRoute({
-            getParentRoute: () => settings,
-            path: "security",
-            component: () => "Security",
-          }),
-        ]),
-      ]),
-      createRoute({ getParentRoute: () => root, path: "/sign-in", component: () => "Sign in" }),
-    ]),
-    history: createMemoryHistory({ initialEntries: ["/settings/system-email"] }),
-    // As the app's router does (router.tsx): a visit, a preloaded one too,
-    // waits for a read marked out of date.
-    defaultStaleReloadMode: "blocking",
-    defaultPreloadStaleTime: 0,
-    // As the app's router does (router.tsx): a failed read shows the
-    // router's failure view, an ended session's 401 its signed-out view.
-    defaultErrorComponent: RouteError,
-    context: { queryClient, compose: new ComposeStore() },
-  });
-  // As the app's router does (router.tsx).
-  watchSessionEnd(queryClient, router);
-  await render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
+  const router = await appRouter("/settings/system-email", server);
+  opened = { router, server };
+  await render(<RouterProvider router={router} />);
   return router;
 }
 
-// held returns a promise that settles when release is called.
-function held(): { promise: Promise<void>; release: () => void } {
-  const settle: { done?: () => void } = {};
-  const promise = new Promise<void>((done) => {
-    settle.done = done;
-  });
-  return { promise, release: () => settle.done?.() };
-}
-
-// The query client of the page open now, whose reads end with the test.
-let opened: QueryClient | undefined;
-
 afterEach(async () => {
   // A refresh still running would otherwise reach the real network once
-  // the fetch stub is gone.
-  await opened?.cancelQueries();
-  opened?.clear();
+  // the fetch stub is gone: the page goes first, then its reads.
+  await cleanup();
+  const queryClient = opened?.router.options.context.queryClient;
+  await queryClient?.cancelQueries();
+  queryClient?.clear();
+  opened = undefined;
 });
 
 const button = (name: string) => page.getByRole("button", { name, exact: true });
@@ -221,7 +94,7 @@ const summary = () => page.getByRole("definition");
 
 describe("System email", () => {
   it("shows the saved settings and opens the form in their place", async () => {
-    await open({ settings: saved, sent: [], bodies: [] });
+    await open(api(saved));
 
     await expect.element(page.getByText("Tested", { exact: true })).toBeVisible();
     await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
@@ -241,17 +114,19 @@ describe("System email", () => {
   });
 
   it("reads the settings once as it opens", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     await open(server);
     await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
 
     // The page uses what its loader just read rather than reading it again.
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-    expect(server.sent.filter((request) => request === "GET /api/v0/system-email")).toHaveLength(1);
+    expect(
+      sent(server.requests).filter((request) => request === "GET /api/v0/system-email"),
+    ).toHaveLength(1);
   });
 
   it("saves only, closes the form, and gives focus back to Edit settings", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     await open(server);
     await userEvent.click(button("Edit settings"));
 
@@ -265,14 +140,14 @@ describe("System email", () => {
       .toBeVisible();
     await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
     // The port goes as a number, the password left out keeps the saved one.
-    expect(server.bodies).toEqual([
+    expect(server.requests.flatMap(({ body }) => (body === undefined ? [] : [body]))).toEqual([
       expect.objectContaining({ port: 465, password: "", fromName: "inbok team" }),
     ]);
-    expect(server.sent).not.toContain("POST /api/v0/system-email/test-message");
+    expect(sent(server.requests)).not.toContain("POST /api/v0/system-email/test-message");
   });
 
   it("saves and sends a test, from the button or Enter in a field", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     await open(server);
     await userEvent.click(button("Edit settings"));
 
@@ -286,7 +161,7 @@ describe("System email", () => {
       )
       .toBeVisible();
     await expect.element(page.getByText("Tested", { exact: true })).toBeVisible();
-    expect(server.sent.filter((request) => !request.startsWith("GET"))).toEqual([
+    expect(sent(server.requests).filter((request) => !request.startsWith("GET"))).toEqual([
       "PUT /api/v0/system-email",
       "POST /api/v0/system-email/test-message",
     ]);
@@ -294,7 +169,7 @@ describe("System email", () => {
   });
 
   it("moves focus to a refused Security choice, which names its error", async () => {
-    await open({ settings: saved, sent: [], bodies: [] });
+    await open(api(saved));
     await userEvent.click(button("Edit settings"));
 
     await userEvent.click(page.getByText("None", { exact: true }));
@@ -310,7 +185,7 @@ describe("System email", () => {
   });
 
   it("moves focus to an invalid recipient when Save and send test cannot send", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     await open(server);
     await userEvent.click(button("Edit settings"));
     await userEvent.fill(field("Recipient"), "ana");
@@ -319,21 +194,22 @@ describe("System email", () => {
 
     await expect.element(field("Recipient")).toHaveFocus();
     await expect.element(field("Recipient")).toHaveAttribute("aria-invalid", "true");
-    expect(server.sent).not.toContain("POST /api/v0/system-email/test-message");
+    expect(sent(server.requests)).not.toContain("POST /api/v0/system-email/test-message");
   });
 
   it("keeps the form open after a lost answer, and Cancel shows what was saved", async () => {
-    const server: Server = {
-      settings: saved,
-      lose: "PUT /api/v0/system-email",
-      sent: [],
-      bodies: [],
-    };
+    const server = api(saved);
+    // The server saves, and its answer is lost.
+    server.once("PUT", "/api/v0/system-email", async (_, earlier) => {
+      await earlier();
+      return lose();
+    });
     await open(server);
     await userEvent.click(button("Edit settings"));
 
     await userEvent.fill(field("From name"), "inbok team");
-    const reads = () => server.sent.filter((request) => request === "GET /api/v0/system-email");
+    const reads = () =>
+      sent(server.requests).filter((request) => request === "GET /api/v0/system-email");
     const readsBefore = reads().length;
     await userEvent.click(button("Save and send test"));
 
@@ -344,7 +220,7 @@ describe("System email", () => {
     await expect.element(button("Save and send test")).toBeEnabled();
     // The page reads what is saved now, and sends no test.
     await vi.waitFor(() => expect(reads()).toHaveLength(readsBefore + 1));
-    expect(server.sent).not.toContain("POST /api/v0/system-email/test-message");
+    expect(sent(server.requests)).not.toContain("POST /api/v0/system-email/test-message");
 
     await userEvent.click(button("Cancel"));
 
@@ -353,7 +229,7 @@ describe("System email", () => {
   });
 
   it("moves a usual port with Security and keeps a typed one", async () => {
-    await open({ settings: saved, sent: [], bodies: [] });
+    await open(api(saved));
     await userEvent.click(button("Edit settings"));
 
     await userEvent.click(page.getByText("STARTTLS", { exact: true }));
@@ -371,7 +247,7 @@ describe("System email", () => {
   });
 
   it("opens the form at once when nothing is saved, with nothing to cancel", async () => {
-    await open({ sent: [], bodies: [] });
+    await open(api());
 
     await expect.element(page.getByText("Not set up", { exact: true })).toBeVisible();
     await expect.element(field("Server")).toBeVisible();
@@ -384,7 +260,7 @@ describe("System email", () => {
   });
 
   it("asks before leaving with changes, and not after typing them back", async () => {
-    const router = await open({ settings: saved, sent: [], bodies: [] });
+    const router = await open(api(saved));
     await userEvent.click(button("Edit settings"));
 
     await userEvent.fill(field("From name"), "inbok team");
@@ -397,16 +273,16 @@ describe("System email", () => {
 
     await userEvent.fill(field("From name"), "inbok");
     await router.navigate({ to: "/settings/security" });
-    await expect.element(page.getByText("Security", { exact: true })).toBeVisible();
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
   });
 
   it("keeps typed settings when the session ends on a save, and signs in back here", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     const router = await open(server);
     await userEvent.click(button("Edit settings"));
     await userEvent.fill(field("From name"), "inbok team");
 
-    server.ended = true;
+    server.session = undefined;
     await userEvent.click(button("Save only"));
 
     const banner = page.getByRole("region", { name: "Signed out" });
@@ -422,38 +298,46 @@ describe("System email", () => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     await userEvent.click(button("Discard changes"));
 
-    await expect.element(page.getByText("Sign in", { exact: true })).toBeVisible();
+    await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
+    expect(router.state.location.pathname).toBe("/sign-in");
     expect(router.state.location.search).toEqual({ redirect: "/settings/system-email" });
     expect(router.state.location.state.sessionEnded).toBe(true);
   });
 
-  it("says it can't load when the session ended before the page first drew", async () => {
+  it("opens sign-in when the session ended before the page first drew", async () => {
     // The guard's session read passes; the settings read finds it ended,
-    // as when another tab signed out between the two. No page has drawn,
-    // so the rule leaves the 401 to the router's view, whose link signs in
-    // back to this page.
-    await open({ settings: saved, readsEnded: true, sent: [], bodies: [] });
+    // as when another tab signed out between the two. The loader's 401
+    // comes before any page has drawn, so the rule leaves it to the
+    // router's view; the frame's own reads, made once it draws, get a 401
+    // on a page that needs a session, and the rule opens sign-in.
+    const server = api(saved);
+    server.once("GET", "/api/v0/sessions/current", () => {
+      const session = server.session;
+      server.session = undefined;
+      return data(session);
+    });
+    const router = await open(server);
 
-    await expect.element(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
-    await expect
-      .element(page.getByRole("link", { name: "Sign in" }))
-      .toHaveAttribute("href", "/sign-in?redirect=%2Fsettings%2Fsystem-email");
+    await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
+    expect(router.state.location.pathname).toBe("/sign-in");
+    expect(router.state.location.search).toEqual({ redirect: "/settings/system-email" });
   });
 
   it("opens sign-in when the session ends on a test message", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     const router = await open(server);
     await expect.element(button("Send test message")).toBeEnabled();
 
-    server.ended = true;
+    server.session = undefined;
     await userEvent.click(button("Send test message"));
 
-    await expect.element(page.getByText("Sign in", { exact: true })).toBeVisible();
+    await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
+    expect(router.state.location.pathname).toBe("/sign-in");
     expect(router.state.location.search).toEqual({ redirect: "/settings/system-email" });
   });
 
   it("says why a test failed, and that the settings have not passed one", async () => {
-    await open({ settings: saved, testFails: true, sent: [], bodies: [] });
+    await open(api(saved, { status: "failed", reason: "auth" }));
     await expect.element(button("Send test message")).toBeEnabled();
 
     await userEvent.click(button("Send test message"));
@@ -468,11 +352,13 @@ describe("System email", () => {
   });
 
   it("keeps the summary when a refresh fails, says so, and recovers on Try again", async () => {
-    const server: Server = { settings: saved, sent: [], bodies: [] };
+    const server = api(saved);
     const router = await open(server);
     await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
 
-    server.readsFail = true;
+    server.on("GET", "/api/v0/system-email", () =>
+      problem(fault, "/api/v0/problems/internal-error"),
+    );
     await router.options.context.queryClient.refetchQueries();
 
     await expect
@@ -480,7 +366,7 @@ describe("System email", () => {
       .toBeVisible();
     await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
 
-    server.readsFail = false;
+    server.on("GET", "/api/v0/system-email", () => data({ settings: saved }));
     await userEvent.click(button("Try again"));
     await expect
       .element(page.getByText(/Could not check the system email settings\./))
@@ -489,7 +375,11 @@ describe("System email", () => {
 
   it("keeps a save waiting while a test message sends", async () => {
     const test = held();
-    const server: Server = { settings: saved, holdTest: test.promise, sent: [], bodies: [] };
+    const server = api(saved);
+    server.once("POST", "/api/v0/system-email/test-message", async (_, earlier) => {
+      await test.promise;
+      return earlier();
+    });
     await open(server);
     await userEvent.click(button("Send test message"));
     await expect.element(button("Sending test message...")).toBeVisible();
@@ -499,13 +389,15 @@ describe("System email", () => {
     await expect.element(button("Save and send test")).toBeDisabled();
     await expect.element(button("Save only")).toBeDisabled();
 
-    test.release();
+    test.resolve();
     await expect.element(button("Save and send test")).toBeEnabled();
     await userEvent.click(button("Save and send test"));
     await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
     await vi.waitFor(() =>
       expect(
-        server.sent.filter((request) => request === "POST /api/v0/system-email/test-message"),
+        sent(server.requests).filter(
+          (request) => request === "POST /api/v0/system-email/test-message",
+        ),
       ).toHaveLength(2),
     );
   });

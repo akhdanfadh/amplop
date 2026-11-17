@@ -2,7 +2,12 @@ import { RouterProvider } from "@tanstack/react-router";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
-import type { ConversationMessage, ConversationRow } from "@/api/generated/model";
+import type {
+  ConversationMessage,
+  ConversationRow,
+  ListedSessions,
+  TotpStatus,
+} from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { refreshNewest } from "@/features/mail/conversations";
@@ -22,6 +27,23 @@ afterEach(async () => {
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
 });
+
+const twoFactorOff: TotpStatus = { status: "off", backupCodesLeft: 0, backupCodesWaiting: false };
+
+// The signed-in browsers, this one alone.
+const browsers: ListedSessions = {
+  sessions: [
+    {
+      id: "0193c8a0-0000-7000-8000-000000000001",
+      browser: "Firefox",
+      os: "Linux",
+      signedInAt: "2026-11-01T10:00:00Z",
+      signedInFrom: "203.0.113.7",
+      lastActiveAt: "2026-11-01T10:00:00Z",
+      current: true,
+    },
+  ],
+};
 
 // The one message of row, from Bo, for the reply to answer.
 function message(row: ConversationRow): ConversationMessage {
@@ -189,6 +211,9 @@ describe("an ended session", () => {
 
   it("opens sign-in from Security, which says why and returns there", async () => {
     const server = fakeServer(memberSession);
+    // Security's own reads: two-factor authentication off, one browser.
+    server.on("GET", "/api/v0/totp", () => data(twoFactorOff));
+    server.on("GET", "/api/v0/sessions", () => data(browsers));
     current = await appRouter("/settings/security", server);
     await render(<RouterProvider router={current} />);
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();

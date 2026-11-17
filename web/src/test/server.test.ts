@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { data, fakeServer, lose, memberSession, problem } from "./server";
+import {
+  adminSession,
+  data,
+  expectAllAnswered,
+  fakeServer,
+  lose,
+  memberSession,
+  problem,
+  testedSystemEmail,
+} from "./server";
 
 const origin = "http://inbok.test";
 
@@ -68,6 +77,24 @@ describe("fakeServer", () => {
     ]);
   });
 
+  it("answers as a quiet inbok until a test's own route replaces an answer", async () => {
+    const server = fakeServer(adminSession);
+    const read = async (path: string) => (await server.fetch(`${origin}${path}`)).json();
+
+    expect(await read("/api/v0/setup")).toEqual({ data: { status: "done" } });
+    expect(await read("/api/v0/sessions/current")).toEqual({ data: adminSession });
+    expect(await read("/api/v0/connected-accounts")).toEqual({
+      data: { accounts: [], syncStopped: false },
+    });
+    expect(await read("/api/v0/system-email")).toEqual({ data: { settings: testedSystemEmail } });
+    expect(await read("/api/v0/registration")).toEqual({ data: { open: false } });
+
+    server.on("GET", "/api/v0/registration", () => data({ open: true }));
+
+    expect(await read("/api/v0/registration")).toEqual({ data: { open: true } });
+    expect(server.unknown).toEqual([]);
+  });
+
   it("answers the session, and once it ends a 401 to all but a visitor's operations", async () => {
     const server = fakeServer(memberSession);
     server.on("GET", "/api/v0/places", () => data({ places: [] }));
@@ -105,6 +132,29 @@ describe("fakeServer", () => {
     // @ts-expect-error -- Places has no POST.
     server.on("POST", "/api/v0/places", () => data(null));
     expect(server.requests).toEqual([]);
+  });
+});
+
+describe("expectAllAnswered", () => {
+  it("throws naming each request an installed server did not know, once", async () => {
+    fakeServer(memberSession).install();
+    await fetch(`${origin}/api/v0/places?x=1`);
+    await fetch(`${origin}/api/v0/labels`, { method: "POST" });
+
+    expect(expectAllAnswered).toThrow(
+      new Error("Requests without an answer: GET /api/v0/places?x=1, POST /api/v0/labels"),
+    );
+    // The servers are forgotten, so the next test starts clean.
+    expect(expectAllAnswered).not.toThrow();
+  });
+
+  it("passes when every request had a route, and for a server not installed", async () => {
+    const installed = fakeServer(memberSession).install();
+    installed.on("GET", "/api/v0/places", () => problem(503, "/api/v0/problems/service-busy"));
+    await fetch(`${origin}/api/v0/places`);
+    await fakeServer(memberSession).fetch(`${origin}/api/v0/places`);
+
+    expect(expectAllAnswered).not.toThrow();
   });
 });
 
