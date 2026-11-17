@@ -94,53 +94,11 @@ describe("uncertainMessage", () => {
 });
 
 describe("userMessage", () => {
-  it("explains a read timeout without calling it an unreachable server", () => {
-    expect(userMessage(new ApiError("timeout", { method: "GET" }))).toBe(
-      "The request took too long. Try again.",
-    );
-  });
-
-  it("keeps the write warning when waiting for confirmation times out", () => {
-    expect(userMessage(new ApiError("timeout", { method: "POST" }))).toBe(
-      "We couldn't confirm whether this was saved. Check before submitting again.",
-    );
-  });
-
-  it("preserves reported write success after a body-read timeout", () => {
-    const err = new ApiError("timeout", { method: "POST", status: httpStatus.created });
-
-    expect(userMessage(err)).toBe(
-      "The server reported success, but we couldn't load the result. Check before submitting again.",
-    );
-  });
-
-  it("keeps a known rejection when reading its explanation times out", () => {
-    const err = new ApiError("timeout", { method: "POST", status: httpStatus.unprocessable });
-
-    expect(userMessage(err)).toBe("Check the values and try again.");
-  });
-
   it.each(["POST", "PUT", "PATCH", "DELETE"])("warns when a %s outcome is unknown", (method) => {
     const err = new ApiError("network", { method });
 
     expect(userMessage(err)).toBe(
       "We couldn't confirm whether this was saved. Check before submitting again.",
-    );
-  });
-
-  it("distinguishes a reported write success from an unreadable result", () => {
-    const err = new ApiError("response", { method: "POST", status: httpStatus.created });
-
-    expect(userMessage(err)).toBe(
-      "The server reported success, but we couldn't load the result. Check before submitting again.",
-    );
-  });
-
-  it("keeps a successful write's status when its body is interrupted", () => {
-    const err = new ApiError("network", { method: "POST", status: httpStatus.created });
-
-    expect(userMessage(err)).toBe(
-      "The server reported success, but we couldn't load the result. Check before submitting again.",
     );
   });
 
@@ -157,16 +115,58 @@ describe("userMessage", () => {
     );
   });
 
-  it("preserves safe server text alongside the uncertain write warning", () => {
-    const err = new ApiError("http", {
-      method: "POST",
-      status: httpStatus.unavailable,
-      problem: { detail: "The service is restarting." },
-    });
-
-    expect(userMessage(err)).toBe(
+  // What a failed write says, by how much of its answer arrived.
+  it.each([
+    [
+      "keeps the write warning when waiting for confirmation times out",
+      new ApiError("timeout", { method: "POST" }),
+      "We couldn't confirm whether this was saved. Check before submitting again.",
+    ],
+    [
+      "preserves reported write success after a body-read timeout",
+      new ApiError("timeout", { method: "POST", status: httpStatus.created }),
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    ],
+    [
+      "keeps a known rejection when reading its explanation times out",
+      new ApiError("timeout", { method: "POST", status: httpStatus.unprocessable }),
+      "Check the values and try again.",
+    ],
+    [
+      "distinguishes a reported write success from an unreadable result",
+      new ApiError("response", { method: "POST", status: httpStatus.created }),
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    ],
+    [
+      "keeps a successful write's status when its body is interrupted",
+      new ApiError("network", { method: "POST", status: httpStatus.created }),
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    ],
+    [
+      "preserves safe server text alongside the uncertain write warning",
+      new ApiError("http", {
+        method: "POST",
+        status: httpStatus.unavailable,
+        problem: { detail: "The service is restarting." },
+      }),
       "The service is restarting. We couldn't confirm whether this was saved. Check before submitting again.",
-    );
+    ],
+    [
+      "keeps a known write rejection's explanation",
+      new ApiError("http", {
+        method: "POST",
+        status: httpStatus.conflict,
+        problem: { detail: "The counter is full." },
+      }),
+      "The counter is full.",
+    ],
+    [
+      "keeps a write rejection when its body is interrupted",
+      new ApiError("network", { method: "POST", status: httpStatus.unprocessable }),
+      "Check the values and try again.",
+    ],
+  ])("%s", (_, err, message) => {
+    expect(userMessage(err)).toBe(message);
   });
 
   it.each([
@@ -190,58 +190,6 @@ describe("userMessage", () => {
     });
 
     expect(userMessage(err)).toBe(message);
-  });
-
-  it("keeps a known write rejection's explanation", () => {
-    const err = new ApiError("http", {
-      method: "POST",
-      status: httpStatus.conflict,
-      problem: { detail: "The counter is full." },
-    });
-
-    expect(userMessage(err)).toBe("The counter is full.");
-  });
-
-  it("keeps a write rejection when its body is interrupted", () => {
-    const err = new ApiError("network", { method: "POST", status: httpStatus.unprocessable });
-
-    expect(userMessage(err)).toBe("Check the values and try again.");
-  });
-
-  it("prefers the safe detail over the title", () => {
-    const err = new ApiError("http", {
-      method: "GET",
-      status: 404,
-      problem: { title: "Not Found", detail: "route not found" },
-    });
-
-    expect(userMessage(err)).toBe("route not found");
-  });
-
-  it("shows the title alone without a detail", () => {
-    const err = new ApiError("http", {
-      method: "GET",
-      status: 502,
-      problem: { title: "Bad Gateway" },
-    });
-
-    expect(userMessage(err)).toBe("Bad Gateway");
-  });
-
-  it("uses local wording when no problem arrived", () => {
-    expect(userMessage(new ApiError("network", { method: "GET" }))).toBe(
-      "Can't reach the server. Try again.",
-    );
-  });
-
-  it("uses local wording when the received explanation is blank", () => {
-    const err = new ApiError("http", {
-      method: "GET",
-      status: 422,
-      problem: { title: " ", detail: "\t" },
-    });
-
-    expect(userMessage(err)).toBe("Check the values and try again.");
   });
 
   it.each([
@@ -293,6 +241,34 @@ describe("userMessage", () => {
       "actual server status despite a different problem status",
       new ApiError("http", { method: "GET", status: 503, problem: { status: 422 } }),
       "Something went wrong on our side. Try again.",
+    ],
+    [
+      "a read that timed out, without calling it an unreachable server",
+      new ApiError("timeout", { method: "GET" }),
+      "The request took too long. Try again.",
+    ],
+    [
+      "the safe detail in place of the title",
+      new ApiError("http", {
+        method: "GET",
+        status: 404,
+        problem: { title: "Not Found", detail: "route not found" },
+      }),
+      "route not found",
+    ],
+    [
+      "the title alone without a detail",
+      new ApiError("http", { method: "GET", status: 502, problem: { title: "Bad Gateway" } }),
+      "Bad Gateway",
+    ],
+    [
+      "a blank received explanation in local words",
+      new ApiError("http", {
+        method: "GET",
+        status: 422,
+        problem: { title: " ", detail: "\t" },
+      }),
+      "Check the values and try again.",
     ],
   ])("words %s for the user", (_case, err, message) => {
     expect(userMessage(err)).toBe(message);

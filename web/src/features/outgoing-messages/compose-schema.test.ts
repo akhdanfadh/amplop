@@ -64,15 +64,14 @@ describe("ComposeSchema", () => {
     expect(issues({ ...valid, to: hundred, cc: [longest] })).toEqual({});
   });
 
-  it.each(["a\nb", "a\u007fb", "a\u0085b"])("refuses the control character in %j", (subject) => {
-    expect(issues({ ...valid, subject }).subject).toHaveLength(1);
-  });
-
-  it("refuses control characters in the subject", () => {
-    expect(issues({ ...valid, subject: "a\tb" })).toEqual({
-      subject: ["Enter a subject without line breaks or other control characters."],
-    });
-  });
+  it.each(["a\tb", "a\nb", "a\u007fb", "a\u0085b"])(
+    "refuses the control character in the subject %j",
+    (subject) => {
+      expect(issues({ ...valid, subject })).toEqual({
+        subject: ["Enter a subject without line breaks or other control characters."],
+      });
+    },
+  );
 
   it("states the subject and body length limits", () => {
     expect(issues({ ...valid, subject: "s".repeat(501), body: "b".repeat(100_001) })).toEqual({
