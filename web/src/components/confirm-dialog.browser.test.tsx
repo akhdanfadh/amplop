@@ -93,17 +93,16 @@ describe("ConfirmDialog", () => {
     const { rerender } = await render(<Held pending={false} />);
     const idle = page.getByRole("button", { name: "Open registration" });
     await expect.element(idle).toBeVisible();
-    // Past the dialog's opening zoom, so widths are at full scale: React
-    // Aria marks the dialog as entering until that animation ends.
-    await expect.poll(() => document.querySelector("[data-entering]")).toBeNull();
-    const width = idle.element().getBoundingClientRect().width;
+    // The width the layout gives the button, which the dialog's opening
+    // zoom does not scale, so the two reads need not wait for it to end.
+    const width = getComputedStyle(idle.element()).width;
 
     await rerender(<Held pending />);
 
     const working = page.getByRole("button", { name: "Opening..." });
     await expect.element(working).toBeVisible();
     // Only the label changes: nothing moves under the pointer.
-    expect(working.element().getBoundingClientRect().width).toBe(width);
+    expect(getComputedStyle(working.element()).width).toBe(width);
   });
 
   it("holds the change until it is saved, then returns focus to its button", async () => {

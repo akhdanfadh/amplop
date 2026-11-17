@@ -236,7 +236,10 @@ describe("Labels at the contract's limit", () => {
 
     await expect.element(apply).toBeEnabled();
     expect(page.getByText("Add or remove up to 100 at once.").elements()).toHaveLength(0);
-  });
+    // 101 real key presses, each redrawing a menu of 101 items: about 6 s
+    // here, and more than the default 15 s on a slower machine or under
+    // coverage.
+  }, 60_000);
 });
 
 describe("Labels from the keyboard", () => {

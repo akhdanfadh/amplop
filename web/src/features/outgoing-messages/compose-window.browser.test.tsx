@@ -68,13 +68,16 @@ const browsers: ListedSessions = {
 };
 
 // The API's answers as open sets them: conversation, when given, is the
-// member's one conversation, with one message; accounts are the member's; sent is
+// member's one conversation, with one message; accounts are the member's,
+// which every read of them answers unless accountsFail is the status it
+// fails with; sent is
 // what Send Message saves, which a read of it answers; again is the copy
 // Send Message Again saves, which a read of it answers; outbox answers a
 // read of the Outbox, which gives their status, by default with sent alone.
 type Answers = {
   conversation: ConversationRow;
   accounts: ListedAccount[];
+  accountsFail: number;
   sent: OutgoingMessage;
   again: OutgoingMessage;
   outbox: () => Response;
@@ -102,6 +105,7 @@ let api: MailApi;
 async function open(address = "/mail/inbox", answers: Partial<Answers> = {}) {
   const { accounts = [studio], sent = saved, again, conversation: row } = answers;
   api = mailApi(row ? [row] : [], accounts);
+  api.failAccounts = answers.accountsFail;
   const { server } = api;
   // The one message of row, from Bo to Studio, for a reply to answer.
   if (row) api.messages[row.id] = [message(row, { to: [{ name: "", address: studio.email }] })];
@@ -410,6 +414,22 @@ describe("ComposeWindow", () => {
       .element(window.getByRole("link", { name: "Open Connected accounts" }))
       .toBeVisible();
     await expect.element(window.getByRole("textbox", { name: "Subject" })).not.toBeInTheDocument();
+  });
+
+  it("says the accounts could not be read, and opens the editor once Try again reads them", async () => {
+    await open("/mail/inbox", { accountsFail: fault });
+    await userEvent.click(compose());
+
+    const window = page.getByRole("region", { name: "New message" });
+    const failure = window.getByRole("alert");
+    await expect.element(failure).toMatchTextContent("Could not load your connected accounts.");
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).not.toBeInTheDocument();
+
+    api.failAccounts = undefined;
+    await userEvent.click(failure.getByRole("button", { name: "Try again" }));
+
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).toBeVisible();
+    await expect.element(failure).not.toBeInTheDocument();
   });
 
   it("gives each window an id no later page load repeats", () => {
