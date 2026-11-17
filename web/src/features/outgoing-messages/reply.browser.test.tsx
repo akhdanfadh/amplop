@@ -1,44 +1,20 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { shortcutModifier } from "@/lib/shortcut";
+import { listedAccount, mailApi } from "@/test/mail-api";
+import { type Asked, type Handler, type Server, data, problem } from "@/test/server";
+import { stubRouter } from "@/test/stub-router";
 import { ConversationReply, ReplyEditorSlot, ReplyProvider } from "./reply";
 import type { AnsweredMessage } from "./reply-defaults";
 import { editNote } from "./text";
 
-const ok = 200;
 const created = 201;
 const notFound = 404;
 
-const studio: ListedAccount = {
-  id: 7,
-  provider: "gmail",
-  email: "studio@example.com",
-  name: null,
-  color: 1,
-  status: "usable",
-  createdAt: "2026-11-01T00:00:00Z",
-  needsReconnectSince: null,
-  allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
-  sync: {
-    status: "complete",
-    failure: null,
-    failedAt: null,
-    lastSyncedAt: "2026-11-13T08:00:00Z",
-    messagesSoFar: null,
-  },
-};
-const personal: ListedAccount = { ...studio, id: 8, email: "me@example.org" };
+const studio: ListedAccount = listedAccount(7, "studio@example.com", 1);
+const personal: ListedAccount = listedAccount(8, "me@example.org", 1);
 
 // A message Ana sent to Studio and Ben.
 const answered: AnsweredMessage = {
@@ -87,63 +63,52 @@ function saved(
   };
 }
 
-type Call = { method: string; url: string; headers: Headers; body: unknown };
-
-// problem returns an API problem response with status and type.
-function problem(status: number, type: string, extra: object = {}): Response {
-  return Response.json(
-    { type, status, title: "Problem", detail: "The server's detail.", ...extra },
-    { status, headers: { "Content-Type": "application/problem+json" } },
-  );
-}
-
-// serve stubs the API: the accounts read answers with accounts; Reply to
-// Message, at any answered message, answers with reply, a response; each
-// read of the Outbox, which gives the saved message's status, lists its
-// next status in statuses, the last one repeating, or answers a 503 once
-// failReadsFrom reads have passed; Send Message Again answers with again,
-// by default the message as last listed; and a read of the message itself
-// answers with the status the Outbox last listed. It returns the calls the
-// page made.
+// serve installs a signed-in member's server and returns it: the accounts
+// read answers with accounts; Reply to Message, at any answered message,
+// answers with reply; each read of the Outbox, which gives the saved
+// message's status, lists its next status in statuses, the last one
+// repeating, or answers a 503 once failReadsFrom reads have passed; Send
+// Message Again answers with again, by default the message as last
+// listed; and a read of the message itself answers with the status the
+// Outbox last listed.
 function serve({
   accounts = [studio, personal],
-  reply = () => Response.json({ data: saved("waiting") }, { status: created }),
+  reply = () => data(saved("waiting"), created),
   statuses = [saved("waiting")],
   failReadsFrom = Infinity,
   again,
 }: {
-  again?: () => Response;
+  again?: Handler;
   accounts?: ListedAccount[];
-  reply?: () => Response;
+  reply?: Handler;
   statuses?: OutgoingMessage[];
   failReadsFrom?: number;
-} = {}): Call[] {
-  const calls: Call[] = [];
+} = {}): Server {
+  const { server } = mailApi([], accounts);
   let reads = 0;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url, init = {}) => {
-      const method = init.method ?? "GET";
-      const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
-      calls.push({ method, url, headers: new Headers(init.headers), body });
-      if (url === "/api/v0/connected-accounts")
-        return Response.json({ data: { accounts, syncStopped: false } }, { status: ok });
-      if (method === "POST" && /^\/api\/v0\/messages\/[^/]+\/replies$/.test(url)) return reply();
-      if (again && method === "POST" && url.endsWith("/send-again")) return again();
-      if (url === "/api/v0/outgoing-messages") {
-        const status = statuses[Math.min(reads, statuses.length - 1)];
-        reads++;
-        if (reads > failReadsFrom) return problem(503, "/api/v0/problems/service-busy");
-        return Response.json({ data: { messages: [status] } }, { status: ok });
-      }
-      if (url.startsWith("/api/v0/outgoing-messages/")) {
-        const status = statuses[Math.min(Math.max(reads - 1, 0), statuses.length - 1)];
-        return Response.json({ data: status }, { status: ok });
-      }
-      return Response.json({}, { status: notFound });
-    }),
+  // lastListed returns the status the Outbox last listed, the first
+  // before any read.
+  const lastListed = () => statuses[Math.min(Math.max(reads - 1, 0), statuses.length - 1)];
+  server.on("POST", "/api/v0/messages/{id}/replies", reply);
+  server.on("GET", "/api/v0/outgoing-messages", () => {
+    const status = statuses[Math.min(reads, statuses.length - 1)];
+    reads++;
+    if (reads > failReadsFrom) return problem(503, "/api/v0/problems/service-busy");
+    return data({ messages: [status] });
+  });
+  server.on("GET", "/api/v0/outgoing-messages/{id}", () => data(lastListed()));
+  server.on(
+    "POST",
+    "/api/v0/outgoing-messages/{id}/send-again",
+    again ?? (() => data(lastListed())),
   );
-  return calls;
+  return server.install();
+}
+
+// posts returns the requests server got that write: the replies and the
+// sends again.
+function posts(server: Server): Asked[] {
+  return server.requests.filter((asked) => asked.method === "POST");
 }
 
 // newer is a message that arrives in the conversation after answered.
@@ -178,22 +143,7 @@ function Conversation({ message }: { message: AnsweredMessage }) {
 // message, inside a router, as the conversation view places it. It
 // returns the query client.
 async function show(message: AnsweredMessage = answered) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRoute();
-  const conversation = createRoute({
-    getParentRoute: () => root,
-    path: "/",
-    component: () => (
-      <QueryClientProvider client={client}>
-        <Conversation message={message} />
-      </QueryClientProvider>
-    ),
-  });
-  const router = createRouter({
-    routeTree: root.addChildren([conversation]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-  });
-  await render(<RouterProvider router={router} />);
+  const { client } = await stubRouter(<Conversation message={message} />);
   return { client };
 }
 
@@ -235,7 +185,7 @@ describe("ConversationReply", () => {
 
   it("sends with Ctrl+Enter, with a key, and shows how the send goes", async () => {
     await page.viewport(1440, 900);
-    const calls = serve({ statuses: [saved("sending"), saved("sent")] });
+    const server = serve({ statuses: [saved("sending"), saved("sent")] });
     await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
@@ -244,8 +194,8 @@ describe("ConversationReply", () => {
     await expect
       .element(page.getByRole("status"), { timeout: 5_000 })
       .toMatchTextContent(/^Sent to ana@example\.comFrom studio@example\.com/);
-    const post = calls.find((call) => call.method === "POST");
-    expect(post?.url).toBe(`/api/v0/messages/${answered.id}/replies`);
+    const [post] = posts(server);
+    expect(post?.path).toBe(`/api/v0/messages/${answered.id}/replies`);
     expect(post?.headers.get("Idempotency-Key")).toMatch(/^"[0-9a-f-]{36}"$/);
     expect(post?.body).toEqual({
       connectedAccountId: studio.id,
@@ -279,15 +229,10 @@ describe("ConversationReply", () => {
     await page.viewport(1440, 900);
     serve({
       reply: () =>
-        Response.json(
-          {
-            type: "/api/v0/problems/message-not-found",
-            status: notFound,
-            title: "Message not found",
-            detail: "The message does not exist. It may have been deleted.",
-          },
-          { status: notFound, headers: { "Content-Type": "application/problem+json" } },
-        ),
+        problem(notFound, "/api/v0/problems/message-not-found", {
+          title: "Message not found",
+          detail: "The message does not exist. It may have been deleted.",
+        }),
     });
     await show();
 
@@ -322,7 +267,7 @@ describe("ConversationReply", () => {
   it("asks before discarding a reply an unanswered send may have saved, even unedited", async () => {
     await page.viewport(1440, 900);
     serve({
-      reply: () => Response.json({ data: saved("failed", "refused") }, { status: created }),
+      reply: () => data(saved("failed", "refused"), created),
       statuses: [saved("failed", "refused")],
       again: () => problem(500, "/api/v0/problems/internal-error"),
     });
@@ -477,8 +422,8 @@ describe("ConversationReply", () => {
 
   it("sends a refused reply again with the member's edits, from its own account", async () => {
     await page.viewport(1440, 900);
-    const calls = serve({
-      reply: () => Response.json({ data: saved("failed", "refused") }, { status: created }),
+    const server = serve({
+      reply: () => data(saved("failed", "refused"), created),
       statuses: [saved("failed", "refused")],
     });
     await show();
@@ -506,10 +451,8 @@ describe("ConversationReply", () => {
     await userEvent.click(editor.getByRole("button", { name: "Send" }));
 
     const again = () =>
-      calls.filter(
-        (call) =>
-          call.method === "POST" &&
-          call.url === `/api/v0/outgoing-messages/${saved("failed").id}/send-again`,
+      posts(server).filter(
+        (asked) => asked.path === `/api/v0/outgoing-messages/${saved("failed").id}/send-again`,
       );
     await expect.poll(() => again()).toHaveLength(1);
     expect(again()[0].body).toEqual({
@@ -526,7 +469,7 @@ describe("ConversationReply", () => {
     await page.viewport(1440, 900);
     const refused: OutgoingMessage = { ...saved("failed", "refused"), allowedActions: [] };
     serve({
-      reply: () => Response.json({ data: refused }, { status: created }),
+      reply: () => data(refused, created),
       statuses: [refused],
     });
     await show();
@@ -574,7 +517,7 @@ describe("ConversationReply", () => {
 
   it("sends with Ctrl+Enter from an address still being typed, keeping it", async () => {
     await page.viewport(1440, 900);
-    const calls = serve();
+    const server = serve();
     await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
@@ -582,8 +525,8 @@ describe("ConversationReply", () => {
     await userEvent.click(page.getByRole("textbox", { name: "To" }));
     await userEvent.keyboard("cy@example.com{Control>}{Enter}{/Control}");
 
-    await expect.poll(() => calls.filter((call) => call.method === "POST")).toHaveLength(1);
-    const post = calls.find((call) => call.method === "POST");
+    await expect.poll(() => posts(server)).toHaveLength(1);
+    const [post] = posts(server);
     expect(post?.body).toMatchObject({ to: ["ana@example.com", "cy@example.com"] });
   });
 
@@ -604,7 +547,7 @@ describe("ConversationReply", () => {
 
   it("answers the message it opened on, though a newer one arrives", async () => {
     await page.viewport(1440, 900);
-    const calls = serve();
+    const server = serve();
     await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
@@ -612,10 +555,8 @@ describe("ConversationReply", () => {
     await userEvent.click(page.getByRole("textbox", { name: "Message" }));
     await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
 
-    await expect.poll(() => calls.filter((call) => call.method === "POST")).toHaveLength(1);
-    expect(calls.find((call) => call.method === "POST")?.url).toBe(
-      `/api/v0/messages/${answered.id}/replies`,
-    );
+    await expect.poll(() => posts(server)).toHaveLength(1);
+    expect(posts(server)[0].path).toBe(`/api/v0/messages/${answered.id}/replies`);
   });
 
   it("moves focus to From when the server refuses the account", async () => {

@@ -190,8 +190,10 @@ Put shared code in the folder for its responsibility:
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).
 - `src/routes`: route registration and page composition.
-- `src/test`: setup for the tests, the fake server (`fakeServer`), and
-  `appRouter`, the app's router loaded at an address.
+- `src/test`: setup for the tests, the fake server (`fakeServer`),
+  `appRouter`, the app's router loaded at an address, `stubRouter`, a
+  made-up router around one component, and `testQueryClient`, a test's
+  query cache.
 - `src/styles.css`: the tokens and base styles. Beside it,
   `react-aria-pressable.css` holds a React Aria rule the
   Content-Security-Policy would otherwise block; the file says why.
@@ -1278,6 +1280,27 @@ component taken from `src/routes`. A page's test opens the page through
 only the server. A component's test renders the component alone. Only a
 test of the router's own machinery (`route-states`, the setup gate, the
 root's React Aria bridge) makes up routes.
+
+A component that needs a router around it, for a link, a navigation, or
+a leave warning, gets one from `stubRouter` (`src/test/stub-router.tsx`).
+It renders the component as the page at an address, beside blank pages
+to leave to, each only a heading with its path, with an optional layout
+around them, and returns the router, the query client, and the screen:
+
+```tsx
+const { router } = await stubRouter(<ComposeForm {...props} />, {
+  pages: ["/elsewhere"],
+});
+await router.navigate({ href: "/elsewhere" });
+await expect.element(page.getByRole("heading", { name: "/elsewhere" })).toBeVisible();
+```
+
+The stub holds nothing of the app's routes: no guard, loader, search
+rule, or root component. A component that needs no router gets none:
+`render`, inside a `QueryClientProvider` when it reads the API. Either
+way the query client is `testQueryClient()` (`src/test/query-client.ts`),
+which does not try a failed read again; `stubRouter` makes one unless
+the test passes its own as `client`.
 
 A page's test sits in its feature's folder, e.g.
 `features/members/page.browser.test.tsx`, or

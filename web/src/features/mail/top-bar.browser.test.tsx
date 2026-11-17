@@ -1,18 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Outlet,
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import type { QueryClient } from "@tanstack/react-query";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { cleanup } from "vitest-browser-react";
 import { Frame } from "@/components/frame";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { conversation, listedAccount, mailApi } from "@/test/mail-api";
+import { stubRouter } from "@/test/stub-router";
 import { PlacePage, type PlaceAccount } from "./place-page";
 
 const projects = "22222222-2222-4222-8222-222222222222";
@@ -49,40 +42,29 @@ async function open(
     { accountId: 1, place: "inbox", name: null, parent: null, unread: 3 },
     { accountId: 2, place: "inbox", name: null, parent: null, unread: 2 },
   ];
-  vi.stubGlobal("fetch", vi.fn(api.fetch));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  current = client;
-  const root = createRootRoute({
-    component: () => (
-      <QueryClientProvider client={client}>
+  api.server.install();
+  const { client } = await stubRouter(
+    <div className="flex h-full flex-col">
+      <PlacePage
+        place={place}
+        name={name}
+        ownName={ownName}
+        account={account}
+        openId={undefined}
+        pane={pane}
+        reader={null}
+      />
+    </div>,
+    {
+      at: `/mail/${place}`,
+      layout: (content) => (
         <Frame label="Mail" nav={null}>
-          <Outlet />
+          {content}
         </Frame>
-      </QueryClientProvider>
-    ),
-  });
-  const mail = createRoute({
-    getParentRoute: () => root,
-    path: "/mail/$place",
-    component: () => (
-      <div className="flex h-full flex-col">
-        <PlacePage
-          place={place}
-          name={name}
-          ownName={ownName}
-          account={account}
-          openId={undefined}
-          pane={pane}
-          reader={null}
-        />
-      </div>
-    ),
-  });
-  const router = createRouter({
-    routeTree: root.addChildren([mail]),
-    history: createMemoryHistory({ initialEntries: [`/mail/${place}`] }),
-  });
-  await render(<RouterProvider router={router} />);
+      ),
+    },
+  );
+  current = client;
 }
 
 // middle returns how far down the window element's middle is, in whole
