@@ -1,5 +1,6 @@
-// Setup for every browser test: the app's stylesheet, so components lay
-// out, hide, and show as they do in the app, a fetch that never reaches
+// Setup for every browser test: the app's stylesheet and font, so
+// components lay out, hide, and show as they do in the app, a fetch that
+// never reaches
 // the real API, the same page size at the start of each test, and the
 // cleanup after each test, so a test file adds none for what it rendered,
 // its query clients, toasts, the connection, or storage.
@@ -11,6 +12,13 @@ import { cleanup } from "vitest-browser-react";
 import { closeToasts } from "@/components/ui/toast";
 import { endQueryClients } from "./query-client";
 import { defaultViewport } from "./viewport";
+
+// NOTE: the app's font is declared with font-display: swap
+// (@fontsource-variable/ibm-plex-sans), so text first draws in a fallback
+// font and changes width when the font arrives, which can be part-way
+// through a test that measures a width or a position. Loaded here, before
+// any test draws, text has its final width from the first frame.
+await document.fonts.load('1em "IBM Plex Sans Variable"');
 
 // The page's own fetch, which Vitest puts back before each test, sends
 // nothing to the API: a request for it with no fake server installed
