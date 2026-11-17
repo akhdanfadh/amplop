@@ -263,7 +263,8 @@ began before the write and is still running when the member comes back is
 joined, and its older answer drawn; and a conversation the list holds
 opens from its row at once, its messages refreshing in place (DESIGN.md
 "States"). The server refuses any change a stale page offers, with its
-reason. Test routers that load such pages set the same two router options.
+reason. A test's own router that loads such pages sets the same two
+router options; `appRouter` has them, being the app's router.
 
 A page whose data it cannot draw without, e.g. System email, Registration,
 or Members, reads it in its route's loader, made by `cachedLoader`
@@ -1274,9 +1275,51 @@ Tests sit next to the code they test, in two Vitest projects set up in
 A page's own flows, e.g. submitting its form, are tested in a router of
 the page's own (`src/signed-out-pages.browser.test.tsx`).
 `src/test/app-router.ts` loads the whole app, for what needs every route,
-e.g. guards and addresses; submitting a form, typing, or showing a toast
-through it freezes the test browser, and the run hangs instead of failing
-(`DEBT.md`, "Find why a whole-app browser test freezes on some presses").
+e.g. guards and addresses.
+
+A test fakes the API by faking `fetch`, with the fake server in
+`src/test/server.ts`:
+
+```ts
+const server = fakeServer(memberSession);
+server.on("GET", "/api/v0/places", () => data({ places: [] }));
+server.on("POST", "/api/v0/connected-accounts/{id}/sync", ({ params }) =>
+  params.id === "2"
+    ? problem(429, "/api/v0/problems/sync-throttled", { retryAfter: 30 })
+    : data(sync),
+);
+const router = await appRouter("/mail/inbox", server);
+```
+
+- `on` answers a method at a path from then on. The path is the
+  contract's, with its `{id}` parameters, and its type comes from
+  `api/generated/openapi.json`, so a path or method the API does not have
+  is a type error. Of two routes that match, the one with fewer
+  parameters answers, then the later one, so a test replaces a route by
+  adding it again.
+- A handler gets the request (`url`, `params`, the parsed JSON `body`,
+  `headers`) and returns a `Response`, built with `data(value, status)`
+  for the API's `{ data }` or `problem(status, type, more)` for Problem
+  Details with the required members, `Retry-After` from `retryAfter`.
+- To hold an answer, the handler awaits a promise the test settles, e.g.
+  `Promise.withResolvers()`'s. To answer once, register with `once`: the
+  earlier route answers again afterwards. To lose the answer after the
+  server acted, as a dropped connection does, the handler ends with
+  `return lose()`, and `fetch` rejects. A handler's second argument,
+  `earlier`, answers as the route it replaced does, e.g. after a wait.
+- The server answers the session read with its `session` and says setup
+  is done. `server.session = undefined` ends the session: every operation
+  that needs one then answers a 401 `unauthenticated`.
+- `server.requests` holds every request (method, path with search, body,
+  headers). A request no route knows answers a 404 and is kept in
+  `server.unknown`, the first place to look when a page shows a failure.
+- `appRouter` installs its server; another test calls `server.install()`,
+  which puts the server in `fetch`'s place.
+
+Mail pages use `mailApi` (`src/test/mail-api.ts`), which holds
+conversations, accounts, and places and answers mail's operations as the
+server does, on a fake server of its own: `appRouter(address,
+api.server)`, and `api.server.on(...)` for a route of the test's own.
 
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:
@@ -1299,9 +1342,13 @@ set; the browser project sets it (`vite.config.ts`), so a list test sees
 the list as the app has it. Scroll a virtualized list with the keyboard,
 e.g. End, which React Aria scrolls itself.
 
-A test of the whole app loads the real routes with `appRouter`
-(`src/test/app-router.ts`) and mounts them in a `<div>`, not on the
-document as the app does. So it renders the root route's `AppShell`
+A test of the whole app loads them with `appRouter`
+(`src/test/app-router.ts`), which is the app's router, built by
+`buildRouter` in `src/router.tsx` as `getRouter` builds the app's. It
+differs in three ways: its history is in memory, at the address the test
+gives; a failed read is not tried again, which would wait 1 s and then
+2 s (`src/api/retry.test.ts` holds those rules); and the test mounts it
+in a `<div>`, not on the document as the app does. So it renders the root route's `AppShell`
 without the `<html>` and `<body>` around it: React's own `<body>` there
 makes a later event loop forever
 ([react#35480](https://github.com/react/react/issues/35480)), and a

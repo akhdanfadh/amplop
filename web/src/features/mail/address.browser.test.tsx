@@ -1,6 +1,6 @@
 import { QueryObserver, onlineManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import {
   getListConnectedAccountsQueryKey,
   getListConnectedAccountsQueryOptions,
@@ -28,11 +28,7 @@ function twoAccounts(): MailApi {
 
 // open returns the app's router at address, its mail reads answered by api.
 async function open(address: string, api = twoAccounts()) {
-  return appRouter(address, memberSession, (url) =>
-    new URL(url, location.href).pathname === "/api/v0/sessions/current"
-      ? undefined
-      : api.fetch(url),
-  );
+  return appRouter(address, api.server);
 }
 
 // notFound reports whether the router shows Page not found.

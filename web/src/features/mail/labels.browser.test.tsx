@@ -5,7 +5,7 @@ import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow, PlaceCount } from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 // Labels' ids, as List Places gives them.
@@ -44,7 +44,7 @@ async function open(rows: ConversationRow[], address: string, places = workLabel
   await page.viewport(1440, 900);
   api = mailApi(rows, [listedAccount(1, "ana@work.example"), listedAccount(2, "ana@home.example")]);
   api.places = [...places, label(2, family, "Family")];
-  const router = await appRouter(address, memberSession, (url, init) => api.fetch(url, init));
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   await expect.element(toolbar()).toBeVisible();
@@ -228,9 +228,7 @@ describe("Labels at the contract's limit", () => {
       const n = String(i + 1).padStart(3, "0");
       return label(1, `00000000-0000-4000-8000-000000001${n}`, `Label ${n}`);
     });
-    const router = await appRouter(`/mail/inbox/${row.id}`, memberSession, (url, init) =>
-      api.fetch(url, init),
-    );
+    const router = await appRouter(`/mail/inbox/${row.id}`, api.server);
     await render(<RouterProvider router={router} />);
     current = router;
     await expect.element(toolbar()).toBeVisible();
@@ -323,9 +321,7 @@ describe("picked conversations of several accounts", () => {
       ],
     );
     api.places = [...workLabels, label(2, family, "Family")];
-    const router = await appRouter("/mail/inbox", memberSession, (url, init) =>
-      api.fetch(url, init),
-    );
+    const router = await appRouter("/mail/inbox", api.server);
     await render(<RouterProvider router={router} />);
     current = router;
     await pick("Contract renewal");

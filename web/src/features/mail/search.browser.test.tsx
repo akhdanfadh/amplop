@@ -5,7 +5,7 @@ import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow, PlaceCount } from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const label = "11111111-1111-4111-8111-111111111111";
@@ -39,11 +39,7 @@ async function open(address: string, width = 1440, more: PlaceCount[] = []) {
     [listedAccount(1, "ana@example.com")],
   );
   api.places = [{ accountId: 1, name: "Receipts", parent: null, place: label, unread: 0 }, ...more];
-  const router = await appRouter(address, memberSession, (url, init) =>
-    new URL(url, location.href).pathname === "/api/v0/sessions/current"
-      ? undefined
-      : api.fetch(url, init),
-  );
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   return router;
@@ -61,11 +57,7 @@ async function openOver(
   await page.viewport(1440, 900);
   api = mailApi(conversations, accounts);
   api.searchShift = shift;
-  const router = await appRouter(address, memberSession, (url, init) =>
-    new URL(url, location.href).pathname === "/api/v0/sessions/current"
-      ? undefined
-      : api.fetch(url, init),
-  );
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
   current = router;
   return router;
@@ -277,11 +269,7 @@ describe("search", () => {
       { accountId: 1, name: "Receipts", parent: null, place: label, unread: 0 },
       { accountId: 1, name: "Travel", parent: null, place: travel, unread: 0 },
     ];
-    const router = await appRouter("/mail/search?q=invoice", memberSession, (url, init) =>
-      new URL(url, location.href).pathname === "/api/v0/sessions/current"
-        ? undefined
-        : api.fetch(url, init),
-    );
+    const router = await appRouter("/mail/search?q=invoice", api.server);
     await render(<RouterProvider router={router} />);
     current = router;
     const row = results().getByRole("row", { name: /Invoice from Shop/ });
@@ -339,15 +327,11 @@ describe("search", () => {
     await open("/mail/search?q=invoice");
     await pickResult(/Invoice from Shop/);
     // The action's answer waits until let go.
-    const fetch = api.fetch;
     const waiting: (() => void)[] = [];
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (new URL(url, location.href).pathname === "/api/v0/conversations/actions") {
-        await new Promise<void>((done) => waiting.push(done));
-      }
-      return fetch(input, init);
-    };
+    api.server.on("POST", "/api/v0/conversations/actions", async (_, earlier) => {
+      await new Promise<void>((done) => waiting.push(done));
+      return earlier();
+    });
 
     await userEvent.click(pickedBar().getByRole("button", { name: "Delete" }));
     await expect

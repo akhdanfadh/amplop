@@ -6,8 +6,9 @@ import type { ConversationMessage, ConversationRow } from "@/api/generated/model
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { refreshNewest } from "@/features/mail/conversations";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { data, fakeServer, memberSession } from "@/test/server";
 
 // The tests of the one rule for a session that ends on an open page
 // (watchSessionEnd, web/README.md "Routes"), through the app's own pages.
@@ -50,24 +51,15 @@ function message(row: ConversationRow): ConversationMessage {
 async function open(address: string, row: ConversationRow, width = 1440) {
   await page.viewport(width, 900);
   api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-  const answer = api.fetch;
-  api.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : input.toString();
-    if (api.signedOut) return answer(input, init);
-    if (url.endsWith(`/conversations/${row.id}`))
-      return Response.json({
-        data: { conversation: row, messages: [message(row)], providerUrl: null },
-      });
-    if (url.includes("/content"))
-      return Response.json({ data: { remote: "none", attachments: [], bodies: [] } });
-    return answer(input, init);
-  };
-  const router = await appRouter(address, memberSession, (url, init) => {
-    // The session is the member's until api signs out.
-    if (new URL(url, location.href).pathname === "/api/v0/sessions/current")
-      return api.signedOut ? api.fetch(url, init) : undefined;
-    return api.fetch(url, init);
-  });
+  api.server.on("GET", "/api/v0/conversations/{id}", ({ params }, earlier) =>
+    params.id === row.id
+      ? data({ conversation: row, messages: [message(row)], providerUrl: null })
+      : earlier(),
+  );
+  api.server.on("GET", "/api/v0/messages/{id}/content", () =>
+    data({ remote: "none", attachments: [], bodies: [] }),
+  );
+  const router = await appRouter(address, api.server);
   current = router;
   await render(<RouterProvider router={router} />);
   return router;
@@ -90,14 +82,6 @@ async function press(name: string): Promise<void> {
 }
 
 const banner = () => page.getByRole("region", { name: "Signed out" });
-
-// unauthenticated is the server's answer to a request without a session.
-function unauthenticated(): Response {
-  return Response.json(
-    { type: "/api/v0/problems/unauthenticated", status: 401, title: "", detail: "" },
-    { status: 401, headers: { "Content-Type": "application/problem+json" } },
-  );
-}
 
 describe("an ended session", () => {
   it("opens sign-in, which says why and returns here, with nothing to lose", async () => {
@@ -205,16 +189,12 @@ describe("an ended session", () => {
   });
 
   it("opens sign-in from Security, which says why and returns there", async () => {
-    let ended = false;
-    current = await appRouter("/settings/security", memberSession, (url) => {
-      if (url === "/api/v0/setup")
-        return Promise.resolve(Response.json({ data: { status: "done" } }));
-      return ended ? Promise.resolve(unauthenticated()) : undefined;
-    });
+    const server = fakeServer(memberSession);
+    current = await appRouter("/settings/security", server);
     await render(<RouterProvider router={current} />);
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
 
-    ended = true;
+    server.session = undefined;
     await current.options.context.queryClient.refetchQueries({ type: "active" });
 
     await expect.element(page.getByText("Your session ended. Sign in to continue.")).toBeVisible();
