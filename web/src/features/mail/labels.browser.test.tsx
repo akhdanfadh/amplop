@@ -1,10 +1,8 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow, PlaceCount } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
@@ -28,25 +26,15 @@ const workLabels = [
 ];
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // open renders the app at address over rows, of two accounts, Work's and
 // Home's, with their labels, Work's places when given, and returns its
 // router once the reading pane shows.
 async function open(rows: ConversationRow[], address: string, places = workLabels) {
-  await page.viewport(1440, 900);
   api = mailApi(rows, [listedAccount(1, "ana@work.example"), listedAccount(2, "ana@home.example")]);
   api.places = [...places, label(2, family, "Family")];
   const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   await expect.element(toolbar()).toBeVisible();
   return router;
 }
@@ -221,7 +209,6 @@ describe("Labels", () => {
 describe("Labels at the contract's limit", () => {
   it("applies 100 labels added, and waits with words at 101", async () => {
     const row = conversation(1, { accountId: 1 });
-    await page.viewport(1440, 900);
     api = mailApi([row], [listedAccount(1, "ana@work.example")]);
     // 101 labels, Label 001 to Label 101, as List Places gives them.
     api.places = Array.from({ length: 101 }, (_, i) => {
@@ -230,7 +217,6 @@ describe("Labels at the contract's limit", () => {
     });
     const router = await appRouter(`/mail/inbox/${row.id}`, api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await expect.element(toolbar()).toBeVisible();
 
     await more("Labels");
@@ -311,7 +297,6 @@ describe("picked conversations of several accounts", () => {
     const work = conversation(3, { accountId: 1, subject: "Contract renewal" });
     const home = conversation(2, { accountId: 2, subject: "Internet bill" });
     const spare = conversation(1, { accountId: 3, subject: "Welcome aboard" });
-    await page.viewport(1440, 900);
     api = mailApi(
       [work, home, spare],
       [
@@ -323,7 +308,6 @@ describe("picked conversations of several accounts", () => {
     api.places = [...workLabels, label(2, family, "Family")];
     const router = await appRouter("/mail/inbox", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await pick("Contract renewal");
     await pick("Internet bill");
     await pick("Welcome aboard");

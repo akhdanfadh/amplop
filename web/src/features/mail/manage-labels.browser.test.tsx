@@ -1,11 +1,9 @@
 import "@/zod-config";
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow, ListedAccount, PlaceCount } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { refreshMail } from "./conversations";
@@ -43,24 +41,14 @@ function accounts(): ListedAccount[] {
 }
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // open renders the app at address over rows, with accounts and places,
 // and returns its router.
 async function open(address: string, rows: ConversationRow[] = [], listed = accounts()) {
-  await page.viewport(1440, 900);
   api = mailApi(rows, listed);
   api.places = places();
   const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 

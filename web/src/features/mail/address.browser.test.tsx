@@ -1,5 +1,5 @@
 import { QueryObserver, onlineManager } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { appRouter } from "@/test/app-router";
 import {
   getListConnectedAccountsQueryKey,
@@ -9,10 +9,6 @@ import { refreshMail } from "@/features/mail/conversations";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const label = "11111111-1111-4111-8111-111111111111";
-
-afterEach(() => {
-  onlineManager.setOnline(true);
-});
 
 // twoAccounts returns a MailApi with two accounts, a label of the first,
 // and one conversation.

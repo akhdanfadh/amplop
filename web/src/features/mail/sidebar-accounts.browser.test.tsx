@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
@@ -38,7 +38,6 @@ function places(): PlaceCount[] {
 }
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
 
 // open renders the app at address on a window width wide, with accounts
 // and places; prepare changes the fake API before the app reads it.
@@ -49,7 +48,6 @@ async function open(address: string, width = 1440, prepare: (api: MailApi) => vo
   prepare(api);
   const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 
@@ -57,13 +55,6 @@ async function open(address: string, width = 1440, prepare: (api: MailApi) => vo
 function nav() {
   return page.getByRole("navigation", { name: "Mail" });
 }
-
-afterEach(async () => {
-  await cleanup();
-  // The member's data ends, folds included, so each test starts folded.
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // labelsOf returns the chevron that folds or unfolds the labels of the
 // account called name, and labelsUnder those under the label at path.

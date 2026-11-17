@@ -1,24 +1,14 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow, PlaceCount } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const label = "11111111-1111-4111-8111-111111111111";
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // rows are the mail the tests search: two invoices, one in a label, and
 // a lunch.
@@ -40,7 +30,6 @@ async function open(address: string, width = 1440, more: PlaceCount[] = []) {
   api.places = [{ accountId: 1, name: "Receipts", parent: null, place: label, unread: 0 }, ...more];
   const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 
@@ -53,12 +42,10 @@ async function openOver(
   shift = 0,
   accounts = [listedAccount(1, "ana@example.com")],
 ) {
-  await page.viewport(1440, 900);
   api = mailApi(conversations, accounts);
   api.searchShift = shift;
   const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 
@@ -259,7 +246,6 @@ describe("search", () => {
 
   it("marks one place at most on a result, then how many more, so the snippet keeps its room", async () => {
     const travel = "22222222-2222-4222-8222-222222222222";
-    await page.viewport(1440, 900);
     api = mailApi(
       [conversation(1, { subject: "Invoice from Shop", labelIds: [label, travel] })],
       [listedAccount(1, "ana@example.com")],
@@ -270,7 +256,6 @@ describe("search", () => {
     ];
     const router = await appRouter("/mail/search?q=invoice", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     const row = results().getByRole("row", { name: /Invoice from Shop/ });
     await expect.element(row).toHaveAccessibleName(/Labels Receipts and Travel$/);
 

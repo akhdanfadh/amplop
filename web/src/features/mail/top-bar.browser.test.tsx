@@ -1,16 +1,11 @@
-import type { QueryClient } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
-import { cleanup } from "vitest-browser-react";
 import { Frame } from "@/components/frame";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { conversation, listedAccount, mailApi } from "@/test/mail-api";
 import { stubRouter } from "@/test/stub-router";
 import { PlacePage, type PlaceAccount } from "./place-page";
 
 const projects = "22222222-2222-4222-8222-222222222222";
-
-let current: QueryClient | undefined;
 
 // The place a test opens, as the place route gives it to its page: its
 // name, its own name, the account it shows, and whether a conversation is
@@ -43,7 +38,7 @@ async function open(
     { accountId: 2, place: "inbox", name: null, parent: null, unread: 2 },
   ];
   api.server.install();
-  const { client } = await stubRouter(
+  await stubRouter(
     <div className="flex h-full flex-col">
       <PlacePage
         place={place}
@@ -64,7 +59,6 @@ async function open(
       ),
     },
   );
-  current = client;
 }
 
 // middle returns how far down the window element's middle is, in whole
@@ -73,12 +67,6 @@ function middle(element: Element): number {
   const box = element.getBoundingClientRect();
   return Math.round(box.top + box.height / 2);
 }
-
-afterEach(async () => {
-  await cleanup();
-  if (current) clearAccountCache(current);
-  current = undefined;
-});
 
 describe("the top bar, where the sidebar is a drawer", () => {
   it("holds the place's heading and Check for new mail on a phone, not the counts", async () => {
