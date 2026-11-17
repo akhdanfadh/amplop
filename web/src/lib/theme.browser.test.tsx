@@ -13,10 +13,11 @@ function frame(): Promise<number> {
   return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
-// betweenFrames waits for an ordinary task, between two frames, where a
+// betweenFrames, called in a frame, waits for the next ordinary task,
+// which runs once that frame is drawn and before the next: where a
 // click's handler runs.
 function betweenFrames(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // themed adds an element whose colours come from the theme and fade when

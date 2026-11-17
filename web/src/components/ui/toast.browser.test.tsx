@@ -78,7 +78,7 @@ describe("Toaster", () => {
       await expect.element(toast).toBeVisible();
       const region = toast.element().closest("[role=region]") ?? toast.element();
       // 16 px above the bar, as above the window's edge without one.
-      expect(window.innerHeight - region.getBoundingClientRect().bottom).toBe(116);
+      await expect.poll(() => window.innerHeight - region.getBoundingClientRect().bottom).toBe(116);
     } finally {
       document.documentElement.style.removeProperty("--undo-space");
     }
@@ -97,9 +97,8 @@ describe("Toaster", () => {
 
       const region = page.getByRole("alertdialog").first().element().closest("[role=region]");
       if (!(region instanceof HTMLElement)) throw new Error("No toast region.");
-      const box = region.getBoundingClientRect();
-      expect(box.top).toBeGreaterThanOrEqual(0);
-      expect(window.innerHeight - box.bottom).toBe(116);
+      await expect.poll(() => window.innerHeight - region.getBoundingClientRect().bottom).toBe(116);
+      expect(region.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
       for (const close of page.getByRole("button", { name: "Close" }).elements()) {
         close.scrollIntoView({ block: "nearest" });
         const at = close.getBoundingClientRect();
@@ -237,9 +236,13 @@ describe("Toaster", () => {
     await expect.element(page.getByRole("dialog", { name: "Mail" })).toBeVisible();
 
     const close = page.getByRole("alertdialog").getByRole("button", { name: "Close" });
-    const box = close.element().getBoundingClientRect();
-    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    expect(close.element().contains(top)).toBe(true);
+    await expect
+      .poll(() => {
+        const box = close.element().getBoundingClientRect();
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return close.element().contains(top);
+      })
+      .toBe(true);
     await userEvent.click(close);
     expect(toasts()).toBe(0);
     await expect.element(page.getByRole("dialog", { name: "Mail" })).toBeVisible();

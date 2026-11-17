@@ -95,6 +95,8 @@ it("tells this browser's other tabs, and hears theirs", async () => {
 
 it("clears this tab alone for another tab's end, telling no tab back", async () => {
   const otherTab = new BroadcastChannel("inbok-account");
+  // A third tab, which sends the marker below.
+  const thirdTab = new BroadcastChannel("inbok-account");
   try {
     const told: unknown[] = [];
     otherTab.addEventListener("message", (event) => told.push(event.data));
@@ -107,11 +109,18 @@ it("clears this tab alone for another tab's end, telling no tab back", async () 
     stop();
     expect(client.getQueryData(["account-data"])).toBeUndefined();
     expect(cleared).toEqual([client]);
-    // A message would have arrived by the next task.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(told).toEqual([]);
+    // A channel hands over its messages in the order they were sent, so
+    // one sent before this marker would be heard before it.
+    const marked = new Promise((resolve) => {
+      otherTab.addEventListener("message", resolve, { once: true });
+    });
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel takes no origin.
+    thirdTab.postMessage("marker");
+    await marked;
+    expect(told).toEqual(["marker"]);
   } finally {
     otherTab.close();
+    thirdTab.close();
   }
 });
 

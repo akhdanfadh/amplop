@@ -396,7 +396,7 @@ describe("a code field", () => {
 
     await expect.element(action).toHaveFocus();
     const label = page.getByText("Authenticator code", { exact: true }).element();
-    expect(Math.abs(top(action.element()) - top(label))).toBeLessThan(8);
+    await expect.poll(() => Math.abs(top(action.element()) - top(label))).toBeLessThan(8);
   });
 });
 

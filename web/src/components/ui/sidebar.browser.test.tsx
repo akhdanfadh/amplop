@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { InboxIcon, PlusIcon } from "lucide-react";
 import { useLayout } from "@/hooks/use-layout";
 import { shortcutModifier } from "@/lib/shortcut";
+import { fakeClock } from "@/test/clock";
 import { Button } from "./button";
 import { Popover, PopoverTrigger } from "./popover";
 import {
@@ -28,6 +29,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "./sidebar";
+import { restMs } from "./tooltip";
 
 // Frame is a sidebar named Mail beside some content: a trigger and a text
 // field. The sidebar's header has a wordmark the rail hides. Its owner
@@ -144,6 +146,14 @@ function navWidth(): number {
   return page.getByRole("navigation", { name: "Mail" }).element().getBoundingClientRect().width;
 }
 
+// hoverSettled waits until the pointer is over element, then ends at once
+// any colour fade the hover began there (150 ms in the app), so the style
+// read next is the one the hover leaves.
+async function hoverSettled(element: Element): Promise<void> {
+  await expect.poll(() => element.matches(":hover")).toBe(true);
+  for (const fade of element.getAnimations()) fade.finish();
+}
+
 // frame lets React render what a native event changed.
 function frame(): Promise<void> {
   return new Promise((resolve) =>
@@ -207,11 +217,11 @@ describe("Sidebar", () => {
   it("collapses to the rail and back with Ctrl+B in a wide window", async () => {
     await render(<Frame />);
     await expect.element(page.getByRole("navigation", { name: "Mail" })).toBeVisible();
-    expect(navWidth()).toBe(240);
+    await expect.poll(navWidth).toBe(240);
 
     await userEvent.keyboard("{Control>}b{/Control}");
     expect(state()).toBe("collapsed");
-    expect(navWidth()).toBe(56);
+    await expect.poll(navWidth).toBe(56);
     await expect.element(expandButton()).toBeInTheDocument();
 
     // Caps Lock gives "B"; the key, not the letter, counts.
@@ -294,7 +304,7 @@ describe("Sidebar", () => {
     await render(<Frame />);
     // The member's open choice is for the full layout; this one shows the rail.
     expect(state()).toBe("collapsed");
-    expect(navWidth()).toBe(56);
+    await expect.poll(navWidth).toBe(56);
 
     await userEvent.click(expandButton());
     await expect.element(sheet()).toBeVisible();
@@ -302,7 +312,7 @@ describe("Sidebar", () => {
     await expect.element(sheet().getByText("Members")).toBeVisible();
     // The content keeps its place: only the rail's room is reserved.
     const gap = document.querySelector("[data-slot=sidebar-gap]");
-    expect(gap?.getBoundingClientRect().width).toBe(56);
+    await expect.poll(() => gap?.getBoundingClientRect().width).toBe(56);
 
     // It collapses back with its own button, Escape, or a press beside it.
     await userEvent.click(sheet().getByRole("button", { name: "Collapse sidebar" }));
@@ -389,7 +399,7 @@ describe("Sidebar", () => {
     await expect.element(drawer).toBeVisible();
     await expect.element(drawer.getByRole("navigation", { name: "Mail" })).toBeVisible();
     const panel = document.querySelector("[data-slot=sheet-content]");
-    expect(panel?.getBoundingClientRect().width).toBe(288);
+    await expect.poll(() => panel?.getBoundingClientRect().width).toBe(288);
 
     // The phone shows the same drawer, so it stays open.
     await page.viewport(390, 844);
@@ -429,8 +439,7 @@ describe("Sidebar", () => {
     // Its tint stays while hovered.
     const tint = getComputedStyle(inbox).backgroundColor;
     await userEvent.hover(link);
-    // After the colour transition (150 ms) would have run.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await hoverSettled(inbox);
     expect(getComputedStyle(inbox).backgroundColor).toBe(tint);
   });
 
@@ -490,7 +499,7 @@ describe("Sidebar", () => {
     const link = page.getByRole("link", { name: "Work" });
     const tint = getComputedStyle(link.element()).backgroundColor;
     await userEvent.hover(link);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await hoverSettled(link.element());
     expect(getComputedStyle(link.element()).backgroundColor).toBe(tint);
   });
 
@@ -516,10 +525,12 @@ describe("Sidebar", () => {
     const name = link.querySelector("span:not([data-slot])");
     const count = link.querySelector("[data-slot=sidebar-menu-badge]");
     if (!name || !count) throw new Error("no name or count");
-    expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(
-      count.getBoundingClientRect().left,
-    );
-    expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    await vi.waitFor(() => {
+      expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(
+        count.getBoundingClientRect().left,
+      );
+      expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    });
     // A screen reader hears the count with the name.
     await expect
       .element(
@@ -529,22 +540,26 @@ describe("Sidebar", () => {
   });
 
   it("names each icon in a tooltip on the rail", async () => {
+    const clock = fakeClock();
     await render(<Frame />);
     await userEvent.keyboard("{Control>}b{/Control}");
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Members");
   });
 
   it("ends a group's label with its action, which the rail hides", async () => {
     await render(<LabelsFrame />);
-    const label = page.getByText("Labels").element().getBoundingClientRect();
     const action = page.getByRole("button", { name: "Add label" }).element();
-    const box = action.getBoundingClientRect();
-    expect(box.top + box.height / 2).toBe(label.top + label.height / 2);
-    expect(box.right).toBe(label.right);
-    // As tall as the rows beside it.
     const field = page.getByRole("textbox", { name: "Filter labels" }).element();
-    expect(field.getBoundingClientRect().height).toBe(32);
+    await vi.waitFor(() => {
+      const label = page.getByText("Labels").element().getBoundingClientRect();
+      const box = action.getBoundingClientRect();
+      expect(box.top + box.height / 2).toBe(label.top + label.height / 2);
+      expect(box.right).toBe(label.right);
+      // As tall as the rows beside it.
+      expect(field.getBoundingClientRect().height).toBe(32);
+    });
 
     await userEvent.keyboard("{Control>}b{/Control}");
     expect(action.checkVisibility()).toBe(false);
@@ -556,7 +571,7 @@ describe("Sidebar", () => {
     const before = members.getBoundingClientRect().top;
 
     await userEvent.keyboard("{Control>}b{/Control}");
-    expect(members.getBoundingClientRect().top).toBe(before);
+    await expect.poll(() => members.getBoundingClientRect().top).toBe(before);
     // Still named for screen readers, its words hidden behind a line.
     const label = page.getByText("This inbok").element();
     expect(getComputedStyle(label).color).toBe("rgba(0, 0, 0, 0)");
@@ -641,19 +656,23 @@ describe("Sidebar", () => {
   });
 
   it("shows an open item's detail on hover, and its name on the rail", async () => {
+    const clock = fakeClock();
     await render(<Frame />);
     // React Aria shows tooltips on hover once the pointer is in use.
     await userEvent.click(page.getByText("The list"));
 
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("2 members, 1 invited.");
 
     await userEvent.click(sidebarButton("Collapse sidebar"));
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Members");
   });
 
   it("shows a sub item's detail on hover", async () => {
+    const clock = fakeClock();
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -676,6 +695,7 @@ describe("Sidebar", () => {
     await userEvent.click(page.getByText("The list"));
 
     await userEvent.hover(page.getByRole("link", { name: "Projects" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Clients/Northwind/Projects");
   });
 });

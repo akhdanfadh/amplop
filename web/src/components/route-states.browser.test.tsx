@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { z } from "zod";
 import { ApiError } from "@/api/transport";
+import { fakeClock } from "@/test/clock";
 import { NotFound, RouteError, RoutePending, StateRegion } from "./route-states";
 
 // app returns a router with one page at /, whose checks run beforeLoad and
@@ -26,6 +27,10 @@ function app(beforeLoad: () => void, Page: () => React.ReactNode, address = "/")
     defaultNotFoundComponent: NotFound,
   });
 }
+
+// How long a router holds a pending view once shown, as the app's does
+// after its first load (pendingAtLeastMs in router.tsx).
+const pendingAtLeastMs = 500;
 
 function Inbox() {
   return <h1>Inbox</h1>;
@@ -84,6 +89,7 @@ describe("RouteError", () => {
   });
 
   it("gives focus to the loading view while Try again runs the checks", async () => {
+    const clock = fakeClock();
     const busy = new ApiError("http", { method: "GET", status: 503, requestId: "req-2" });
     let calls = 0;
     // The second check runs until the test lets it finish, however long the
@@ -109,8 +115,13 @@ describe("RouteError", () => {
       defaultErrorComponent: RouteError,
       defaultPendingComponent: RoutePending,
       defaultPendingMs: 0,
+      defaultPendingMinMs: pendingAtLeastMs,
     });
     await render(<RouterProvider router={router} />);
+    // The router holds the pending view it showed at once, then shows the
+    // failure.
+    await expect.element(page.getByRole("status")).toBeInTheDocument();
+    await clock.advance(pendingAtLeastMs);
 
     const retry = page.getByRole("button", { name: "Try again" });
     await expect.element(retry).toBeVisible();
@@ -119,6 +130,7 @@ describe("RouteError", () => {
     // The error view is hidden, not gone, while the checks run.
     await expect.element(page.getByRole("status")).toHaveFocus();
     finish?.();
+    await clock.advance(pendingAtLeastMs);
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   });
 

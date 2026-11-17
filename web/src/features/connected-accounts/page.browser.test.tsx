@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
@@ -10,6 +10,7 @@ import type {
   ListedSessions,
   TotpStatus,
 } from "@/api/generated/model";
+import { pressInDialog } from "@/test/dialog";
 import { appRouter } from "@/test/app-router";
 import { fakeClock } from "@/test/clock";
 import { listedAccount } from "@/test/mail-api";
@@ -274,9 +275,7 @@ describe("Connected accounts", () => {
     const dialog = page.getByRole("alertdialog");
     await expect.element(dialog).toHaveAccessibleName("Disconnect Work?");
     await expect.element(dialog.getByRole("button", { name: "Cancel" })).toHaveFocus();
-    // A keyboard press counts at once, unlike a click within a
-    // double-click of the dialog opening.
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect
       .poll(() => sent(state.server.requests))
@@ -299,8 +298,7 @@ describe("Connected accounts", () => {
     await open(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect.element(page.getByText("Work was already disconnected.")).toBeVisible();
     await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
@@ -446,8 +444,7 @@ describe("Connected accounts", () => {
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
-    await expect.element(dialog).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
     await expect.element(dialog.getByRole("alert")).toHaveTextContent(
       // A fault may have come after the account went, so it is unknown.
       "Something went wrong on our side. Couldn't confirm whether Work is disconnected. Check the list before trying again.",
@@ -472,12 +469,16 @@ describe("Connected accounts", () => {
     const dialog = page.getByRole("alertdialog");
     await expect.element(dialog).toBeVisible();
 
-    const box = dialog.element().getBoundingClientRect();
-    for (const button of dialog.getByRole("button").elements()) {
-      const edge = button.getBoundingClientRect();
-      expect(edge.left).toBeGreaterThanOrEqual(box.left);
-      expect(edge.right).toBeLessThanOrEqual(box.right);
-    }
+    // The dialog is still opening when it first shows, so the boxes are
+    // read again on every look.
+    await vi.waitFor(() => {
+      const box = dialog.element().getBoundingClientRect();
+      for (const button of dialog.getByRole("button").elements()) {
+        const edge = button.getBoundingClientRect();
+        expect(edge.left).toBeGreaterThanOrEqual(box.left);
+        expect(edge.right).toBeLessThanOrEqual(box.right);
+      }
+    });
     // Heard whole, the question mark included.
     await expect.element(dialog).toHaveAccessibleName(`Disconnect ${long.email}?`);
   });
@@ -495,8 +496,7 @@ describe("Connected accounts", () => {
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
     const dialog = page.getByRole("alertdialog");
-    await expect.element(dialog).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect.element(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
     await expect.element(dialog.getByText("Disconnecting...")).toBeVisible();
@@ -514,8 +514,7 @@ describe("Connected accounts", () => {
     const release = holdReads(state.server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
     await expect.element(page.getByText("Work is disconnected.")).toBeVisible();
     state.accounts = [{ ...home, name: "Home" }];
     release();
@@ -535,8 +534,7 @@ describe("Connected accounts", () => {
     await open(server);
 
     await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await expect.element(page.getByRole("alertdialog")).toBeVisible();
-    await userEvent.keyboard("{Tab}{Enter}");
+    await pressInDialog("Disconnect Work");
 
     await expect
       .element(page.getByRole("alertdialog").getByRole("alert"))

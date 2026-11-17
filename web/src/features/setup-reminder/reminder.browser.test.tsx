@@ -289,13 +289,19 @@ async function loadApp(opened: Opened) {
 }
 
 // loadedAgain loads router's page again, as a visit to another signed-in
-// page runs the signed-in loader again, and returns "loaded", or
-// "waiting" when that has not finished after 2 s.
+// page runs the signed-in loader again, and returns "loaded" as soon as
+// that finishes, or "waiting" when the retried look gives up on it.
 function loadedAgain(router: Awaited<ReturnType<typeof appRouter>>): Promise<string> {
-  return Promise.race([
-    router.invalidate().then(() => "loaded"),
-    new Promise<string>((resolve) => setTimeout(() => resolve("waiting"), 2000)),
-  ]);
+  let loaded = false;
+  void router.invalidate().then(() => {
+    loaded = true;
+  });
+  return vi
+    .waitFor(() => expect(loaded).toBe(true))
+    .then(
+      () => "loaded",
+      () => "waiting",
+    );
 }
 
 describe("the signed-in app's loader", () => {

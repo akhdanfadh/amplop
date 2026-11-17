@@ -255,8 +255,10 @@ describe("Attachments at their limits", () => {
     const tooltip = page.getByRole("tooltip");
     await expect.element(tooltip).toBeVisible();
 
-    const box = tooltip.element().getBoundingClientRect();
-    expect(box.right).toBeLessThanOrEqual(375);
+    // The tooltip is placed after it first shows, so the look is retried.
+    await expect
+      .poll(() => tooltip.element().getBoundingClientRect().right)
+      .toBeLessThanOrEqual(375);
     // The text stays inside the tooltip's own box.
     expect(tooltip.element().scrollWidth).toBeLessThanOrEqual(tooltip.element().clientWidth);
   });

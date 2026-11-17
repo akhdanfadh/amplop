@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
 import type { ListedMembers, Member } from "@/api/generated/model";
+import { pressInDialog } from "@/test/dialog";
 import { appRouter } from "@/test/app-router";
 import {
   adminSession,
@@ -105,14 +106,6 @@ const button = (name: string) => page.getByRole("button", { name, exact: true })
 const dialog = () => page.getByRole("alertdialog");
 const announcement = () => page.getByRole("status").last();
 
-// confirmByKeyboard presses the dialog's confirming button: Cancel has
-// focus, the action is next. A keyboard press counts at once, unlike a click
-// within a double-click of the dialog opening.
-async function confirmByKeyboard(): Promise<void> {
-  await expect.element(dialog()).toBeVisible();
-  await userEvent.keyboard("{Tab}{Enter}");
-}
-
 // fade returns the member list's fade on side, "right" or "below", if shown.
 function fade(side: "right" | "below"): Element | null {
   return document.querySelector(`[data-slot=more-${side}]`);
@@ -172,7 +165,7 @@ describe("Members", () => {
     await expect
       .element(page.getByRole("alertdialog", { name: "Deactivate jo@example.com?" }))
       .toBeVisible();
-    await confirmByKeyboard();
+    await pressInDialog("Deactivate");
     await expect.element(button("Deactivating...")).toBeVisible();
     await expect.element(button("Cancel")).toBeDisabled();
 
@@ -189,7 +182,7 @@ describe("Members", () => {
     await open(state.server);
 
     await userEvent.click(button("Deactivate jo@example.com"));
-    await confirmByKeyboard();
+    await pressInDialog("Deactivate");
     await expect
       .element(dialog().getByRole("alert"))
       .toHaveTextContent(
@@ -211,7 +204,7 @@ describe("Members", () => {
     await open(server);
 
     await userEvent.click(button("Deactivate jo@example.com"));
-    await confirmByKeyboard();
+    await pressInDialog("Deactivate");
 
     await expect
       .element(dialog().getByRole("alert"))
@@ -252,47 +245,51 @@ describe("Members", () => {
     expect(box.scrollHeight).toBeGreaterThan(box.clientHeight);
     expect(box.scrollWidth).toBeGreaterThan(box.clientWidth);
 
-    box.scrollTop = 200;
-    box.scrollLeft = 120;
-    await frames();
-
-    const top = box.getBoundingClientRect().top;
-    const left = box.getBoundingClientRect().left;
-    expect(memberHead.getBoundingClientRect().top).toBeCloseTo(top, 0);
-    expect(statusHead.getBoundingClientRect().top).toBeCloseTo(top, 0);
-    expect(memberHead.getBoundingClientRect().left).toBeCloseTo(left, 0);
-    expect(firstRow.getBoundingClientRect().left).toBeCloseTo(left, 0);
-    expect(statusHead.getBoundingClientRect().left).toBeCloseTo(statusBefore - 120, 0);
-    // The pinned column's edge shows only while the columns are scrolled.
-    expect(box.hasAttribute("data-scrolled")).toBe(true);
-    // Fades mark the columns to the right and the rows below until the
-    // last of each is in view.
-    expect(fade("right")).not.toBeNull();
-    expect(fade("below")).not.toBeNull();
-    box.scrollLeft = box.scrollWidth;
-    box.scrollTop = box.scrollHeight;
-    await frames();
-    expect(fade("right")).toBeNull();
-    expect(fade("below")).toBeNull();
+    // Each scroll is set again with every look at what it shows: the box
+    // marks itself and draws its fades a frame or more after it scrolls,
+    // and a scroll set while the page still settles can stop short.
+    await vi.waitFor(() => {
+      box.scrollTop = 200;
+      box.scrollLeft = 120;
+      const top = box.getBoundingClientRect().top;
+      const left = box.getBoundingClientRect().left;
+      expect(memberHead.getBoundingClientRect().top).toBeCloseTo(top, 0);
+      expect(statusHead.getBoundingClientRect().top).toBeCloseTo(top, 0);
+      expect(memberHead.getBoundingClientRect().left).toBeCloseTo(left, 0);
+      expect(firstRow.getBoundingClientRect().left).toBeCloseTo(left, 0);
+      expect(statusHead.getBoundingClientRect().left).toBeCloseTo(statusBefore - 120, 0);
+      // The pinned column's edge shows only while the columns are scrolled.
+      expect(box.hasAttribute("data-scrolled")).toBe(true);
+      // Fades mark the columns to the right and the rows below until the
+      // last of each is in view.
+      expect(fade("right")).not.toBeNull();
+      expect(fade("below")).not.toBeNull();
+    });
+    await vi.waitFor(() => {
+      box.scrollLeft = box.scrollWidth;
+      box.scrollTop = box.scrollHeight;
+      expect(fade("right")).toBeNull();
+      expect(fade("below")).toBeNull();
+    });
     // Scrolling back up to a button stops below the header, not under it.
-    box.scrollTop = box.scrollHeight;
-    await frames();
     const earlier = button("Deactivate member3@example.com").element();
-    // As Shift+Tab scrolls a button into view: to the nearest edge.
-    earlier.scrollIntoView({ block: "nearest" });
-    await frames();
-    expect(earlier.getBoundingClientRect().top).toBeGreaterThanOrEqual(
-      memberHead.getBoundingClientRect().bottom - 1,
-    );
+    await vi.waitFor(() => {
+      box.scrollTop = box.scrollHeight;
+      // As Shift+Tab scrolls a button into view: to the nearest edge.
+      earlier.scrollIntoView({ block: "nearest" });
+      expect(earlier.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+        memberHead.getBoundingClientRect().bottom - 1,
+      );
+    });
     // Scrolling down to a button stops above the bottom fade.
-    box.scrollTop = 0;
-    await frames();
     const later = button("Deactivate member15@example.com").element();
-    later.scrollIntoView({ block: "nearest" });
-    await frames();
-    expect(later.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      box.getBoundingClientRect().bottom - 32 + 1,
-    );
+    await vi.waitFor(() => {
+      box.scrollTop = 0;
+      later.scrollIntoView({ block: "nearest" });
+      expect(later.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        box.getBoundingClientRect().bottom - 32 + 1,
+      );
+    });
     // A row's action still answers a press.
     await userEvent.click(button("Deactivate member19@example.com"));
     await expect.element(dialog()).toBeVisible();
