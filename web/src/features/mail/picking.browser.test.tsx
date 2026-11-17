@@ -4,6 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 let api: MailApi;
@@ -34,6 +35,13 @@ async function open(
   await render(<RouterProvider router={router} />);
   await expect.element(list()).toBeVisible();
   return router;
+}
+
+// settled waits until router has loaded the page it is going to. A test
+// waits for it before it ends: a navigation left loading reads its
+// conversation after the test's fake server is gone.
+async function settled(router: { state: { status: string } }): Promise<void> {
+  await expect.poll(() => router.state.status).toBe("idle");
 }
 
 // list returns the conversation list.
@@ -103,6 +111,7 @@ describe("picking", () => {
     await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[2].id}`);
     await expect.element(count(1)).toBeVisible();
     await expect.element(row("Subject 3")).toHaveAttribute("aria-selected", "false");
+    await settled(router);
   });
 
   it("picks again, and Back stops it, while a conversation opened while picking stays open", async () => {
@@ -114,7 +123,8 @@ describe("picking", () => {
     await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[5].id}`);
     await userEvent.click(bar().getByRole("button", { name: "Archive" }));
     await expect.element(bar()).not.toBeInTheDocument();
-    await new Promise((done) => setTimeout(done, 1500));
+    // Picking's history entry is taken back before the next picking starts.
+    await settled(router);
     await userEvent.click(
       page.getByRole("region", { name: "Undo" }).getByRole("button", { name: "Undo" }),
     );
@@ -128,6 +138,7 @@ describe("picking", () => {
     router.history.back();
     await expect.element(bar()).not.toBeInTheDocument();
     expect(router.state.location.pathname).toBe(`/mail/inbox/${rows[5].id}`);
+    await settled(router);
   });
 
   it("opens the focused row on Enter while rows are picked", async () => {
@@ -140,6 +151,7 @@ describe("picking", () => {
 
     await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[1].id}`);
     await expect.element(count(1)).toBeVisible();
+    await settled(router);
   });
 
   it("picks with Space, and Escape stops picking", async () => {
@@ -385,6 +397,7 @@ describe("picking", () => {
   });
 
   it("sends more picked than the contract takes in requests of its limit, one after another", async () => {
+    const clock = fakeClock();
     const rows = Array.from({ length: 120 }, (_, n) => conversation(n));
     await open(rows);
     // Each move to the last row loads the next page, until the end.
@@ -418,7 +431,8 @@ describe("picking", () => {
     // oxlint-disable no-await-in-loop -- each step needs the one before it answered.
     for (let sent = 1; sent <= 5; sent++) {
       await expect.poll(() => waiting.length).toBe(1);
-      await new Promise((done) => setTimeout(done, 100));
+      // No second request while the first waits.
+      await clock.advance(100);
       expect(waiting.length).toBe(1);
       waiting.shift()?.();
       await expect.poll(() => api.actions.length).toBe(sent);
@@ -541,11 +555,14 @@ describe("picking", () => {
   });
 
   it("sits under the search box beside the list", async () => {
-    await open([conversation(5), conversation(4)]);
+    const router = await open([conversation(5), conversation(4)]);
     await pickBox("Subject 5");
 
     await expect.element(bar()).toBeVisible();
     const search = page.getByRole("searchbox").element().getBoundingClientRect();
     expect(bar().element().getBoundingClientRect().top).toBeGreaterThanOrEqual(search.bottom);
+    // Picking's history entry, added a moment after the pick.
+    await expect.poll(() => router.history.location.state.picking).toBeDefined();
+    await settled(router);
   });
 });
