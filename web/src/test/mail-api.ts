@@ -77,7 +77,8 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // It starts an account's sync, recording the account in syncs, unless
 // refuseSync names a status and problem type for that account;
 // failAccounts makes every accounts read answer that status; it renames
-// an account as Rename Account does, offers Gmail, and says setup is done.
+// an account as Rename Account does, offers Gmail, lists an empty Outbox,
+// and says setup is done.
 // It searches conversations by their subjects, each word anywhere in it,
 // as Search Conversations answers, a page at a time, each page after the
 // first starting searchShift results early, as a ranking a sync shifted
@@ -229,6 +230,8 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
   server.on("DELETE", "/api/v0/labels/{id}", (asked) => answerLabel(api, asked));
   server.on("GET", "/api/v0/connected-accounts/providers", () => data({ offered: ["gmail"] }));
   server.on("GET", "/api/v0/places", () => data({ places: api.places }));
+  // The mail sidebar counts the Outbox's messages.
+  server.on("GET", "/api/v0/outgoing-messages", () => data({ messages: [] }));
   server.on("GET", "/api/v0/connected-accounts", () => {
     if (api.failAccounts !== undefined) return problem(api.failAccounts);
     return data({ accounts: api.accounts, syncStopped: false });

@@ -1,5 +1,11 @@
 import { vi } from "vite-plus/test";
-import type { CurrentSession, ProblemType } from "@/api/generated/model";
+import type {
+  ConnectedAccounts,
+  CurrentSession,
+  ProblemType,
+  RegistrationAvailability,
+  SystemEmailSettings,
+} from "@/api/generated/model";
 // Only its type: the contract's paths and methods, so a route for a path
 // or method the API does not have is a type error.
 import type spec from "../../../api/generated/openapi.json";
@@ -54,6 +60,29 @@ export const memberSession: CurrentSession = {
   totpRequired: false,
 };
 
+// A signed-in administrator's session, with two-factor authentication on,
+// as the pages only administrators have need.
+export const adminSession: CurrentSession = { ...memberSession, role: "admin" };
+
+// System email settings that are saved and passed a test, so an
+// administrator's frame shows no setup reminder.
+export const testedSystemEmail: SystemEmailSettings = {
+  host: "smtp.example.com",
+  port: 465,
+  security: "tls",
+  username: "inbok@example.com",
+  hasPassword: true,
+  fromAddress: "inbok@example.com",
+  fromName: "inbok",
+  testedAt: "2026-11-12T09:38:00Z",
+};
+
+// A member's accounts list with no account, while syncing runs.
+const noAccounts: ConnectedAccounts = { accounts: [], syncStopped: false };
+
+// Registration as a visitor reads it, closed.
+const closed: RegistrationAvailability = { open: false };
+
 // Asked is one request the server got: its method, its path with the
 // search, e.g. "/api/v0/conversations?place=inbox", its URL, the values of
 // its route's {parameters} by name, its JSON body parsed (undefined
@@ -69,8 +98,8 @@ export type Asked = {
 
 // Handler answers one request, asked. earlier answers it as the route
 // this one replaced does, e.g. after a wait or for the requests the
-// handler leaves alone. To hold the answer it awaits a promise the test
-// settles, e.g. Promise.withResolvers()'s.
+// handler leaves alone. To hold the answer it awaits the promise of
+// held(), which the test resolves.
 export type Handler = (
   asked: Asked,
   earlier: () => Promise<Response>,
@@ -85,7 +114,8 @@ export type Handler = (
 // the member's session, which the session read answers; set it to
 // undefined to end it, and every operation that needs one answers a 401.
 // requests holds every request in order, and unknown those no route
-// knew, which got a 404. fetch is what install puts in fetch's place.
+// knew, which got a 404 and fail the test (expectAllAnswered). fetch is
+// what install puts in fetch's place.
 export type Server = {
   on: <P extends Path>(method: Method<P>, path: P, handler: Handler) => void;
   once: <P extends Path>(method: Method<P>, path: P, handler: Handler) => void;
@@ -98,8 +128,16 @@ export type Server = {
 
 type Route = { method: string; pattern: RegExp; names: string[]; handler: Handler; once: boolean };
 
-// fakeServer returns a Server that answers the session read with session,
-// or a 401 without one, and says that setup is done.
+// The servers installed since the last expectAllAnswered.
+let installed: Server[] = [];
+
+// fakeServer returns a Server that answers as a quiet inbok does, one
+// with nothing to report: setup is done, the session read answers
+// session, or a 401 without one, the member has no connected account and
+// syncing runs, system email is saved and tested, and registration is
+// closed. Those are the reads the app's frame and sign-in make on their
+// own, so a test adds only its page's routes; its own route for any of
+// them replaces the quiet answer.
 export function fakeServer(session?: CurrentSession): Server {
   const routes: Route[] = [];
   const add = (method: string, path: string, handler: Handler, once: boolean) => {
@@ -162,13 +200,34 @@ export function fakeServer(session?: CurrentSession): Server {
     },
     install: () => {
       vi.stubGlobal("fetch", vi.fn(server.fetch));
+      installed.push(server);
       return server;
     },
   };
   // The root asks whether inbok still needs its first administrator.
   server.on("GET", "/api/v0/setup", () => data({ status: "done" }));
   server.on("GET", "/api/v0/sessions/current", () => data(server.session));
+  // The signed-in frame's sync banner.
+  server.on("GET", "/api/v0/connected-accounts", () => data(noAccounts));
+  // An administrator's setup reminder.
+  server.on("GET", "/api/v0/system-email", () => data({ settings: testedSystemEmail }));
+  // Sign-in asks whether to offer registration.
+  server.on("GET", "/api/v0/registration", () => data(closed));
   return server;
+}
+
+// expectAllAnswered throws an Error naming each request that no route of
+// a server installed since its last call knew, e.g. "Requests without an
+// answer: GET /api/v0/places", and forgets those servers. The setup of
+// every test calls it after each test, so a page's read that the fake
+// lacks fails its test; a test about a failed read gives the read a
+// route that answers the failure.
+export function expectAllAnswered(): void {
+  const unknown = installed.flatMap((server) =>
+    server.unknown.map((asked) => `${asked.method} ${asked.path}`),
+  );
+  installed = [];
+  if (unknown.length > 0) throw new Error(`Requests without an answer: ${unknown.join(", ")}`);
 }
 
 // json returns text parsed as JSON, or undefined when it is none.
@@ -204,6 +263,20 @@ export function problem(
       },
     },
   );
+}
+
+// held returns a promise for a handler to await, which holds its answer
+// until the test calls resolve.
+//
+// NOTE: this stands in for Promise.withResolvers, a type error under
+// tsconfig's lib, ES2022. The lib also types the app's code, which must
+// not call what older browsers lack, so it stays.
+export function held(): { promise: Promise<void>; resolve: () => void } {
+  const settle: { resolve?: () => void } = {};
+  const promise = new Promise<void>((resolve) => {
+    settle.resolve = resolve;
+  });
+  return { promise, resolve: () => settle.resolve?.() };
 }
 
 // lose loses the answer, for a handler to call after it acted: fetch
