@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { ApiError } from "@/api/transport";
@@ -16,10 +16,6 @@ function loaded(content: Partial<Extract<MessageContent, { status: "success" }>>
 function frames(): HTMLIFrameElement[] {
   return [...document.querySelectorAll("iframe")];
 }
-
-afterEach(async () => {
-  await page.viewport(414, 896);
-});
 
 describe("MessageContentView", () => {
   it("shows images from the web only once the member asks", async () => {
