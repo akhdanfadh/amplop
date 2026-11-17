@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -48,10 +48,6 @@ function app(
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("SetupGate", () => {
   it("keeps the page mounted once setup is done, even when every query is reset", async () => {

@@ -68,8 +68,6 @@ beforeEach(() => {
 afterEach(() => {
   for (const queryClient of clients) queryClient.clear();
   clients.length = 0;
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
 });
 
 describe("request timeouts", () => {

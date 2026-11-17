@@ -395,7 +395,6 @@ let opened: QueryClient | undefined;
 afterEach(() => {
   release?.();
   release = undefined;
-  vi.unstubAllGlobals();
 });
 
 describe("two-factor setup", () => {

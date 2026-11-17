@@ -1,5 +1,5 @@
 import { QueryObserver, onlineManager } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { appRouter } from "@/test/app-router";
 import {
   getListConnectedAccountsQueryKey,
@@ -11,7 +11,6 @@ import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-
 const label = "11111111-1111-4111-8111-111111111111";
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   onlineManager.setOnline(true);
 });
 

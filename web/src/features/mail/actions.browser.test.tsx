@@ -14,7 +14,6 @@ let current: QueryClient | undefined;
 afterEach(() => {
   if (current) clearAccountCache(current);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 const inbox: PlaceCount = { accountId: 1, name: null, parent: null, place: "inbox", unread: 1 };

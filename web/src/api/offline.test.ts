@@ -27,8 +27,6 @@ afterEach(() => {
   }
   clients.length = 0;
   onlineManager.setOnline(wasOnline);
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
 });
 
 describe("offline writes", () => {

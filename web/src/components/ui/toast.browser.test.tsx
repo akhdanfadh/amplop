@@ -46,7 +46,6 @@ beforeEach(() => {
 
 afterEach(() => {
   closeToasts();
-  vi.useRealTimers();
 });
 
 describe("Toaster", () => {

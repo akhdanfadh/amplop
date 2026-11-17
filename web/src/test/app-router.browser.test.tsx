@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { NotFound, RoutePending } from "@/components/route-states";
@@ -8,7 +8,6 @@ import { fakeServer } from "@/test/server";
 
 afterEach(async () => {
   await cleanup();
-  vi.unstubAllGlobals();
 });
 
 // fiberKeys returns the keys React gives an element it renders, e.g.

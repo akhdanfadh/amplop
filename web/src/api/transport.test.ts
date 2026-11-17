@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, type MockInstance } from "vite-plus/test";
+import { describe, expect, it, vi, type MockInstance } from "vite-plus/test";
 import { createProbeEvent, getFinishTOTPEnrollmentUrl } from "./generated/inbok";
 import { ResponseHealthStatus } from "./generated/model";
 import { userMessage } from "./problem";
@@ -37,11 +37,6 @@ async function failure(): Promise<ApiError> {
   if (!(err instanceof ApiError)) throw new Error(`not an ApiError: ${String(err)}`);
   return err;
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
 
 describe("transport", () => {
   it("returns a body that matches the schema", async () => {

@@ -24,7 +24,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current);
   current = undefined;
-  vi.unstubAllGlobals();
   // The tab's own visibility again, if a test hid it.
   Reflect.deleteProperty(document, "visibilityState");
 });

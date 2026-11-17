@@ -31,7 +31,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // app renders the Inbox's page on api at address, filtered to the account

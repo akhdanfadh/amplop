@@ -114,7 +114,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  vi.unstubAllGlobals();
   await page.viewport(414, 896);
 });
 

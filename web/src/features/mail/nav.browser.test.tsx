@@ -6,7 +6,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
@@ -83,10 +83,6 @@ function app(messages: OutgoingMessageSummary[], places: PlaceCount[] = []) {
   });
   return { router, client };
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("MailNav", () => {
   it("counts the Outbox's messages not sent yet, not one sent again", async () => {

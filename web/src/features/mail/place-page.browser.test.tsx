@@ -20,7 +20,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // app returns a router whose page is the Inbox, with reader in its reading

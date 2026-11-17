@@ -1321,6 +1321,14 @@ conversations, accounts, and places and answers mail's operations as the
 server does, on a fake server of its own: `appRouter(address,
 api.server)`, and `api.server.on(...)` for a route of the test's own.
 
+Cleanup is central. Before each test Vitest puts back every stubbed
+global and every spied method (`unstubGlobals` and `restoreMocks` in
+`vite.config.ts`), and after each test `src/test/setup.ts` puts back the
+real timers. So a test file calls none of `vi.unstubAllGlobals()`,
+`vi.restoreAllMocks()`, or `vi.useRealTimers()`, and makes its stubs and
+spies in the test or a `beforeEach`: one made once for the file lasts
+only until its first test.
+
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:
 

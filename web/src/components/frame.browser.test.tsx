@@ -99,7 +99,6 @@ function frame(): Promise<void> {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   localStorage.clear();
 });
 

@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
@@ -18,7 +18,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // open renders the app wide, or width wide, at /mail/<place>/<id of

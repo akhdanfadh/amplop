@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
@@ -17,7 +17,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 describe("the setup reminders in the app", () => {

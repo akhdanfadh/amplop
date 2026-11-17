@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
@@ -63,7 +63,6 @@ afterEach(async () => {
   // The member's data ends, folds included, so each test starts folded.
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // labelsOf returns the chevron that folds or unfolds the labels of the

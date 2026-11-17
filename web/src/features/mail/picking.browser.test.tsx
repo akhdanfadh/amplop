@@ -18,7 +18,6 @@ afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
-  vi.unstubAllGlobals();
 });
 
 // Whether open's actions wait to be answered, and the ones waiting, each

@@ -10,7 +10,6 @@ afterEach(() => {
     stop();
     frame.remove();
   }
-  vi.useRealTimers();
 });
 
 // show watches a frame width pixels wide showing the test body name, as

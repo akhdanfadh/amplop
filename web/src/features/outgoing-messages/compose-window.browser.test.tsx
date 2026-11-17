@@ -7,7 +7,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
@@ -201,9 +201,6 @@ describe("ComposeWindow", () => {
   beforeEach(async () => {
     await page.viewport(1280, 800);
     serve();
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it("opens docked as a named region, with focus in From", async () => {

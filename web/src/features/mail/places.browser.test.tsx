@@ -8,7 +8,7 @@ import {
   createRouter,
   useParams,
 } from "@tanstack/react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { appRouter } from "@/test/app-router";
@@ -92,10 +92,6 @@ function frameApp() {
 
 beforeEach(() => {
   forgetMailHref();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe("mailPage", () => {

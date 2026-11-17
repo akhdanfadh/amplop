@@ -1,15 +1,11 @@
 import type { CurrentSession } from "@/api/generated/model";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { appRouter } from "@/test/app-router";
 import { fakeServer, memberSession } from "@/test/server";
 
 // An administrator without two-factor authentication, whose session the
 // server lets only set it up.
 const setupSession: CurrentSession = { ...memberSession, role: "admin", totpRequired: true };
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("two-factor setup guards", () => {
   it.each(["/", "/mail/inbox", "/settings/security", "/settings/members", "/security"])(

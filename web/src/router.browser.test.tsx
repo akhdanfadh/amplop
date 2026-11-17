@@ -1,11 +1,7 @@
 import { createMemoryHistory } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { NotFound, RouteError, RoutePending } from "@/components/route-states";
 import { getRouter } from "./router";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("getRouter", () => {
   it("gives every page the app's states, holding none of the first load's", async () => {

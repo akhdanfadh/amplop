@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { appRouter } from "@/test/app-router";
 import { mailApi } from "@/test/mail-api";
 import { fakeServer } from "@/test/server";
@@ -21,10 +21,6 @@ const entryPaths = [
 function signedIn() {
   return mailApi([], []).server;
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 describe("entry addresses", () => {
   it.each(entryPaths)("%s opens a page, not Page not found", async (path) => {
