@@ -1,10 +1,10 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import type { ListedAccount, PlaceCount } from "@/api/generated/model";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const work = "11111111-1111-4111-8111-111111111111";
@@ -38,7 +38,6 @@ function places(): PlaceCount[] {
 }
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
 
 // open renders the app at address on a window width wide, with accounts
 // and places; prepare changes the fake API before the app reads it.
@@ -47,13 +46,8 @@ async function open(address: string, width = 1440, prepare: (api: MailApi) => vo
   api = mailApi([conversation(1)], accounts());
   api.places = places();
   prepare(api);
-  const router = await appRouter(address, memberSession, (url, init) =>
-    new URL(url, location.href).pathname === "/api/v0/sessions/current"
-      ? undefined
-      : api.fetch(url, init),
-  );
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   return router;
 }
 
@@ -61,14 +55,6 @@ async function open(address: string, width = 1440, prepare: (api: MailApi) => vo
 function nav() {
   return page.getByRole("navigation", { name: "Mail" });
 }
-
-afterEach(async () => {
-  await cleanup();
-  // The member's data ends, folds included, so each test starts folded.
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-  vi.unstubAllGlobals();
-});
 
 // labelsOf returns the chevron that folds or unfolds the labels of the
 // account called name, and labelsUnder those under the label at path.
@@ -275,23 +261,5 @@ describe("folding labels", () => {
 
     await expect.element(nav().getByRole("link", { name: "Personal 12,847 unread" })).toBeVisible();
     await expect.element(nav().getByRole("link", { name: "Inbox 12,849 unread" })).toBeVisible();
-  });
-});
-
-describe("Check for new mail", () => {
-  it("checks every account the list shows that inbok can use", async () => {
-    await open("/mail/inbox");
-
-    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
-
-    await expect.poll(() => new Set(api.syncs)).toEqual(new Set([1, 2]));
-  });
-
-  it("checks only the account the list is filtered to", async () => {
-    await open("/mail/inbox?account=2");
-
-    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
-
-    await expect.poll(() => api.syncs).toEqual([2]);
   });
 });

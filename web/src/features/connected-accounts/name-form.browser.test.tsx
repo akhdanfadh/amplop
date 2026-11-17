@@ -1,17 +1,16 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { getListConnectedAccountsQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
 import { accountName } from "@/components/account-mark";
 import { listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { testQueryClient } from "@/test/query-client";
+import { held, problem, type Server } from "@/test/server";
 import { NameForm } from "./name-form";
+
+const invalid = 422;
+const failed = 500;
 
 let api: MailApi;
 // How many times the form asked to close.
@@ -30,45 +29,29 @@ function Page() {
   );
 }
 
-// Fetch is how the page fetches; Wrap changes what the fake API answers,
-// given the fake's own answer, next.
-type Fetch = MailApi["fetch"];
-type Wrap = (next: Fetch) => Fetch;
-
 // open renders the name form of ana@work.example, named name, under the
-// name the accounts list gives it, in a router, as Connected accounts
-// does, with wrap's answers, and returns its query client.
-async function open(name: string | null = null, wrap: Wrap = (next) => next) {
+// name the accounts list gives it, as Connected accounts does. arrange
+// gets the fake server before the first request, to add its own routes.
+// It returns the query client.
+async function open(name: string | null = null, arrange: (server: Server) => void = () => {}) {
   closes = 0;
   api = mailApi([], [{ ...listedAccount(2, "ana@work.example"), name }]);
-  vi.stubGlobal("fetch", vi.fn(wrap(api.fetch)));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRoute({ component: Page });
-  const router = createRouter({
-    routeTree: root,
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-    Wrap: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
-  });
-  await render(<RouterProvider router={router} />);
+  arrange(api.server);
+  api.server.install();
+  const client = testQueryClient();
+  await render(
+    <QueryClientProvider client={client}>
+      <Page />
+    </QueryClientProvider>,
+  );
   return client;
 }
 
-// refusal returns a Problem Details answer of status with more members.
-function refusal(status: number, more: Record<string, unknown> = {}): Response {
-  return Response.json(
-    { type: "about:blank", status, title: "Failed", detail: "It failed.", ...more },
-    { status, headers: { "Content-Type": "application/problem+json" } },
-  );
+// refuseRename returns an arrangement whose server answers every rename
+// with answer's Response.
+function refuseRename(answer: () => Response): (server: Server) => void {
+  return (server) => server.on("PATCH", "/api/v0/connected-accounts/{id}", answer);
 }
-
-// refuseRename answers every rename with answer.
-function refuseRename(answer: () => Response): Wrap {
-  return (next) => async (input, init) => (init?.method === "PATCH" ? answer() : next(input, init));
-}
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 const field = () => page.getByRole("textbox", { name: /^Name/ });
 const save = () => page.getByRole("button", { name: "Save" });
@@ -123,8 +106,7 @@ describe("the account name form", () => {
     await open(
       null,
       refuseRename(() =>
-        refusal(422, {
-          type: "/api/v0/problems/validation-error",
+        problem(invalid, "/api/v0/problems/validation-error", {
           errors: [{ location: "body.name", message: "Use another name." }],
         }),
       ),
@@ -141,7 +123,7 @@ describe("the account name form", () => {
   it("says why the name could not be saved, and stays open with it", async () => {
     await open(
       null,
-      refuseRename(() => refusal(500)),
+      refuseRename(() => problem(failed)),
     );
 
     await userEvent.fill(field(), "Work");
@@ -167,30 +149,31 @@ describe("the account name form", () => {
   it("keeps the saved name when an older read of the accounts lands after it", async () => {
     // A read of the accounts while held waits to answer, with the name
     // it read before the rename.
-    let held: Promise<void> | undefined;
-    let release: (() => void) | undefined;
-    const client = await open(null, (next) => async (input, init) => {
-      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
-      const read =
-        url.pathname === "/api/v0/connected-accounts" && (init?.method ?? "GET") === "GET";
-      const answer = await next(input, init);
-      if (read && held) await held;
-      return answer;
-    });
+    let gate: ReturnType<typeof held> | undefined;
+    const client = await open(null, (server) =>
+      server.on("GET", "/api/v0/connected-accounts", async (_, earlier) => {
+        const answer = await earlier();
+        if (gate) await gate.promise;
+        return answer;
+      }),
+    );
     const listed = page.getByTestId("listed");
     await expect.element(listed).toHaveTextContent("ana@work.example");
-    held = new Promise((resolve) => {
-      release = resolve;
-    });
-    void client.refetchQueries({ queryKey: getListConnectedAccountsQueryKey() });
+    gate = held();
+    const older = client.refetchQueries({ queryKey: getListConnectedAccountsQueryKey() });
 
     await userEvent.fill(field(), "Work");
     await userEvent.click(save());
     await expect.element(listed).toHaveTextContent("Work");
-    release?.();
-    held = undefined;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    gate.resolve();
+    gate = undefined;
+    // The older read has ended, and so has any read begun since.
+    await older;
+    await expect.poll(() => client.isFetching()).toBe(0);
 
+    // The list draws what the client holds by the frame after next, so
+    // the older read's answer would show here.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     expect(listed.element().textContent).toBe("Work");
   });
 });

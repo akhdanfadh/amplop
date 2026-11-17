@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-} from "@tanstack/react-router";
 import { NotFound } from "@/components/route-states";
+import { stubRouter } from "@/test/stub-router";
 import { MailPanes } from "./panes";
 
 // listWidth sets the window width wide and returns the list's width.
@@ -18,23 +13,20 @@ async function listWidth(width: number): Promise<number> {
   return list?.getBoundingClientRect().width ?? 0;
 }
 
-// notFoundApp returns a router whose page is the panes: a list holding the
-// page's main, and Page not found in the reading pane.
-function notFoundApp() {
-  const root = createRootRoute({
-    component: () => (
-      <MailPanes
-        pane="reader"
-        list={
-          <main aria-label="Inbox">
-            <h1>Inbox</h1>
-          </main>
-        }
-        reader={<NotFound />}
-      />
-    ),
-  });
-  return createRouter({ routeTree: root, history: createMemoryHistory() });
+// showNotFound renders the panes: a list holding the page's main, and Page
+// not found in the reading pane, which needs a router around it.
+async function showNotFound() {
+  await stubRouter(
+    <MailPanes
+      pane="reader"
+      list={
+        <main aria-label="Inbox">
+          <h1>Inbox</h1>
+        </main>
+      }
+      reader={<NotFound />}
+    />,
+  );
 }
 
 // shown counts the elements matching selector that are on screen.
@@ -46,7 +38,7 @@ function shown(selector: string): number {
 describe("MailPanes", () => {
   it("keeps one main and one h1 with Page not found in the reading pane", async () => {
     await page.viewport(1440, 900);
-    await render(<RouterProvider router={notFoundApp()} />);
+    await showNotFound();
     await expect
       .element(page.getByRole("heading", { name: "Page not found", level: 2 }))
       .toHaveFocus();
@@ -77,10 +69,12 @@ describe("MailPanes", () => {
     await expect.element(inList).toHaveFocus();
   });
 
-  it("grows the list with the window, from 300 px to 440 px", async () => {
+  it("grows the list with the window, between its narrowest and its widest", async () => {
     await page.viewport(900, 900);
     await render(<MailPanes pane="list" list={<p>The list</p>} reader={<p>The reader</p>} />);
     await expect.element(page.getByText("The reader")).toBeVisible();
+    // DESIGN.md "Panes and widths": the list is 26% of the window, from
+    // 300 px to 440 px.
     expect(await listWidth(900)).toBe(300);
     expect(await listWidth(1440)).toBeCloseTo(374.4, 0);
     expect(await listWidth(1920)).toBe(440);

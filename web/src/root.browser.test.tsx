@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import { testQueryClient } from "@/test/query-client";
 import {
   RouterProvider,
   createBrowserHistory,
@@ -11,7 +12,7 @@ import {
   linkOptions,
 } from "@tanstack/react-router";
 import { Link } from "react-aria-components";
-import { closeToasts, showError } from "@/components/ui/toast";
+import { showError } from "@/components/ui/toast";
 import { Route as appRoot } from "@/routes/__root";
 
 // Page links to another page in the app, once adding to the history and
@@ -55,7 +56,7 @@ function setup() {
   return createRouter({
     routeTree: rootRoute.addChildren([members, settings]),
     history: createBrowserHistory(),
-    context: { queryClient: new QueryClient() },
+    context: { queryClient: testQueryClient() },
   });
 }
 
@@ -65,7 +66,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   // React Aria rereads the browser's language, unmocked again.
   window.dispatchEvent(new Event("languagechange"));
-  closeToasts();
   history.replaceState(null, "", testAddress);
 });
 
@@ -92,7 +92,7 @@ describe("root route", () => {
     expect(location.hash).toBe("#top");
   });
 
-  it("passes a link's router options, e.g. replacing the history entry", async () => {
+  it("opens a link in place of the current history entry when the link asks", async () => {
     const router = setup();
     await render(<RouterProvider router={router} />);
     const entries = history.length;

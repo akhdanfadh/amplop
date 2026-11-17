@@ -1,13 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { retryAfterDelay, retryAfterTime } from "./retry-after";
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-23T00:00:00Z"));
-});
-
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("retryAfterDelay", () => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, type MockInstance } from "vite-plus/test";
+import { describe, expect, it, vi, type MockInstance } from "vite-plus/test";
 import { createProbeEvent, getFinishTOTPEnrollmentUrl } from "./generated/inbok";
 import { ResponseHealthStatus } from "./generated/model";
 import { userMessage } from "./problem";
@@ -37,11 +37,6 @@ async function failure(): Promise<ApiError> {
   if (!(err instanceof ApiError)) throw new Error(`not an ApiError: ${String(err)}`);
   return err;
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
 
 describe("transport", () => {
   it("returns a body that matches the schema", async () => {
@@ -308,22 +303,6 @@ describe("received error facts", () => {
     expect(error.receivedAt).toBeLessThanOrEqual(Date.now());
   });
 
-  it("accepts an external problem without fabricating absent members", async () => {
-    const problem = {
-      detail: "Maintenance is in progress.",
-      type: "https://proxy.example/problems/maintenance",
-    };
-    vi.stubGlobal(
-      "fetch",
-      async () =>
-        new Response(JSON.stringify(problem), {
-          status: httpStatus.unavailable,
-          headers: { "Content-Type": "application/problem+json" },
-        }),
-    );
-    expect((await failure()).problem).toEqual(problem);
-  });
-
   it.each([
     { body: "<html>Private proxy diagnostics</html>", type: "text/html" },
     { body: "{", type: "application/problem+json" },
@@ -377,6 +356,9 @@ describe("received error facts", () => {
     },
   );
 
+  // received-problem.test.ts holds the rules for reading a problem. This one
+  // case proves the transport reads a problem by them: a body passed on as it
+  // came would keep the three bad members.
   it("ignores incorrectly typed standard members but keeps usable detail", async () => {
     vi.stubGlobal(
       "fetch",

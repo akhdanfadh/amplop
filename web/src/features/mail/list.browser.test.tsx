@@ -1,95 +1,27 @@
-import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-  useRouterState,
-} from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { onlineManager } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { cdp, page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { Toaster } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { Route as appRoot } from "@/routes/__root";
+import { doubleClickTime } from "@/lib/double-click";
+import { appRouter } from "@/test/app-router";
+import { fakeClock, type Clock } from "@/test/clock";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { pointTo } from "@/test/pointer";
-import { placeSearch } from "./address";
-import { currentMail, refreshNewest } from "./conversations";
-import { PlacePage } from "./place-page";
-import { Toaster } from "@/components/ui/toast";
+import { held } from "@/test/server";
+import { checkingEveryMs, currentMail, refreshNewest } from "./conversations";
 
 const serverError = 500;
 
-// The query client of the test running, whose mail clearAccountCache
-// ends, refresh timer included.
-let current: QueryClient | undefined;
-
-afterEach(async () => {
-  // Unmounted first, so no list starts reading again once its mail ends.
-  await cleanup();
-  if (current) clearAccountCache(current);
-  current = undefined;
-  vi.unstubAllGlobals();
-});
-
-// app renders the Inbox's page on api at address, filtered to the account
-// its ?account= names as the app's route does, with openId open, or else
-// the conversation the address opens, and returns its query client, its
-// router, and the conversations the router read ahead.
-async function app(api: MailApi, address = "/mail/inbox", openId?: string) {
-  vi.stubGlobal("fetch", vi.fn(api.fetch));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  current = client;
-  const readAhead: string[] = [];
-  const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-    component: appRoot.options.component,
-  });
-  const place = createRoute({
-    getParentRoute: () => root,
-    path: "/mail/$place",
-    validateSearch: placeSearch,
-    component: function Place() {
-      const { place: name } = place.useParams();
-      const { account: id } = place.useSearch();
-      const account = useListConnectedAccounts().data?.data.accounts.find((a) => a.id === id);
-      // /mail/<place>/<conversation id>: the conversation the address opens.
-      const routed = useRouterState({
-        select: (state) => state.location.pathname.split("/")[3],
-      });
-      // The window's height, as the mail frame gives its panes.
-      return (
-        <div className="flex h-svh flex-col">
-          <PlacePage
-            place={name}
-            name={name === "inbox" ? "Inbox" : name}
-            account={account}
-            openId={openId ?? routed}
-            pane="list"
-            reader={null}
-          />
-        </div>
-      );
-    },
-  });
-  const opened = createRoute({
-    getParentRoute: () => place,
-    path: "$conversationId",
-    loader: ({ params }) => {
-      readAhead.push(params.conversationId);
-    },
-  });
-  const signIn = createRoute({ getParentRoute: () => root, path: "/sign-in" });
-  const router = createRouter({
-    routeTree: root.addChildren([place.addChildren([opened]), signIn]),
-    history: createMemoryHistory({ initialEntries: [address] }),
-    context: { queryClient: client },
-    Wrap: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
-  });
-  await page.viewport(1440, 900);
+// open renders the app 1440 px wide at address, the Inbox when left out,
+// over api, and returns its router and its query client.
+async function open(api: MailApi, address = "/mail/inbox") {
+  const router = await appRouter(address, api.server);
+  const client = router.options.context.queryClient;
   await render(<RouterProvider router={router} />);
-  return { client, router, readAhead };
+  return { client, router };
 }
 
 // grid returns the conversation list.
@@ -101,9 +33,9 @@ function grid() {
 // React Aria scrolls into view, as a member's End does; reaching it loads
 // the next page.
 async function toLastRow(): Promise<void> {
-  const first = grid().element().querySelector('[role="row"][aria-label]');
-  if (!grid().element().contains(document.activeElement) && first instanceof HTMLElement) {
-    first.focus();
+  if (!grid().element().contains(document.activeElement)) {
+    const first = grid().getByRole("row").first().element();
+    if (first instanceof HTMLElement) first.focus();
   }
   await userEvent.keyboard("{End}");
 }
@@ -119,6 +51,40 @@ async function anchored(api: MailApi): Promise<void> {
   );
 }
 
+// toLastRowUntil moves to the last row, as toLastRow does, again until
+// reached passes: an End pressed as the list settles can go nowhere.
+async function toLastRowUntil(reached: () => void | Promise<void>): Promise<void> {
+  await vi.waitFor(
+    async () => {
+      await toLastRow();
+      await reached();
+    },
+    { timeout: 10_000 },
+  );
+}
+
+// guardOver waits until the list's press guard, held by a row's action
+// before the call, is over (usePressGuard).
+//
+// NOTE: a wait in real time, as long as the guard itself. The guard reads
+// performance.now(), which fakeClock leaves real (clock.ts), so no test
+// can move a clock past it.
+async function guardOver(): Promise<void> {
+  const from = performance.now();
+  await expect.poll(() => performance.now() - from).toBeGreaterThanOrEqual(doubleClickTime);
+}
+
+// rounds moves clock on by 100 ms, times over, the page drawing after
+// each. A check that nothing more happens uses it: what follows a read's
+// answer takes the page's turn (the answer) and then the clock's
+// (TanStack Query's setTimeout(0)), so each move lets one more round of
+// it run, where one long move would let one.
+async function rounds(clock: Clock, times: number): Promise<void> {
+  if (times === 0) return;
+  await clock.advance(100);
+  await rounds(clock, times - 1);
+}
+
 const one = [listedAccount(1, "ana@example.com")];
 
 describe("ConversationList", () => {
@@ -127,33 +93,29 @@ describe("ConversationList", () => {
       Array.from({ length: 70 }, (_, n) => conversation(n)),
       one,
     );
-    await app(api);
+    await open(api);
     await expect.element(page.getByRole("row", { name: /^Bo Tan, Subject 69,/ })).toBeVisible();
-    const rows = grid().element().querySelectorAll('[role="row"][aria-label]');
-    expect(rows[0]?.getAttribute("aria-label")).toMatch(/Subject 69/);
-    expect(rows[1]?.getAttribute("aria-label")).toMatch(/Subject 68/);
+    const rows = grid().getByRole("row");
+    await expect.element(rows.nth(0)).toHaveAccessibleName(/Subject 69/);
+    await expect.element(rows.nth(1)).toHaveAccessibleName(/Subject 68/);
 
     const end = page.getByText("That's everything inbok has copied.", { exact: false });
     // Each move to the last row loads the next page.
-    await vi.waitFor(
-      async () => {
-        await toLastRow();
-        expect(end.query()).not.toBeNull();
-      },
-      { timeout: 10_000 },
-    );
+    await toLastRowUntil(() => expect(end.query()).not.toBeNull());
     await expect.element(end).toBeVisible();
     // The oldest is the last row once everything is loaded.
-    await toLastRow();
-    await expect.element(page.getByRole("row", { name: /Subject 0,/ })).toHaveFocus();
+    const oldest = page.getByRole("row", { name: /Subject 0,/ });
+    await toLastRowUntil(async () => {
+      await expect.element(oldest).toHaveFocus();
+    });
     // Every read was a page: none asked for the whole place.
     const reads = api.requests.filter((r) => r.startsWith("/api/v0/conversations?"));
     expect(reads.every((r) => r.includes("limit="))).toBe(true);
     expect(reads.some((r) => r.includes("before="))).toBe(true);
   });
 
-  it("ends with its words 12 px under the last row", async () => {
-    await app(mailApi([conversation(1)], one));
+  it("ends with its words close under the last row", async () => {
+    await open(mailApi([conversation(1)], one));
     const words = page.getByText("That's everything inbok has copied.", { exact: false });
     await expect.element(words).toBeVisible();
 
@@ -161,6 +123,7 @@ describe("ConversationList", () => {
       .getByRole("row", { name: /Subject 1,/ })
       .element()
       .getBoundingClientRect();
+    // DESIGN.md "Message list": the end's words are 12 px under the last row.
     expect(words.element().getBoundingClientRect().top - row.bottom).toBe(12);
   });
 
@@ -169,18 +132,14 @@ describe("ConversationList", () => {
       Array.from({ length: 60 }, (_, n) => conversation(n)),
       one,
     );
-    const { client } = await app(api);
+    const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
     const last = page.getByRole("row", { name: /Subject 10,/ });
     // End again until it lands: one pressed as the list settles can go
     // nowhere. The first page's last row is the last until it does.
-    await vi.waitFor(
-      async () => {
-        await toLastRow();
-        await expect.element(last).toHaveFocus();
-      },
-      { timeout: 10_000 },
-    );
+    await toLastRowUntil(async () => {
+      await expect.element(last).toHaveFocus();
+    });
     await anchored(api);
     api.conversations.push(conversation(100), conversation(101));
     await refreshNewest(client);
@@ -198,7 +157,7 @@ describe("ConversationList", () => {
 
   it("shows new mail at once at the top of the list", async () => {
     const api = mailApi([conversation(1)], one);
-    const { client } = await app(api);
+    const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
     api.conversations.push(conversation(2));
     await refreshNewest(client);
@@ -207,7 +166,7 @@ describe("ConversationList", () => {
   });
 
   it("asks for a first account when there is none", async () => {
-    await app(mailApi([], []));
+    await open(mailApi([], []));
     await expect
       .element(page.getByRole("heading", { name: "Connect your first account", level: 2 }))
       .toBeVisible();
@@ -217,7 +176,7 @@ describe("ConversationList", () => {
   it("says a place is empty, and that mail is still being copied", async () => {
     const syncing = listedAccount(1, "ana@example.com");
     syncing.sync.status = "running";
-    await app(mailApi([], [syncing]));
+    await open(mailApi([], [syncing]));
     await expect.element(page.getByRole("heading", { name: "Nothing in Inbox" })).toBeVisible();
     await expect
       .element(page.getByText("Some accounts are still syncing.", { exact: false }))
@@ -225,36 +184,40 @@ describe("ConversationList", () => {
   });
 
   it("names Spam's own empty state", async () => {
-    await app(mailApi([conversation(1)], one), "/mail/spam");
+    await open(mailApi([conversation(1)], one), "/mail/spam");
     await expect.element(page.getByRole("heading", { name: "No spam" })).toBeVisible();
   });
 
   it("offers Try again when the first page fails", async () => {
     const api = mailApi([conversation(1)], one);
     api.failNext = serverError;
-    await app(api);
+    await open(api);
     await expect.element(page.getByText("Couldn't load these conversations.")).toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Try again" }));
     await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
   });
 
   it("reads a conversation ahead when the pointer rests on its row", async () => {
-    const { readAhead } = await app(mailApi([conversation(1)], one));
+    const api = mailApi([conversation(1)], one);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     pointTo(row.element());
-    await vi.waitFor(() => expect(readAhead).toContain(conversation(1).id), { timeout: 10_000 });
+    await vi.waitFor(
+      () => expect(api.requests).toContain(`/api/v0/conversations/${conversation(1).id}`),
+      { timeout: 10_000 },
+    );
   });
 
   it("names a starred conversation's row Starred", async () => {
-    await app(mailApi([conversation(1, { starred: true })], one));
+    await open(mailApi([conversation(1, { starred: true })], one));
     await expect.element(page.getByRole("row", { name: /Subject 1, .*Starred/ })).toBeVisible();
   });
 
   it("lists several senders in order when the first one's name is right to left", async () => {
     const noor = { name: "نور الهدى", address: "noor@example.com" };
     const bo = { name: "Bo Tan", address: "bo@example.com" };
-    await app(mailApi([conversation(1, { participants: [noor, bo] })], one));
+    await open(mailApi([conversation(1, { participants: [noor, bo] })], one));
 
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
@@ -269,19 +232,23 @@ describe("ConversationList", () => {
       [conversation(1), conversation(2, { accountId: 2 })],
       [listedAccount(1, "ana@example.com"), listedAccount(2, "ana@work.example", 3)],
     );
-    await app(api);
+    await open(api);
     await expect
       .element(page.getByRole("row", { name: /Subject 2, .*ana@work\.example$/ }))
       .toBeVisible();
-    const avatar = page
-      .getByRole("row", { name: /Subject 2,/ })
-      .element()
-      .querySelector('[data-slot="avatar"]');
-    expect(avatar?.className).toContain("after:border-account-3");
+    const ring = avatarRing(page.getByRole("row", { name: /Subject 2,/ }).element());
+    expect(ring.borderTopWidth).toBe("2px");
+    expect(ring.borderTopColor).toBe(accountColor(3));
+    // The other account's ring is another colour.
+    expect(
+      avatarRing(page.getByRole("row", { name: /Subject 1,/ }).element()).borderTopColor,
+    ).not.toBe(ring.borderTopColor);
   });
 
   it("adds an opened conversation to the history, and replaces it with the next", async () => {
-    const { router } = await app(mailApi([conversation(1), conversation(2), conversation(3)], one));
+    const { router } = await open(
+      mailApi([conversation(1), conversation(2), conversation(3)], one),
+    );
     const before = router.history.length;
 
     await userEvent.click(page.getByRole("row", { name: /Subject 1,/ }));
@@ -304,7 +271,10 @@ describe("ConversationList", () => {
   });
 
   it("marks the conversation the reading pane shows", async () => {
-    await app(mailApi([conversation(1), conversation(2)], one), "/mail/inbox", conversation(1).id);
+    await open(
+      mailApi([conversation(1), conversation(2)], one),
+      `/mail/inbox/${conversation(1).id}`,
+    );
     await expect
       .element(page.getByRole("row", { name: /Subject 1,/ }))
       .toHaveAttribute("aria-current", "page");
@@ -323,7 +293,7 @@ describe("one account's list", () => {
   const two = [listedAccount(1, "ana@example.com"), listedAccount(2, "ana@work.example", 3)];
 
   it("shows only that account's mail, without rings", async () => {
-    await app(
+    await open(
       mailApi([conversation(1), conversation(2, { accountId: 2 })], two),
       "/mail/inbox?account=2",
     );
@@ -332,14 +302,16 @@ describe("one account's list", () => {
     expect(page.getByRole("row", { name: /Subject 1,/ }).query()).toBeNull();
     // The heading names the account, so its rows don't.
     expect(row.element().getAttribute("aria-label")).not.toContain("ana@work.example");
-    const avatar = row.element().querySelector('[data-slot="avatar"]');
-    expect(avatar?.className).not.toContain("after:border-account");
+    // The avatar keeps its hairline edge, in no account's colour.
+    const ring = avatarRing(row.element());
+    expect(ring.borderTopWidth).not.toBe("2px");
+    expect(ring.borderTopColor).not.toBe(accountColor(3));
   });
 
   it("names the place when its list is empty, and the account still syncing", async () => {
     const syncing = listedAccount(2, "ana@work.example", 3);
     syncing.sync.status = "running";
-    await app(mailApi([conversation(1)], [two[0], syncing]), "/mail/inbox?account=2");
+    await open(mailApi([conversation(1)], [two[0], syncing]), "/mail/inbox?account=2");
     await expect.element(page.getByRole("heading", { name: "Nothing in Inbox" })).toBeVisible();
     await expect
       .element(page.getByText("ana@work.example is still syncing.", { exact: false }))
@@ -350,14 +322,16 @@ describe("one account's list", () => {
 describe("the list's rows", () => {
   it("follow a text size changed while the list is open", async () => {
     const api = mailApi([conversation(1), conversation(2)], one);
-    await app(api);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
-    expect(row.element().getBoundingClientRect().height).toBe(76);
+    // DESIGN.md "Space, size, shape, motion": list rows are 76 px.
+    const usual = 76;
+    expect(row.element().getBoundingClientRect().height).toBe(usual);
     // Twice the browser's usual 16 px, as a member's own text size.
     document.documentElement.style.fontSize = "32px";
     try {
-      await vi.waitFor(() => expect(row.element().getBoundingClientRect().height).toBe(152), {
+      await vi.waitFor(() => expect(row.element().getBoundingClientRect().height).toBe(2 * usual), {
         timeout: 10_000,
       });
     } finally {
@@ -369,7 +343,7 @@ describe("the list's rows", () => {
 describe("the row's star", () => {
   it("shows on every row, and stars the conversation at Gmail", async () => {
     const api = mailApi([conversation(1), conversation(2, { starred: true })], one);
-    await app(api);
+    await open(api);
     // At rest: the pointer off every row, wherever an earlier test left it.
     await userEvent.hover(page.getByRole("heading", { level: 1 }));
     const star = starOf(/^Bo Tan, Subject 1,/);
@@ -385,7 +359,7 @@ describe("the row's star", () => {
 
   it("is reached from its row with the arrow keys, ← going straight to it", async () => {
     const api = mailApi([conversation(1)], one);
-    await app(api);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     row.element().focus();
@@ -399,7 +373,7 @@ describe("the row's star", () => {
   it("goes back and says why when Gmail refuses", async () => {
     const api = mailApi([conversation(1)], one);
     api.refuse[conversation(1).id] = "failed";
-    await app(api);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     await userEvent.click(starOf(/Subject 1,/));
@@ -411,7 +385,7 @@ describe("the row's star", () => {
   it("removes a conversation Gmail no longer has, as the reading pane's actions do", async () => {
     const api = mailApi([conversation(2), conversation(1)], one);
     api.refuse[conversation(1).id] = "not-found";
-    await app(api);
+    await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
     // Gone at Gmail, and from inbok's lists once its poll noticed.
     api.conversations = [conversation(2)];
@@ -426,7 +400,7 @@ describe("the row's star", () => {
   it("goes back when the request fails", async () => {
     const api = mailApi([conversation(1, { starred: true })], one);
     api.failAction = serverError;
-    await app(api);
+    await open(api);
     await userEvent.click(starOf(/Subject 1,/));
     await expect.element(page.getByText("Couldn't remove the star")).toBeVisible();
     await expect.element(starOf(/Subject 1,/)).toHaveAttribute("aria-pressed", "true");
@@ -442,6 +416,26 @@ function readAndUnread() {
 // subjectStyle returns the computed style of conversation n's subject text.
 function subjectStyle(n: number) {
   return getComputedStyle(page.getByText(`Subject ${n}`, { exact: true }).element());
+}
+
+// avatarRing returns the computed style of the edge drawn on row's avatar,
+// which is its account's ring when accounts mix.
+function avatarRing(row: Element): CSSStyleDeclaration {
+  // The avatar has no role or name: it repeats the sender the row names.
+  const avatar = row.querySelector('[data-slot="avatar"]');
+  if (!avatar) throw new Error("the row has no avatar");
+  return getComputedStyle(avatar, "::after");
+}
+
+// accountColor returns the colour of the theme's account token n, as the
+// browser computes it (DESIGN.md "Colour").
+function accountColor(n: number): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(--account-${n})`;
+  document.body.append(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
 }
 
 // bar returns the computed style of row's edge mark.
@@ -463,7 +457,7 @@ function rowActions(name: RegExp): HTMLElement {
 
 describe("a hovered row's actions", () => {
   it("show over the date only while the row is hovered, on the row's own fill", async () => {
-    await app(mailApi([conversation(1), conversation(2)], one));
+    await open(mailApi([conversation(1), conversation(2)], one));
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     // At rest: the pointer off every row, wherever an earlier test left it.
@@ -472,8 +466,7 @@ describe("a hovered row's actions", () => {
     expect(getComputedStyle(rowActions(/Subject 1,/)).pointerEvents).toBe("none");
 
     await userEvent.hover(row);
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
-    expect(getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
+    await expect.poll(() => getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
     expect(getComputedStyle(rowActions(/Subject 2,/)).opacity).toBe("0");
     // The toolbar's, but the star the row already has, and Report spam.
     const names = [...row.element().querySelectorAll("button")].map((b) => b.ariaLabel);
@@ -487,11 +480,11 @@ describe("a hovered row's actions", () => {
   });
 
   it("are on the open row's fill there", async () => {
-    await app(mailApi([conversation(1)], one), "/mail/inbox", conversation(1).id);
+    await open(mailApi([conversation(1)], one), `/mail/inbox/${conversation(1).id}`);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await userEvent.unhover(row);
     await userEvent.hover(row);
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    await expect.poll(() => getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
     await expect
       .poll(() => [
         getComputedStyle(rowActions(/Subject 1,/)).backgroundColor,
@@ -501,7 +494,7 @@ describe("a hovered row's actions", () => {
   });
 
   it("are in the row's arrow-key path, showing while one has keyboard focus", async () => {
-    await app(mailApi([conversation(1, { unread: true })], one));
+    await open(mailApi([conversation(1, { unread: true })], one));
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     await userEvent.hover(page.getByRole("heading", { level: 1 }));
@@ -521,7 +514,7 @@ describe("a hovered row's actions", () => {
 
   it("archive a row with an Undo, focus going to the row that took its place", async () => {
     const api = mailApi([conversation(1), conversation(2), conversation(3)], one);
-    await app(api);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 2,/ });
     await userEvent.unhover(row);
     await userEvent.hover(row);
@@ -534,7 +527,7 @@ describe("a hovered row's actions", () => {
 
   it("take the open conversation's row back to the list, as the toolbar does", async () => {
     const api = mailApi([conversation(1), conversation(2)], one);
-    const { router } = await app(api, `/mail/inbox/${conversation(2).id}`);
+    const { router } = await open(api, `/mail/inbox/${conversation(2).id}`);
     const row = page.getByRole("row", { name: /Subject 2,/ });
     await userEvent.unhover(row);
     await userEvent.hover(row);
@@ -545,7 +538,7 @@ describe("a hovered row's actions", () => {
 
   it("take the open row back to the list after Mark unread, focus staying on it", async () => {
     const api = mailApi([conversation(1), conversation(2)], one);
-    const { router } = await app(api, `/mail/inbox/${conversation(2).id}`);
+    const { router } = await open(api, `/mail/inbox/${conversation(2).id}`);
     const row = page.getByRole("row", { name: /Subject 2,/ });
     await userEvent.unhover(row);
     await userEvent.hover(row);
@@ -557,14 +550,14 @@ describe("a hovered row's actions", () => {
 
   it("know a row opened after the list drew it as the open one", async () => {
     const api = mailApi([conversation(1), conversation(2)], one);
-    const { router } = await app(api);
+    const { router } = await open(api);
     const row = page.getByRole("row", { name: /Subject 2,/ });
     // React Aria keeps a drawn row, and the callbacks it was drawn with.
     await userEvent.click(row);
     await expect
       .poll(() => router.state.location.pathname)
       .toBe(`/mail/inbox/${conversation(2).id}`);
-    await new Promise((done) => setTimeout(done, 500));
+    await expect.element(row).toHaveAttribute("aria-current", "page");
     await userEvent.unhover(row);
     await userEvent.hover(row);
     await userEvent.click(row.getByRole("button", { name: "Mark unread" }));
@@ -574,8 +567,9 @@ describe("a hovered row's actions", () => {
 
   it("keep a mark on a row that is not open in place, its button keeping focus", async () => {
     const api = mailApi([conversation(1, { unread: true })], one);
-    const { router } = await app(api);
+    const { router } = await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
     row.element().focus();
     await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
     await userEvent.keyboard("{Enter}");
@@ -587,14 +581,14 @@ describe("a hovered row's actions", () => {
 
   it("drop a press in the list for a moment after one, so a double press acts once", async () => {
     const api = mailApi([conversation(1), conversation(2), conversation(3)], one);
-    const { router } = await app(api);
+    const { router } = await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await userEvent.unhover(row);
     await userEvent.hover(row);
     // The second press lands on Mark read, which took Mark unread's place.
     await userEvent.dblClick(row.getByRole("button", { name: "Mark unread" }));
     await expect.element(row.getByRole("button", { name: "Mark read" })).toBeInTheDocument();
-    await new Promise((done) => setTimeout(done, 500));
+    await guardOver();
     // Archive, then a press on the row that slid under the pointer.
     const second = page.getByRole("row", { name: /Subject 2,/ });
     await userEvent.unhover(second);
@@ -607,7 +601,7 @@ describe("a hovered row's actions", () => {
     ]);
     expect(router.state.location.pathname).toBe("/mail/inbox");
     // Then presses act again.
-    await new Promise((done) => setTimeout(done, 500));
+    await guardOver();
     await userEvent.click(row);
     await expect
       .poll(() => router.state.location.pathname)
@@ -616,8 +610,9 @@ describe("a hovered row's actions", () => {
 
   it("drop Enter and Space for a moment after a keyboard press, so a double press acts once", async () => {
     const api = mailApi([conversation(1, { unread: true })], one);
-    await app(api);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
     row.element().focus();
     await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
     await expect.element(row.getByRole("button", { name: "Mark read" })).toHaveFocus();
@@ -627,7 +622,7 @@ describe("a hovered row's actions", () => {
     await expect.element(mark).toHaveFocus();
     expect(api.actions).toEqual([{ action: "read", ids: [conversation(1).id] }]);
     // Then the keys act again.
-    await new Promise((done) => setTimeout(done, 500));
+    await guardOver();
     await userEvent.keyboard("{Enter}");
     await expect.element(row.getByRole("button", { name: "Mark read" })).toHaveFocus();
     expect(api.actions).toEqual([
@@ -637,7 +632,7 @@ describe("a hovered row's actions", () => {
   });
 
   it("are left out of a row too narrow for them, e.g. at twice the text size", async () => {
-    await app(mailApi([conversation(1)], one));
+    await open(mailApi([conversation(1)], one));
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     document.documentElement.style.fontSize = "32px";
@@ -654,8 +649,9 @@ describe("a hovered row's actions", () => {
   });
 
   it("are left out while the list is picking", async () => {
-    await app(mailApi([conversation(1), conversation(2)], one));
+    await open(mailApi([conversation(1), conversation(2)], one));
     const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
     row.element().focus();
     await userEvent.keyboard(" ");
     await expect.element(row).toHaveAttribute("aria-selected", "true");
@@ -665,7 +661,7 @@ describe("a hovered row's actions", () => {
 
 describe("an unread row", () => {
   it("stands out by weight, a bar at its edge, and a read row's quieter text", async () => {
-    await app(readAndUnread());
+    await open(readAndUnread());
     const unread = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(unread).toBeVisible();
     const read = page.getByRole("row", { name: /Subject 2,/ }).element();
@@ -683,7 +679,7 @@ describe("an unread row", () => {
   it("is heavier in dark, whose text is drawn without macOS's thickening", async () => {
     document.documentElement.classList.add("dark");
     try {
-      await app(readAndUnread());
+      await open(readAndUnread());
       const unread = page.getByRole("row", { name: /Subject 1,/ });
       await expect.element(unread).toBeVisible();
       expect(subjectStyle(1).fontWeight).toBe("650");
@@ -696,7 +692,7 @@ describe("an unread row", () => {
   });
 
   it("draws its bar in the text's colour in forced colours", async () => {
-    await app(readAndUnread());
+    await open(readAndUnread());
     const unread = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(unread).toBeVisible();
     const session = cdp();
@@ -713,7 +709,7 @@ describe("an unread row", () => {
 
 describe("the Inbox chip", () => {
   it("marks a conversation still in the Inbox outside the Inbox, e.g. in All mail", async () => {
-    await app(mailApi([conversation(1), conversation(2, { inbox: false })], one), "/mail/all");
+    await open(mailApi([conversation(1), conversation(2, { inbox: false })], one), "/mail/all");
 
     const inbox = page.getByRole("row", { name: /Subject 1, .*In Inbox/ });
     await expect.element(inbox).toBeVisible();
@@ -724,7 +720,7 @@ describe("the Inbox chip", () => {
   });
 
   it("keeps its shape on a hovered row, whose surface is its own fill", async () => {
-    await app(mailApi([conversation(1)], one), "/mail/all");
+    await open(mailApi([conversation(1)], one), "/mail/all");
     const row = page.getByRole("row", { name: /Subject 1, .*In Inbox/ });
     const chip = row.getByText("Inbox", { exact: true });
     await expect.element(chip).toBeVisible();
@@ -733,7 +729,8 @@ describe("the Inbox chip", () => {
     // is enters it without moving, which reports no hover.
     await userEvent.unhover(row);
     await userEvent.hover(row);
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    // The hover shows as the row's own fill.
+    await expect.poll(() => getComputedStyle(row.element()).backgroundColor).toBe(accent);
     // The chip, around its name.
     const badge = chip.element().closest("[data-slot=badge]")!;
     expect(getComputedStyle(badge).backgroundColor).not.toBe(
@@ -742,7 +739,7 @@ describe("the Inbox chip", () => {
   });
 
   it("marks nothing in the Inbox, where every row is", async () => {
-    await app(mailApi([conversation(1)], one));
+    await open(mailApi([conversation(1)], one));
 
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
@@ -753,20 +750,21 @@ describe("the Inbox chip", () => {
 
 describe("the list's failures", () => {
   it("keeps its rows and stops when an older page fails, then tries again", async () => {
+    const clock = fakeClock();
     const api = mailApi(
       Array.from({ length: 300 }, (_, n) => conversation(n)),
       one,
     );
-    await app(api);
+    await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 299,/ })).toBeVisible();
     api.failOlder = serverError;
     const before = api.requests.length;
-    await toLastRow();
     const failed = page
       .getByRole("alert")
       .filter({ hasText: "Couldn't load older conversations." });
+    await toLastRowUntil(() => expect(failed.query()).not.toBeNull());
     await expect.element(failed).toBeVisible();
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await rounds(clock, 15);
     // No storm: the failed page, not a read of the whole place.
     const reads = api.requests.slice(before).filter((r) => r.startsWith("/api/v0/conversations?"));
     expect(reads.length).toBeLessThanOrEqual(2);
@@ -781,23 +779,28 @@ describe("the list's failures", () => {
   });
 
   it("keeps its rows when a refresh finds the session ended", async () => {
+    const clock = fakeClock();
     const api = mailApi([conversation(1)], one);
-    const { client } = await app(api);
+    // A new message with something typed is work the page holds, so the
+    // session-end rule keeps the page instead of opening sign-in.
+    const { client } = await open(api, "/compose");
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
+    await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
     api.signedOut = true;
 
     await refreshNewest(client);
 
-    // The session-end rule answers, e.g. with a banner over a page kept to
+    // The session-end rule answers with a banner over the page kept to
     // copy from: the rows stay to copy from too.
-    await new Promise((done) => setTimeout(done, 300));
+    await expect.element(page.getByRole("region", { name: "Signed out" })).toBeVisible();
+    await rounds(clock, 3);
     await expect.element(row).toBeVisible();
   });
 
   it("keeps its rows and says since when after a refresh fails", async () => {
     const api = mailApi([conversation(1)], one);
-    const { client } = await app(api);
+    const { client } = await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     api.failNext = serverError;
@@ -818,14 +821,14 @@ describe("the list's order and refreshes", () => {
         date: `2026-11-13T08:${String(Math.floor(n / 7)).padStart(2, "0")}:00${n % 7 === 0 ? ".5" : ""}Z`,
       }),
     );
-    await app(mailApi(rows, one));
+    await open(mailApi(rows, one));
     await expect.element(grid()).toBeVisible();
     const expected = rows
       .map((row) => ({ subject: row.subject, date: Date.parse(row.date), id: row.id }))
       // oxlint-disable-next-line unicorn/no-array-sort -- a new array; tsconfig's lib has no toSorted.
       .sort((a, b) => b.date - a.date || (a.id < b.id ? 1 : -1))
       .map((row) => row.subject);
-    const first = grid().element().querySelector('[role="row"][aria-label]');
+    const first = grid().getByRole("row").first().element();
     if (first instanceof HTMLElement) first.focus();
     const seen: string[] = [];
     for (const subject of expected) {
@@ -850,7 +853,7 @@ describe("the list's order and refreshes", () => {
       Array.from({ length: 200 }, (_, n) => conversation(n)),
       one,
     );
-    const { client } = await app(api);
+    const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 199,/ })).toBeVisible();
     // Two older pages. End again until each is asked for: an End before a
     // page's rows are drawn stays on the last row and asks for nothing.
@@ -880,15 +883,15 @@ describe("the list's order and refreshes", () => {
       Array.from({ length: 60 }, (_, n) => conversation(n)),
       one,
     );
-    const { client } = await app(api);
+    const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
-    await toLastRow();
-    await anchored(api);
+    await toLastRowUntil(() => anchored(api));
     const box = grid().element();
     const top = box.getBoundingClientRect().top + 4;
     const atTop = () =>
       document
         .elementFromPoint(box.getBoundingClientRect().left + 40, top)
+        // The row under a point: no locator starts from a place on screen.
         ?.closest("[role=row]")
         ?.getAttribute("aria-label");
     const shown = atTop();
@@ -908,10 +911,9 @@ describe("the list's order and refreshes", () => {
       Array.from({ length: 60 }, (_, n) => conversation(n)),
       one,
     );
-    const { client } = await app(api);
+    const { client } = await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
-    await toLastRow();
-    await anchored(api);
+    await toLastRowUntil(() => anchored(api));
     api.conversations.push(conversation(100));
     await refreshNewest(client);
     const button = page.getByRole("button", { name: "1 new conversation" });
@@ -930,7 +932,7 @@ describe("the list's order and refreshes", () => {
         listedAccount(2, "ana@work.example"),
       ],
     );
-    await app(api);
+    await open(api);
     const starred = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(starred).toBeVisible();
     // The row's name still says it is starred.
@@ -940,14 +942,15 @@ describe("the list's order and refreshes", () => {
     // Hovered, it offers nothing; its neighbour of the other account does.
     await userEvent.unhover(starred);
     await userEvent.hover(starred);
-    await expect.element(starred).toHaveAttribute("data-hovered", "true");
+    // The hover shows as the row's own fill.
+    await expect.poll(() => getComputedStyle(starred.element()).backgroundColor).toBe(accent);
     expect(starred.element().querySelector("[data-slot=row-actions]")).toBeNull();
     expect(rowActions(/Subject 2,/)).not.toBeNull();
   });
 
   it("sends a quick star and unstar one after the other", async () => {
     const api = mailApi([conversation(1)], one);
-    await app(api);
+    await open(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     await userEvent.hover(row);
@@ -977,10 +980,28 @@ function checkAccounts() {
 }
 
 describe("Check for new mail", () => {
+  it("checks every account the list shows that inbok can use", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await open(api);
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => new Set(api.syncs)).toEqual(new Set([1, 2]));
+  });
+
+  it("checks only the account the list is filtered to", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await open(api, "/mail/inbox?account=2");
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => api.syncs).toEqual([2]);
+  });
+
   it("says which account it could not check, and checks the others", async () => {
     const api = mailApi([conversation(1)], checkAccounts());
     api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };
-    await app(api);
+    await open(api);
 
     await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
 
@@ -993,7 +1014,7 @@ describe("Check for new mail", () => {
 
   it("says the browser is offline instead of checking", async () => {
     const api = mailApi([conversation(1)], checkAccounts());
-    await app(api);
+    await open(api);
     onlineManager.setOnline(false);
     try {
       await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
@@ -1008,23 +1029,18 @@ describe("Check for new mail", () => {
   });
 
   it("does nothing more once the member signs out while it checks", async () => {
+    const clock = fakeClock();
     const api = mailApi([conversation(1)], checkAccounts());
     // A refusal would show a toast naming the previous member's account.
     api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };
-    let answer: (() => void) | undefined;
-    const held = new Promise<void>((resolve) => {
-      answer = resolve;
-    });
+    const answer = held();
     let asked = 0;
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      if (init?.method === "POST") {
-        asked++;
-        await held;
-      }
-      return fetch(input, init);
-    };
-    const { client } = await app(api);
+    api.server.on("POST", "/api/v0/connected-accounts/{id}/sync", async (_, earlier) => {
+      asked++;
+      await answer.promise;
+      return earlier();
+    });
+    const { client } = await open(api);
     await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
     await expect.poll(() => asked).toBe(2);
 
@@ -1032,11 +1048,10 @@ describe("Check for new mail", () => {
     // e.g. sign-in, has the app's toasts.
     await cleanup();
     clearAccountCache(client);
-    current = undefined;
     await render(<Toaster />);
-    answer?.();
-    await held;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    answer.resolve();
+    await answer.promise;
+    await rounds(clock, 3);
 
     // No toast names the previous member's account, and no mail came back
     // for them, nor its refresh timers.
@@ -1045,10 +1060,11 @@ describe("Check for new mail", () => {
   });
 
   it("takes a check started moments ago as started, and reads the mail again soon", async () => {
+    const clock = fakeClock();
     const api = mailApi([conversation(1)], checkAccounts());
     api.refuseSync[1] = { status: 429, type: "/api/v0/problems/sync-throttled" };
     // Only the throttled account, so the re-read comes from it alone.
-    await app(api, "/mail/inbox?account=1");
+    const { client } = await open(api, "/mail/inbox?account=1");
     await expect.element(grid().getByRole("row").first()).toBeVisible();
     // The list's pages, and the accounts, whose status the page shows.
     const lists = () =>
@@ -1059,11 +1075,16 @@ describe("Check for new mail", () => {
     const accountsBefore = accounts();
 
     await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+    // The check's answer, which starts the re-reads.
+    await expect.poll(() => api.requests.some((request) => request.endsWith("/sync"))).toBe(true);
+    await expect.poll(() => client.isMutating()).toBe(0);
+    await clock.advance(0);
+    expect(lists()).toBe(listsBefore);
 
     // The first re-read comes 2 s after the check, well before the lists'
-    // own 30 s timer. The counts come with it where a page shows them, e.g.
-    // in the sidebar; this one shows none.
-    await expect.poll(lists, { timeout: 4000 }).toBeGreaterThan(listsBefore);
+    // own 30 s timer.
+    await clock.advance(checkingEveryMs);
+    await expect.poll(lists).toBeGreaterThan(listsBefore);
     expect(accounts()).toBeGreaterThan(accountsBefore);
     expect(api.syncs).toEqual([]);
     expect(page.getByText("Couldn't check for new mail").elements()).toHaveLength(0);
@@ -1071,7 +1092,7 @@ describe("Check for new mail", () => {
 
   it("says so when no account the list shows can be checked", async () => {
     const api = mailApi([conversation(1, { accountId: 3 })], checkAccounts());
-    await app(api, "/mail/inbox?account=3");
+    await open(api, "/mail/inbox?account=3");
 
     await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
 

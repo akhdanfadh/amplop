@@ -1,28 +1,30 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
 import {
   getListConnectedAccountsQueryKey,
   getListOutgoingMessagesQueryKey,
 } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
-import { listedAccount } from "@/test/mail-api";
+import { repeatableWriteRetry } from "@/api/retry";
+import { ApiError } from "@/api/transport";
+import { fakeClock } from "@/test/clock";
+import { listedAccount, outgoingMessage } from "@/test/mail-api";
+import {
+  type Asked,
+  type Server,
+  data,
+  fakeServer,
+  held,
+  memberSession,
+  problem,
+} from "@/test/server";
+import { stubRouter } from "@/test/stub-router";
 import { ComposeForm } from "./compose-form";
 import { composeValues, type ComposeValues } from "./compose-schema";
 import type { LeaveState } from "./text";
 
-const ok = 200;
 const created = 201;
-const notFound = 404;
-const unprocessable = 422;
+const badGateway = 502;
 
 const studio: ListedAccount = { ...listedAccount(7, "studio@example.com", 1), name: "Studio" };
 const stale: ListedAccount = {
@@ -35,56 +37,30 @@ const stale: ListedAccount = {
 };
 
 // The message the server saves.
-const message: OutgoingMessage = {
-  id: "019a0000-0000-7000-8000-0000000000bb",
-  status: "waiting",
-  failure: null,
-  from: studio.email,
-  connectedAccountId: studio.id,
-  to: ["ana@example.com"],
-  cc: [],
-  bcc: [],
-  subject: "Lunch",
-  body: "Noon?",
-  createdAt: "2026-11-16T08:00:00Z",
-  sentAt: null,
-  sentAgainAs: null,
-  dismissedAt: null,
-  outstanding: true,
-  reply: false,
-  allowedActions: [],
-};
+const message = outgoingMessage({ id: "019a0000-0000-7000-8000-0000000000bb" });
 
-type Call = { method: string; url: string; headers: Headers; body: unknown };
+// accepted is Send Message's answer once the server saved the message.
+function accepted(): Response {
+  return data(message, created);
+}
 
-// serve stubs the API: Send Message answers with each of answers in turn,
-// the last one repeating. It returns the calls the form made.
-function serve(
-  answers: (() => Response)[] = [() => Response.json({ data: message }, { status: created })],
-): Call[] {
-  const calls: Call[] = [];
+// serve installs a signed-in member's server whose Send Message answers
+// with each of answers in turn, the last one repeating, and returns it.
+function serve(answers: (() => Response | Promise<Response>)[] = [accepted]): Server {
+  const server = fakeServer(memberSession).install();
   let sends = 0;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url, init = {}) => {
-      const method = init.method ?? "GET";
-      const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
-      calls.push({ method, url, headers: new Headers(init.headers), body });
-      if (method === "POST" && url === "/api/v0/outgoing-messages") {
-        const answer = answers[Math.min(sends, answers.length - 1)];
-        sends++;
-        return answer();
-      }
-      if (url === "/api/v0/outgoing-messages") return Response.json({}, { status: ok });
-      return Response.json({}, { status: notFound });
-    }),
-  );
-  return calls;
+  server.on("POST", "/api/v0/outgoing-messages", () => {
+    const answer = answers[Math.min(sends, answers.length - 1)];
+    sends++;
+    return answer();
+  });
+  return server;
 }
 
 // show renders the compose form starting with initial, sending from one of
-// accounts, as the docked window draws it, inside a router with a second page, /elsewhere, to
-// leave for. It returns the messages the form reported sent, what closing would lose as it last reported, the query
+// accounts, as the docked window draws it, inside a router with a second
+// page, /elsewhere, to leave for. It returns the messages the form
+// reported sent, what closing would lose as it last reported, the query
 // client, the router, and the rendered screen.
 async function show(
   initial: ComposeValues = composeValues(),
@@ -92,39 +68,20 @@ async function show(
 ) {
   const sent: OutgoingMessage[] = [];
   const loses: { last: LeaveState | null } = { last: null };
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRoute();
-  const compose = createRoute({
-    getParentRoute: () => root,
-    path: "/",
-    component: () => (
-      <ComposeForm
-        accounts={accounts}
-        initial={initial}
-        look="window"
-        header={({ title }) => <h2>{title}</h2>}
-        collapsed={false}
-        onSent={(saved) => sent.push(saved)}
-        onDiscard={() => {}}
-        onLoses={(state) => {
-          loses.last = state;
-        }}
-      />
-    ),
-  });
-  const elsewhere = createRoute({
-    getParentRoute: () => root,
-    path: "/elsewhere",
-    component: () => <h1>Elsewhere</h1>,
-  });
-  const router = createRouter({
-    routeTree: root.addChildren([compose, elsewhere]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-  });
-  const screen = await render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+  const { client, router, screen } = await stubRouter(
+    <ComposeForm
+      accounts={accounts}
+      initial={initial}
+      look="window"
+      header={({ title }) => <h2>{title}</h2>}
+      collapsed={false}
+      onSent={(saved) => sent.push(saved)}
+      onDiscard={() => {}}
+      onLoses={(state) => {
+        loses.last = state;
+      }}
+    />,
+    { pages: ["/elsewhere"] },
   );
   return { sent, loses, client, router, screen };
 }
@@ -138,40 +95,28 @@ async function write(): Promise<void> {
   await userEvent.type(page.getByRole("textbox", { name: "Message" }), "Noon?");
 }
 
-// problem returns an API problem response with status and type.
-function problem(status: number, type: string): Response {
-  return Response.json(
-    { type, status, title: "Problem", detail: "The server's detail." },
-    { status, headers: { "Content-Type": "application/problem+json" } },
-  );
-}
-
 // lost is an answer that says nothing of whether the message was saved.
 function lost(): Response {
   return problem(500, "/api/v0/problems/internal-error");
 }
 
-// posts returns the Send Message calls among calls.
-function posts(calls: Call[]): Call[] {
-  return calls.filter((call) => call.method === "POST");
+// posts returns the Send Message requests server got.
+function posts(server: Server): Asked[] {
+  return server.requests.filter((asked) => asked.method === "POST");
 }
 
 // keyReused is Send Message's refusal of a key that saved another message.
 function keyReused(): Response {
-  return Response.json(
-    {
-      type: "/api/v0/problems/idempotency-key-reused",
-      status: unprocessable,
-      title: "Idempotency key reused",
-      detail: "The key saved another message.",
-    },
-    { status: unprocessable, headers: { "Content-Type": "application/problem+json" } },
-  );
+  return problem(422, "/api/v0/problems/idempotency-key-reused");
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+// waiting returns a Send Message answer that saves once hold resolves.
+function waiting(hold: { promise: Promise<void> }): () => Promise<Response> {
+  return async () => {
+    await hold.promise;
+    return accepted();
+  };
+}
 
 describe("ComposeForm", () => {
   it("shows the message editor's rows, with Cc and Bcc on demand", async () => {
@@ -223,7 +168,7 @@ describe("ComposeForm", () => {
   });
 
   it("shows errors only after Send, with focus on the first", async () => {
-    const calls = serve();
+    const server = serve();
     await show();
 
     await expect
@@ -234,11 +179,11 @@ describe("ComposeForm", () => {
     await expect.element(page.getByText("Choose the account to send from.")).toBeVisible();
     await expect.element(page.getByText("Add at least one recipient.")).toBeVisible();
     await expect.element(page.getByRole("button", { name: /From/ })).toHaveFocus();
-    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+    expect(posts(server)).toHaveLength(0);
   });
 
   it("sends with Ctrl+Enter from any field, with a key, and reports the saved message", async () => {
-    const calls = serve();
+    const server = serve();
     const { sent } = await show();
 
     await write();
@@ -246,7 +191,7 @@ describe("ComposeForm", () => {
     await userEvent.keyboard("{Control>}{Enter}{/Control}");
 
     await expect.poll(() => sent).toEqual([message]);
-    const post = calls.find((call) => call.method === "POST");
+    const [post] = posts(server);
     expect(post?.body).toEqual({
       connectedAccountId: studio.id,
       to: ["ana@example.com"],
@@ -260,10 +205,7 @@ describe("ComposeForm", () => {
 
   it("locks the editor while it sends", async () => {
     // The send waits for an answer that never comes.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<() => Promise<Response>>(() => new Promise(() => {})),
-    );
+    serve([waiting(held())]);
     await show();
     await write();
 
@@ -275,7 +217,7 @@ describe("ComposeForm", () => {
   });
 
   it("sends a new message with a new key after the key saved another", async () => {
-    const calls = serve([keyReused, () => Response.json({ data: message }, { status: created })]);
+    const server = serve([keyReused, accepted]);
     const { sent } = await show();
     await write();
 
@@ -287,38 +229,43 @@ describe("ComposeForm", () => {
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
     await expect.poll(() => sent).toEqual([message]);
-    const keys = calls
-      .filter((call) => call.method === "POST")
-      .map((call) => call.headers.get("Idempotency-Key"));
+    const keys = posts(server).map((asked) => asked.headers.get("Idempotency-Key"));
     expect(keys).toHaveLength(2);
     expect(keys[0]).not.toBe(keys[1]);
   });
 
   it("repeats a lost send with the same key and content, by itself and by hand", async () => {
-    const calls = serve([
-      () => problem(502, "/api/v0/problems/bad-gateway"),
+    const server = serve([
+      // A proxy's answer, which has none of the contract's types.
+      () => problem(badGateway),
       lost,
-      () => Response.json({ data: message }, { status: created }),
+      accepted,
     ]);
-    const { sent } = await show();
+    const clock = fakeClock();
+    const { sent, client } = await show();
     await write();
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
-    // The 502 is repeated by itself after a second; the 500 is not.
-    await expect
-      .element(page.getByRole("alert"), { timeout: 5_000 })
-      .toMatchTextContent("Sending again is safe");
+    // The 502 is repeated by itself after the first repeat's wait; the 500
+    // is not. The wait runs once the send counts its failure.
+    await expect.poll(() => client.getMutationCache().getAll().at(-1)?.state.failureCount).toBe(1);
+    expect(posts(server)).toHaveLength(1);
+    await clock.advance(
+      repeatableWriteRetry.retryDelay(0, new ApiError("http", { status: badGateway })),
+    );
+    await expect.poll(() => posts(server)).toHaveLength(2);
+    await expect.element(page.getByRole("alert")).toMatchTextContent("Sending again is safe");
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
     await expect.poll(() => sent).toEqual([message]);
-    const sends = posts(calls);
+    const sends = posts(server);
     expect(sends).toHaveLength(3);
-    expect(new Set(sends.map((call) => call.headers.get("Idempotency-Key"))).size).toBe(1);
+    expect(new Set(sends.map((asked) => asked.headers.get("Idempotency-Key"))).size).toBe(1);
     expect(sends[2].body).toEqual(sends[0].body);
   });
 
   it("keeps the key through edits after a lost send, so the server decides", async () => {
-    const calls = serve([lost, () => Response.json({ data: message }, { status: created })]);
+    const server = serve([lost, accepted]);
     await show();
     await write();
 
@@ -327,8 +274,8 @@ describe("ComposeForm", () => {
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), " today");
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
-    await expect.poll(() => posts(calls)).toHaveLength(2);
-    const [first, second] = posts(calls);
+    await expect.poll(() => posts(server)).toHaveLength(2);
+    const [first, second] = posts(server);
     expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"));
     expect(second.body).toMatchObject({ subject: "Lunch today" });
   });
@@ -348,11 +295,8 @@ describe("ComposeForm", () => {
   });
 
   it("reports typed text, and a send running, as what closing would lose", async () => {
-    // The send waits until the test answers it.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<() => Promise<Response>>(() => new Promise(() => {})),
-    );
+    // The send waits for an answer that never comes.
+    serve([waiting(held())]);
     const { loses } = await show();
 
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
@@ -365,40 +309,32 @@ describe("ComposeForm", () => {
   });
 
   it("gives a new form a new key", async () => {
-    const calls = serve();
+    const server = serve();
     const first = await show(composeValues(message));
     await userEvent.click(page.getByRole("button", { name: "Send" }));
-    await expect.poll(() => posts(calls)).toHaveLength(1);
+    await expect.poll(() => posts(server)).toHaveLength(1);
     await first.screen.unmount();
 
     await show(composeValues(message));
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
-    await expect.poll(() => posts(calls)).toHaveLength(2);
-    const [one, two] = posts(calls);
+    await expect.poll(() => posts(server)).toHaveLength(2);
+    const [one, two] = posts(server);
     expect(two.headers.get("Idempotency-Key")).not.toBe(one.headers.get("Idempotency-Key"));
   });
 
   it("ignores an answer that comes after the member left, but rereads the Outbox", async () => {
     // The send waits until the test answers it.
-    const answer: { resolve?: (response: Response) => void } = {};
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<() => Promise<Response>>(
-        () =>
-          new Promise((resolve) => {
-            answer.resolve = resolve;
-          }),
-      ),
-    );
+    const answer = held();
+    serve([waiting(answer)]);
     const { sent, client, router } = await show(composeValues(message));
     const reread = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
     // The window closed while sending, after asking (compose-window's tests).
     void router.navigate({ href: "/elsewhere" });
-    await expect.element(page.getByRole("heading", { name: "Elsewhere" })).toBeVisible();
-    answer.resolve?.(Response.json({ data: message }, { status: created }));
+    await expect.element(page.getByRole("heading", { name: "/elsewhere" })).toBeVisible();
+    answer.resolve();
 
     await expect
       .poll(() => reread.mock.calls.map(([filters]) => filters?.queryKey))

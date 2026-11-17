@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Button } from "./button";
+import { fakeClock } from "@/test/clock";
 import { pointAway, pointTo } from "@/test/pointer";
 import { Tooltip, TooltipTrigger } from "./tooltip";
 
@@ -27,23 +28,14 @@ function Rail({ buttons }: { buttons: "drawn" | "not yet" }) {
   );
 }
 
-// rest moves the fake clock by ms and lets React draw what changed.
-async function rest(ms: number): Promise<void> {
-  vi.advanceTimersByTime(ms);
-  // React can draw what changed a frame after the clock moves; two frames
-  // leave room for the tooltip that closes and the one that opens.
-  await new Promise((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined))),
-  );
-}
-
-afterEach(() => {
-  vi.useRealTimers();
-});
-
 // tooltip returns the words of the tooltip shown, not one still closing.
 function tooltip(): string | null {
-  return document.querySelector("[role=tooltip]:not([data-exiting])")?.textContent ?? null;
+  // React Aria marks a closing tooltip `data-exiting` while it fades out.
+  const shown = page
+    .getByRole("tooltip")
+    .elements()
+    .find((element) => !element.hasAttribute("data-exiting"));
+  return shown?.textContent ?? null;
 }
 
 describe("Tooltip", () => {
@@ -54,31 +46,30 @@ describe("Tooltip", () => {
     // mode, where hovering shows tooltips.
     const screen = await render(<Rail buttons="not yet" />);
     await userEvent.click(page.getByText("Away"));
-    // Only the timers React Aria's delay reads; the runner keeps its own.
     // Nothing below waits on Playwright, so the clock moves only here.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const clock = fakeClock();
     await screen.rerender(<Rail buttons="drawn" />);
     pointTo(page.getByRole("button", { name: "Inbox" }).element());
-    await rest(499);
+    await clock.advance(499);
     // A pointer only passing by shows nothing.
     expect(tooltip()).toBeNull();
-    await rest(1);
+    await clock.advance(1);
     expect(tooltip()).toBe("Inbox");
 
     // Warmed up: the next one shows without the wait.
     pointAway(page.getByRole("button", { name: "Inbox" }).element());
     pointTo(page.getByRole("button", { name: "Sent" }).element());
-    await rest(0);
+    await clock.advance(0);
     expect(tooltip()).toBe("Sent");
   });
 
   it("shows at once on keyboard focus", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const clock = fakeClock();
     await render(<Rail buttons="drawn" />);
     // A key press makes React Aria treat the next focus as the keyboard's.
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
     page.getByRole("button", { name: "Inbox" }).element().focus();
-    await rest(0);
+    await clock.advance(0);
     expect(tooltip()).toBe("Inbox");
   });
 });

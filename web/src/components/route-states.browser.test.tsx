@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { z } from "zod";
 import { ApiError } from "@/api/transport";
+import { fakeClock } from "@/test/clock";
 import { NotFound, RouteError, RoutePending, StateRegion } from "./route-states";
 
 // app returns a router with one page at /, whose checks run beforeLoad and
@@ -26,6 +27,10 @@ function app(beforeLoad: () => void, Page: () => React.ReactNode, address = "/")
     defaultNotFoundComponent: NotFound,
   });
 }
+
+// How long a router holds a pending view once shown, as the app's does
+// after its first load (pendingAtLeastMs in router.tsx).
+const pendingAtLeastMs = 500;
 
 function Inbox() {
   return <h1>Inbox</h1>;
@@ -55,10 +60,6 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe("RouteError", () => {
   it("says what failed, keeps the reference, and runs the page's checks again", async () => {
     const busy = new ApiError("http", {
@@ -78,7 +79,7 @@ describe("RouteError", () => {
     await expect.element(page.getByText("req-1")).toBeVisible();
     expect(document.title).toBe("Couldn't load this page - inbok");
     // The focused heading announces it; an alert would say it twice.
-    expect(document.querySelector("[role=alert]")).toBeNull();
+    expect(page.getByRole("alert").query()).toBeNull();
 
     await userEvent.click(page.getByRole("button", { name: "Try again" }));
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
@@ -88,6 +89,7 @@ describe("RouteError", () => {
   });
 
   it("gives focus to the loading view while Try again runs the checks", async () => {
+    const clock = fakeClock();
     const busy = new ApiError("http", { method: "GET", status: 503, requestId: "req-2" });
     let calls = 0;
     // The second check runs until the test lets it finish, however long the
@@ -113,8 +115,13 @@ describe("RouteError", () => {
       defaultErrorComponent: RouteError,
       defaultPendingComponent: RoutePending,
       defaultPendingMs: 0,
+      defaultPendingMinMs: pendingAtLeastMs,
     });
     await render(<RouterProvider router={router} />);
+    // The router holds the pending view it showed at once, then shows the
+    // failure.
+    await expect.element(page.getByRole("status")).toBeInTheDocument();
+    await clock.advance(pendingAtLeastMs);
 
     const retry = page.getByRole("button", { name: "Try again" });
     await expect.element(retry).toBeVisible();
@@ -123,6 +130,7 @@ describe("RouteError", () => {
     // The error view is hidden, not gone, while the checks run.
     await expect.element(page.getByRole("status")).toHaveFocus();
     finish?.();
+    await clock.advance(pendingAtLeastMs);
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   });
 
@@ -223,8 +231,8 @@ describe("RoutePending", () => {
     const loading = page.getByRole("status");
     await expect.element(loading).toHaveTextContent("Loading...");
     // The test page started long ago, so the view shows at once, as it
-    // does after a setup check that took over 300 ms.
-    expect(loading.element()).toHaveClass("pending-delay");
+    // does after a setup check that took over 300 ms. The delay is that
+    // of the animation that hides the view until then.
     const [hide] = loading.element().getAnimations();
     expect(hide?.effect?.getTiming().delay).toBe(0);
     expect(document.activeElement).not.toBe(loading.element());

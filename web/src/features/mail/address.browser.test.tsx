@@ -1,6 +1,6 @@
 import { QueryObserver, onlineManager } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { appRouter, memberSession } from "@/test/app-router";
+import { describe, expect, it } from "vite-plus/test";
+import { appRouter } from "@/test/app-router";
 import {
   getListConnectedAccountsQueryKey,
   getListConnectedAccountsQueryOptions,
@@ -9,11 +9,6 @@ import { refreshMail } from "@/features/mail/conversations";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 const label = "11111111-1111-4111-8111-111111111111";
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  onlineManager.setOnline(true);
-});
 
 // twoAccounts returns a MailApi with two accounts, a label of the first,
 // and one conversation.
@@ -28,11 +23,7 @@ function twoAccounts(): MailApi {
 
 // open returns the app's router at address, its mail reads answered by api.
 async function open(address: string, api = twoAccounts()) {
-  return appRouter(address, memberSession, (url) =>
-    new URL(url, location.href).pathname === "/api/v0/sessions/current"
-      ? undefined
-      : api.fetch(url),
-  );
+  return appRouter(address, api.server);
 }
 
 // notFound reports whether the router shows Page not found.
@@ -152,6 +143,8 @@ describe("mail addresses", () => {
       await refreshMail(client);
 
       expect(shown.getCurrentResult().data?.data.accounts.map((a) => a.id)).toEqual([1, 2, 3]);
+      // The cache's own mark, which no screen shows: a query left out of
+      // date would be read once more by the next page that uses it.
       expect(client.getQueryState(getListConnectedAccountsQueryKey())?.isInvalidated).toBe(false);
     } finally {
       stop();

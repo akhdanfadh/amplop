@@ -30,12 +30,11 @@ describe("Button", () => {
     );
     const button = page.getByRole("button", { name: "Save" });
     await userEvent.click(button);
-    await expect.element(button).not.toHaveAttribute("data-focus-visible");
     await expect.element(button).toHaveStyle({ outlineStyle: "none" });
 
     await userEvent.click(page.getByRole("textbox", { name: "Name" }));
     await userEvent.keyboard("{Tab}");
-    await expect.element(button).toHaveAttribute("data-focus-visible");
+    // DESIGN.md "Space, size, shape, motion", Focus: a 2 px outline.
     await expect.element(button).toHaveStyle({ outlineStyle: "solid", outlineWidth: "2px" });
   });
 
@@ -46,7 +45,8 @@ describe("Button", () => {
 
     await userEvent.keyboard("{ >}");
 
-    await expect.element(button).toHaveAttribute("data-pressed", "true");
+    // DESIGN.md "Space, size, shape, motion", Press: a pressed button
+    // scales to 97%.
     await vi.waitFor(() => expect(getComputedStyle(button.element()).scale).toBe("0.97"));
     await userEvent.keyboard("{/ }");
   });

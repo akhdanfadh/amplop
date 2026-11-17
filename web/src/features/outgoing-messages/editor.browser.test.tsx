@@ -1,11 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { EditorCard } from "./editor";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("EditorCard", () => {
   it("sends on Ctrl+Enter after the field's own key handling", async () => {

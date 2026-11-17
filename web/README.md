@@ -190,8 +190,10 @@ Put shared code in the folder for its responsibility:
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).
 - `src/routes`: route registration and page composition.
-- `src/test`: setup for the browser tests, and `appRouter`, the app's
-  routes loaded at an address with a session read stubbed.
+- `src/test`: setup for the tests, the fake server (`fakeServer`),
+  `appRouter`, the app's router loaded at an address, `stubRouter`, a
+  made-up router around one component, and `testQueryClient`, a test's
+  query cache.
 - `src/styles.css`: the tokens and base styles. Beside it,
   `react-aria-pressable.css` holds a React Aria rule the
   Content-Security-Policy would otherwise block; the file says why.
@@ -263,7 +265,8 @@ began before the write and is still running when the member comes back is
 joined, and its older answer drawn; and a conversation the list holds
 opens from its row at once, its messages refreshing in place (DESIGN.md
 "States"). The server refuses any change a stale page offers, with its
-reason. Test routers that load such pages set the same two router options.
+reason. A page's test gets the same two router options from `appRouter`,
+the app's router.
 
 A page whose data it cannot draw without, e.g. System email, Registration,
 or Members, reads it in its route's loader, made by `cachedLoader`
@@ -760,7 +763,9 @@ their Google Account. The dialog leaves out that inbok does not ask when
 another member here connected the same Google account, whose access
 stays. Once the server confirms, the row goes, the notice says "Work is
 disconnected.", and focus moves to the next row's pencil, else the
-previous row's, else Connect Gmail. An account already gone (the API's 404) closes the dialog with "Work was already disconnected."; a failure
+previous row's, else Connect Gmail; where that one is not on the page,
+e.g. the last account goes while Gmail isn't offered, to the section's
+heading. An account already gone (the API's 404) closes the dialog with "Work was already disconnected."; a failure
 or a lost answer shows inside it, where pressing again retries. While
 Gmail isn't offered, i.e. the server has no Google client, a sentence
 where Connect Gmail would be says so by who can fix it: a member is told
@@ -1256,27 +1261,18 @@ error. To format on save and see lint errors while typing, install the
 Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 <https://viteplus.dev/guide/ide-integration>).
 
-Tests sit next to the code they test, in two Vitest projects set up in
-`vite.config.ts`:
+The project uses TypeScript 7. If your VS Code still checks types with
+TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
+
+Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
+functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
+latter. They run in two Vitest projects set up in `vite.config.ts`:
 
 - `unit`: files named `*.test.ts`, run in Node, for code without a page.
 - `browser`: files named `*.browser.test.tsx`, run in a real Chromium that
   [Playwright](https://playwright.dev) drives ([Vitest browser
   mode](https://vitest.dev/guide/browser/)), for components and anything
-  that needs focus, pointer events, layout, or storage. Render with
-  `render` from `vitest-browser-react`; find elements with `page` and
-  interact with `userEvent` from `vite-plus/test/browser/context`, which
-  send real browser input. `src/test/browser-setup.ts` loads the app's
-  stylesheet first. Message bodies for the message view's frame come from
-  `src/test/message-server.ts`, which serves them on the test page's
-  origin with the headers the Go server's body route sends.
-
-A page's own flows, e.g. submitting its form, are tested in a router of
-the page's own (`src/signed-out-pages.browser.test.tsx`).
-`src/test/app-router.ts` loads the whole app, for what needs every route,
-e.g. guards and addresses; submitting a form, typing, or showing a toast
-through it freezes the test browser, and the run hangs instead of failing
-(`DEBT.md`, "Find why a whole-app browser test freezes on some presses").
+  that needs focus, pointer events, layout, or storage.
 
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:
@@ -1293,28 +1289,321 @@ pnpm exec vp test run --project browser
 pnpm exec vp test run src/lib/theme.browser.test.tsx
 ```
 
+`make check` runs both projects, headless.
+
+### A browser test
+
+A browser test renders with `render` from `vitest-browser-react`, finds
+elements with `page`, and interacts with `userEvent` from
+`vite-plus/test/browser/context`, which send real browser input.
+`src/test/browser-setup.ts` loads the app's stylesheet first, so
+components lay out, hide, and show as they do in the app, and then the
+app's font: it is declared `font-display: swap`, so text would otherwise
+draw in a fallback font first and change width when the font arrives,
+part-way through a test that measures.
+
+Every browser test starts 1440 px wide and 900 high (`defaultViewport`
+in `src/test/viewport.ts`), the wide layout with the sidebar beside the
+content: the browser project's `browser.viewport` opens the page at that
+size and `browser-setup.ts` sets it again before each test. A test about
+another width sets it with `page.viewport`, with the numbers it means,
+and puts nothing back afterwards.
+
 React Aria's Virtualizer stops virtualizing, and keeps lists at their
 top, when `NODE_ENV` is `test`, as Vitest sets it, unless `VIRT_ON` is
 set; the browser project sets it (`vite.config.ts`), so a list test sees
 the list as the app has it. Scroll a virtualized list with the keyboard,
 e.g. End, which React Aria scrolls itself.
 
-A test of the whole app loads the real routes with `appRouter`
-(`src/test/app-router.ts`) and mounts them in a `<div>`, not on the
-document as the app does. So it renders the root route's `AppShell`
-without the `<html>` and `<body>` around it: React's own `<body>` there
-makes a later event loop forever
+Message bodies for the message view's frame come from
+`src/test/message-server.ts`, which serves them on the test page's
+origin with the headers the Go server's body route sends.
+
+### Which harness a test uses
+
+No test declares an app route again: its id, path, guard, loader, or a
+component taken from `src/routes`. A page's test opens the page through
+`appRouter` (`src/test/app-router.ts`), the app's own router, and fakes
+only the server. A component's test renders the component alone, inside
+`stubRouter` when it needs a router around it. Only a test of the
+router's own machinery (`route-states`, the setup gate, the root's React
+Aria bridge) makes up routes.
+
+`appRouter(address, server)` is the app's router, built by `buildRouter`
+in `src/router.tsx` as `getRouter` builds the app's, loaded at the
+address; the test renders it in a `RouterProvider`. It differs from the
+app's in three ways: its history is in memory, at the address the test
+gives; a failed read is not tried again, which would wait 1 s and then
+2 s (`src/api/retry.test.ts` holds those rules); and the test mounts it
+in a `<div>`, not on the document as the app does. So it renders the
+root route's `AppShell` without the `<html>` and `<body>` around it:
+React's own `<body>` there makes a later event loop forever
 ([react#35480](https://github.com/react/react/issues/35480)), and a
 hanging test never fails by itself, since its timer runs on the frozen
 page. `src/test/app-router.browser.test.tsx` checks that React leaves the
 page's `<body>` alone; `make` stops the web tests after five minutes.
 
-Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
-functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
-latter. `make check` runs both projects, headless.
+A component that needs a router around it, for a link, a navigation, or
+a leave warning, gets one from `stubRouter` (`src/test/stub-router.tsx`).
+It renders the component as the page at an address, beside blank pages
+to leave to, each only a heading with its path, with an optional layout
+around them, and returns the router, the query client, and the screen:
 
-The project uses TypeScript 7. If your VS Code still checks types with
-TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
+```tsx
+const { router } = await stubRouter(<ComposeForm {...props} />, {
+  pages: ["/elsewhere"],
+});
+await router.navigate({ href: "/elsewhere" });
+await expect.element(page.getByRole("heading", { name: "/elsewhere" })).toBeVisible();
+```
+
+The stub holds nothing of the app's routes: no guard, loader, search
+rule, or root component.
+
+A component that needs no router gets none: `render`, inside a
+`QueryClientProvider` when it reads the API. With or without the stub,
+the query client is `testQueryClient()` (`src/test/query-client.ts`),
+which does not try a failed read again; `stubRouter` makes one unless
+the test passes its own as `client`. Only the transport's own tests
+(`src/api/retry.test.ts`, `timeout.test.ts`, `offline.test.ts`) build a
+`QueryClient` themselves, from the options they test.
+
+### Faking the API
+
+A test fakes the API by faking `fetch`, with the fake server in
+`src/test/server.ts`. Only the transport's tests named above and
+`src/api/transport.test.ts` stub `fetch` by hand.
+
+```ts
+const server = fakeServer(memberSession);
+server.on("GET", "/api/v0/places", () => data({ places: [] }));
+server.on("POST", "/api/v0/connected-accounts/{id}/sync", ({ params }) =>
+  params.id === "2"
+    ? problem(429, "/api/v0/problems/sync-throttled", { retryAfter: 30 })
+    : data(sync),
+);
+const router = await appRouter("/mail/inbox", server);
+```
+
+- `on` answers a method at a path from then on. The path is the
+  contract's, with its `{id}` parameters, and its type comes from
+  `api/generated/openapi.json`, so a path or method the API does not have
+  is a type error. Of two routes that match, the one with fewer
+  parameters answers, then the later one, so a test replaces a route by
+  adding it again. To answer once, register with `once`: the earlier
+  route answers again afterwards.
+- A handler gets the request (`url`, `params`, the parsed JSON `body`,
+  `headers`) and returns a `Response`, built with `data(value, status)`
+  for the API's `{ data }` or `problem(status, type, more)` for Problem
+  Details with the required members, `Retry-After` from `retryAfter`. Its
+  second argument, `earlier`, answers as the route it replaced does, e.g.
+  after a wait.
+- To hold an answer, the handler awaits the promise of `held()`, which
+  the test resolves: `const answer = held()`, `await answer.promise` in
+  the handler, then `answer.resolve()`. It stands in for
+  `Promise.withResolvers()`, a type error under `tsconfig.json`'s `lib`,
+  which also types the app's code. To lose the answer after the server
+  acted, as a dropped connection does, the handler ends with
+  `return lose()`, and `fetch` rejects.
+- The server answers as a quiet inbok, one with nothing to report: setup
+  is done, the session read answers its `session`, the member has no
+  connected account and syncing runs, system email is saved and tested
+  (`testedSystemEmail`), and registration is closed. Those are the reads
+  the signed-in frame and sign-in make on their own (the sync banner, an
+  administrator's setup reminder, sign-in's registration link), so a test
+  adds only its page's routes; its own route for one of them replaces the
+  quiet answer. `memberSession` and `adminSession` are the two sessions;
+  `fakeServer()` without one is a visitor's server.
+  `server.session = undefined` ends the session: every operation that
+  needs one then answers a 401 `unauthenticated`.
+- `server.requests` holds every request (method, path with search, body,
+  headers). A request no route knows answers a 404, is kept in
+  `server.unknown`, and fails its test: after each test
+  `src/test/setup.ts` calls `expectAllAnswered()`, which throws
+  "Requests without an answer: GET /api/v0/..." for the servers installed
+  during the test. Give the fake the honest answer; a test about a failed
+  read registers a route that answers the failure.
+- `appRouter` installs its server; another test calls `server.install()`,
+  which puts the server in `fetch`'s place.
+
+Mail pages use `mailApi` (`src/test/mail-api.ts`), which holds
+conversations, accounts, and places and answers mail's operations as the
+server does, on a fake server of its own: `appRouter(address,
+api.server)`, and `api.server.on(...)` for a route of the test's own.
+Its typed factories build the values several test files need, each
+taking what varies and the fields to override: `conversation(n)`,
+`listedAccount(id, email)`, `message(row)` (the one message of a
+conversation), and `outgoingMessage()`. `api.messages[row.id] =
+[message(row)]` gives a conversation's read its messages; a message's
+content answers as `noContent`, nothing to show, unless the test adds
+its own route.
+
+Without a fake server installed, a browser test's `fetch` refuses a
+request for `/api/` as a lost connection, so no test reaches a real
+server through the dev proxy. Such a request comes from work a test left
+running, e.g. a navigation whose loader had yet to run when the test
+ended.
+
+### Setup and cleanup
+
+Cleanup is central. Before each test Vitest puts back every stubbed
+global and every spied method (`unstubGlobals` and `restoreMocks` in
+`vite.config.ts`), and after each test `src/test/setup.ts` puts back the
+real timers and checks the fake server's unanswered requests. So a test
+file calls none of `vi.unstubAllGlobals()`,
+`vi.restoreAllMocks()`, or `vi.useRealTimers()`, and makes its stubs and
+spies in the test or a `beforeEach`: one made once for the file lasts
+only until its first test. The three exceptions put the real thing back
+before their test ends, because something reads it before the next
+test: `src/lib/local-store.browser.test.tsx` (the cleanup below clears
+the real `Storage`), `src/root.browser.test.tsx` (React Aria rereads the
+browser's language), and `src/features/mail/folds.browser.test.tsx`
+(the page gets its real `sessionStorage` back before the test goes on).
+
+After each browser test `src/test/browser-setup.ts` also, in this order:
+unmounts what the test rendered; ends the member's data in every query
+client the harness made, as the end of a session does
+(`clearTabAccountData`: mail's collections, the undo bar, the folds),
+and cancels the reads still running (`endQueryClients` in
+`src/test/query-client.ts`); closes the toasts; sets the connection
+back online; and clears `localStorage` and `sessionStorage`. The harness
+knows the clients `testQueryClient()` made and the client of
+`appRouter`'s router. So a test file adds no cleanup for rendering,
+query clients, toasts, the connection, or storage, and its own
+`afterEach` holds only what no other file needs, e.g. a class it put on
+`<html>` or its own module's state. Vitest runs the hooks after a test
+in reverse order of registration: the file's own, then
+`browser-setup.ts`'s, then `setup.ts`'s, so the page is gone and its
+reads are cancelled before the unanswered requests are checked.
+
+### Time
+
+A test never waits out one of the app's timers in real time: a poll, a
+delay, a press guard, a timeout. It fakes the clock with `fakeClock()`
+(`src/test/clock.ts`) and moves it by the app's own constant, never a
+copied number:
+
+```ts
+const clock = fakeClock();
+const reads = serve({ outbox: [[sending], [sent]], message: [sending] });
+const { result } = await read();
+await expect.poll(() => result.current.message?.status).toBe("sending");
+
+await clock.advance(sendPollMs);
+await expect.poll(() => result.current.message?.status).toBe("sent");
+// Nothing is read again once the send ended.
+await clock.advance(sendPollMs);
+expect(reads.outbox).toBe(2);
+```
+
+`fakeClock` fakes `setTimeout`, `setInterval`, and `Date` together, for
+a browser test or a unit test, and leaves frames
+(`requestAnimationFrame`), `performance.now`, and microtasks real, since
+React and React Aria draw on those. Time then stands still until the
+test moves it. `clock.advance(ms)` runs each timer that comes due, in
+order, and returns once the page has drawn what they changed. The setup
+puts the real clock back after each test. Only two kinds of test call
+`vi.useFakeTimers` themselves: the transport's unit tests
+(`src/api/retry.test.ts`, `retry-after.test.ts`, `timeout.test.ts`,
+`offline.test.ts`), and `src/features/messages/frame.browser.test.tsx`,
+which fakes only the date, with its reason beside the call.
+
+A wait that proves nothing happened moves the clock past where it would
+have happened, then checks with a plain `expect`, as the last two lines
+above do. It never sleeps: a sleep as long as the app's own window comes
+up short on a busy machine.
+
+What a test author must know about a fake clock in browser mode
+(`clock.ts` says how each was checked):
+
+- Call `fakeClock()` before the test renders. A timer the app set on the
+  real clock stays real.
+- Vitest's own waits run on the real clock: a retrying assertion still
+  retries, and a hanging test still times out.
+- `expect.element` and `expect.poll` leave the clock alone when they
+  pass at the first look. Each failed look moves it: `expect.poll` by
+  50 ms, `expect.element` by 0, 20, 50, 100, 100, then 500 ms a look
+  while its element is missing. So while an assertion waits, fake time
+  runs about as fast as real time, in steps of up to 500 ms.
+  `vi.waitFor` moves it 50 ms before every look, the first too.
+- An action on an element (`click`, `fill`, `hover`) moves the clock
+  50 ms for each 50 ms of real time it takes: usually nothing, more on
+  a busy machine. `userEvent.keyboard`, `userEvent.tab`,
+  `page.viewport`, and `locator.elements()` never move it. A check that
+  something has not happened yet, e.g. no tooltip at 499 ms, holds only
+  with nothing but those between the clock's moves; `pointTo`
+  (`src/test/pointer.ts`) hovers without a round trip for that.
+- TanStack Query hands a result to its components through
+  `setTimeout(0)`, so under a fake clock an answer, or the page a click
+  opens, shows only once the clock moves, by any amount. A retrying
+  assertion does that by itself. So wait for what an action shows before
+  moving the clock past the next timer.
+- A poll that comes due while its read is still running joins that read.
+  Between two polls, wait for the first one's answer: what it shows, or
+  `client.isFetching()` back at 0.
+- `advance` gives the page a turn after each timer it runs, so a long
+  move across a short interval is slow: 16 s across a 100 ms poll took
+  0.6 s.
+- The transport gives up on a request after 15 s of the fake clock, so
+  an answer held across a longer move fails as a timeout. A fake
+  server's handler that waits with `setTimeout` waits on the fake clock.
+
+One app timer reads a clock `fakeClock` leaves real: an alert dialog's
+confirming button ignores a mouse or touch press within a double-click
+(`doubleClickTime`) of the dialog opening, by `performance.now`. A test
+gets past it with `pressInDialog("Discard")` (`src/test/dialog.ts`),
+which waits for the button named exactly that in the open alert dialog,
+focuses it, and presses Enter: a keyboard press counts at once. No test
+sleeps through the guard or clicks that button, except the guard's own
+tests (`src/components/ui/alert-dialog.browser.test.tsx`), which set
+`performance.now` themselves.
+
+A CSS transition or animation is real time too. A test waits for its
+end by what React Aria marks, e.g. nothing `data-entering` before a
+size is read, and a position that moves is read inside a retried
+assertion. Escape closes an open tooltip first, and the pointer rests
+where the last click was, so a test that closes a drawer or dialog it
+opened by a click presses its button, or moves the pointer away first.
+
+### What a test asserts
+
+A test checks what a member sees or what the server got, so it still
+passes after a change no member could notice.
+
+- A test finds an element the way a member would: by role and name, by
+  label, or by text. `querySelector`, `data-slot`, a class, or
+  `.parentElement` needs its reason in a comment, e.g. the element is
+  inside a message's frame, is a `<mark>` or a `<bdi>`, or has no role.
+- A test reads the query cache, a collection, or a hook's result only
+  where no screen shows the same fact, and says so in a comment.
+- A request count is asserted only where the request is the outcome: a
+  write the server must get once, an `Idempotency-Key`, a read that must
+  not repeat. The test names the README rule it protects when there is
+  one.
+- An exact pixel value names the `DESIGN.md` rule it comes from, in a
+  comment above it, e.g. `// DESIGN.md "Panes and widths": the sidebar
+  is 240 px, its rail 56 px.` A number with no such rule becomes a
+  relation: inside, left of, not wider than, as far above the Undo bar
+  as above the window's edge.
+- A class name, or a `data-*` state a library sets for its own use, is
+  asserted only when it is inbok's own public styling hook and nothing
+  visible says the same. The theme's `dark` class on the page is such a
+  hook; React Aria's `data-hovered` beside a style that shows the hover
+  is not.
+- A test's name says the behaviour, not the mechanism: "shows the focus
+  ring after the keyboard, not after a click", not "sets
+  data-focus-visible".
+
+### Where tests live
+
+Tests sit next to the code they test. A page's test sits in its
+feature's folder, e.g. `features/members/page.browser.test.tsx`, or
+`features/password-reset/pages.browser.test.tsx` for a feature's several
+pages. Tests of the whole app sit in `src`: `entry-paths` (the addresses
+the server links), `session-end` (a session that ends on an open page),
+`guards` (the route table's guards), `signed-out-pages` (what every
+signed-out page does), and `router` and `root` (the app router's options
+and the root route). The harness's own tests sit in `src/test`.
 
 ## Styling and components
 

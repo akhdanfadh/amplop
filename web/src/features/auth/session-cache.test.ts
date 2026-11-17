@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import { testQueryClient } from "@/test/query-client";
 import { linkOptions } from "@tanstack/react-router";
 import { expect, it } from "vite-plus/test";
 import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
@@ -12,7 +13,7 @@ import {
 } from "./session-cache";
 
 it("clears account data and credentials while retaining public setup status", async () => {
-  const client = new QueryClient();
+  const client = testQueryClient();
   const setup = { data: { status: "done" } };
   client.setQueryData(getGetSetupStatusQueryKey(), setup);
   client.setQueryData(getGetCurrentSessionQueryKey(), { data: { email: "old@example.com" } });
@@ -32,7 +33,7 @@ it("clears account data and credentials while retaining public setup status", as
 });
 
 it("cancels an outstanding account read so it cannot repopulate the cache", async () => {
-  const client = new QueryClient();
+  const client = testQueryClient();
   let requestSignal: AbortSignal | undefined;
   const request = client
     .query({
@@ -54,12 +55,12 @@ it("cancels an outstanding account read so it cannot repopulate the cache", asyn
 
 it("sends Back to mail to the Inbox, so the next member never gets the last one's page", () => {
   rememberMailHref(linkOptions({ to: "/mail/outbox/$id", params: { id: "a" } }));
-  clearAccountCache(new QueryClient());
+  clearAccountCache(testQueryClient());
   expect(mailHref()).toEqual({ to: "/mail/$place", params: { place: "inbox" } });
 });
 
 it("clears what else holds a member's data, until it stops", () => {
-  const client = new QueryClient();
+  const client = testQueryClient();
   const cleared: QueryClient[] = [];
   const stop = onAccountCacheClear((c) => cleared.push(c));
   clearAccountCache(client);
@@ -75,7 +76,7 @@ it("tells this browser's other tabs, and hears theirs", async () => {
     const told = new Promise((resolve) => {
       otherTab.addEventListener("message", (event) => resolve(event.data), { once: true });
     });
-    clearAccountCache(new QueryClient());
+    clearAccountCache(testQueryClient());
     expect(await told).toBe("ended");
 
     const heard = new Promise<void>((resolve) => {
@@ -94,10 +95,12 @@ it("tells this browser's other tabs, and hears theirs", async () => {
 
 it("clears this tab alone for another tab's end, telling no tab back", async () => {
   const otherTab = new BroadcastChannel("inbok-account");
+  // A third tab, which sends the marker below.
+  const thirdTab = new BroadcastChannel("inbok-account");
   try {
     const told: unknown[] = [];
     otherTab.addEventListener("message", (event) => told.push(event.data));
-    const client = new QueryClient();
+    const client = testQueryClient();
     client.setQueryData(["account-data"], 1);
     const cleared: QueryClient[] = [];
     const stop = onAccountCacheClear((cleared_) => cleared.push(cleared_));
@@ -106,16 +109,23 @@ it("clears this tab alone for another tab's end, telling no tab back", async () 
     stop();
     expect(client.getQueryData(["account-data"])).toBeUndefined();
     expect(cleared).toEqual([client]);
-    // A message would have arrived by the next task.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(told).toEqual([]);
+    // A channel hands over its messages in the order they were sent, so
+    // one sent before this marker would be heard before it.
+    const marked = new Promise((resolve) => {
+      otherTab.addEventListener("message", resolve, { once: true });
+    });
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel takes no origin.
+    thirdTab.postMessage("marker");
+    await marked;
+    expect(told).toEqual(["marker"]);
   } finally {
     otherTab.close();
+    thirdTab.close();
   }
 });
 
 it("clears this tab before reloading it for another tab's end", () => {
-  const client = new QueryClient();
+  const client = testQueryClient();
   client.setQueryData(["account-data"], 1);
   const seen: string[] = [];
   const stop = onAccountCacheClear(() => seen.push("cleared"));

@@ -1,25 +1,31 @@
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
+import { fakeClock, type Clock } from "@/test/clock";
 import { Button } from "./button";
 import { Sheet, SheetTitle } from "./sheet";
 import { closeAbout, closeToasts, showError, shownAbout, Toaster } from "./toast";
 
 // Counts the toasts on screen now, without waiting.
 function toasts(): number {
-  return document.querySelectorAll("[role=alertdialog]").length;
+  return page.getByRole("alertdialog").elements().length;
+}
+
+// region returns the toasts' region, which React Aria names by their count.
+function region() {
+  return page.getByRole("region", { name: /notification/ });
+}
+
+// underToasts returns the height between the toasts' region and the
+// window's lower edge.
+function underToasts(): number {
+  return window.innerHeight - region().element().getBoundingClientRect().bottom;
 }
 
 // toastSpace returns the space the toasts take, as Toaster sets it.
 function toastSpace(): string {
   return document.documentElement.style.getPropertyValue("--toast-space");
-}
-
-// Moves the fake clock by ms and lets React draw what changed.
-async function wait(ms: number): Promise<void> {
-  vi.advanceTimersByTime(ms);
-  await new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 // Host has a button that opens a drawer, beside the toast region.
@@ -36,17 +42,13 @@ function Host() {
   );
 }
 
-beforeEach(() => {
-  // Only the clocks React Aria's toast timer reads: setTimeout to close,
-  // Date to work out the time left after a pause. The runner polls with
-  // its own real timers, but moves this clock about 50 ms per 50 ms while
-  // a locator waits, so the checks below keep a margin.
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-});
+// The fake clock of the running test.
+let clock: Clock;
 
-afterEach(() => {
-  closeToasts();
-  vi.useRealTimers();
+beforeEach(() => {
+  // React Aria's toast timer reads both of its clocks: setTimeout to
+  // close, Date to work out the time left after a pause.
+  clock = fakeClock();
 });
 
 describe("Toaster", () => {
@@ -62,8 +64,7 @@ describe("Toaster", () => {
     await expect.element(page.getByText("Couldn't archive the conversation")).toBeVisible();
     await userEvent.keyboard("{F6}");
 
-    const region = document.activeElement?.closest("[role=region]");
-    expect(region).not.toBeNull();
+    await expect.element(region()).toHaveFocus();
     // The ring shows where focus went: the region itself.
     expect(getComputedStyle(document.activeElement ?? document.body).outlineStyle).toBe("solid");
   });
@@ -78,16 +79,16 @@ describe("Toaster", () => {
   });
 
   it("stands above the Undo bar while it shows", async () => {
+    await render(<Toaster />);
+    showError("Couldn't archive the conversation");
+    await expect.element(page.getByRole("alertdialog")).toBeVisible();
+    const overEdge = underToasts();
+    expect(overEdge).toBeGreaterThan(0);
     // As the Undo bar sets it (features/mail/undo.tsx).
     document.documentElement.style.setProperty("--undo-space", "100px");
     try {
-      await render(<Toaster />);
-      showError("Couldn't archive the conversation");
-      const toast = page.getByRole("alertdialog");
-      await expect.element(toast).toBeVisible();
-      const region = toast.element().closest("[role=region]") ?? toast.element();
-      // 16 px above the bar, as above the window's edge without one.
-      expect(window.innerHeight - region.getBoundingClientRect().bottom).toBe(116);
+      // As far above the bar as above the window's edge without one.
+      await expect.poll(underToasts).toBe(overEdge + 100);
     } finally {
       document.documentElement.style.removeProperty("--undo-space");
     }
@@ -95,20 +96,19 @@ describe("Toaster", () => {
 
   it("keeps many toasts within the window, each Close scrolled to in turn", async () => {
     await page.viewport(390, 500);
+    await render(<Toaster />);
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      showError(`Failure ${n}`, "Check your connection, then try again in a moment.");
+    }
+    await expect.element(page.getByText("Failure 8")).toBeVisible();
+    const overEdge = underToasts();
+    expect(overEdge).toBeGreaterThan(0);
     // As the Undo bar sets it (features/mail/undo.tsx).
     document.documentElement.style.setProperty("--undo-space", "100px");
     try {
-      await render(<Toaster />);
-      for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
-        showError(`Failure ${n}`, "Check your connection, then try again in a moment.");
-      }
-      await expect.element(page.getByText("Failure 8")).toBeVisible();
-
-      const region = page.getByRole("alertdialog").first().element().closest("[role=region]");
-      if (!(region instanceof HTMLElement)) throw new Error("No toast region.");
-      const box = region.getBoundingClientRect();
-      expect(box.top).toBeGreaterThanOrEqual(0);
-      expect(window.innerHeight - box.bottom).toBe(116);
+      // As far above the bar as above the window's edge without one.
+      await expect.poll(underToasts).toBe(overEdge + 100);
+      expect(region().element().getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
       for (const close of page.getByRole("button", { name: "Close" }).elements()) {
         close.scrollIntoView({ block: "nearest" });
         const at = close.getBoundingClientRect();
@@ -125,7 +125,7 @@ describe("Toaster", () => {
     showError("Couldn't archive the conversation", "Check your connection, then try again.");
     // On screen first: React Aria starts a toast's timer when it mounts.
     await expect.element(page.getByText("Couldn't archive the conversation")).toBeVisible();
-    await wait(60_000);
+    await clock.advance(60_000);
     expect(toasts()).toBe(1);
 
     await userEvent.click(page.getByRole("button", { name: "Close" }));
@@ -213,9 +213,10 @@ describe("Toaster", () => {
     for (const n of [1, 2, 3, 4]) showError(`Failure ${n}`);
     await expect.element(page.getByText("Failure 4")).toBeVisible();
 
-    const titles = [...document.querySelectorAll("[role=alertdialog]")].map((toast) =>
-      toast.textContent?.slice(0, 9),
-    );
+    const titles = page
+      .getByRole("alertdialog")
+      .elements()
+      .map((toast) => toast.textContent?.slice(0, 9));
     expect(titles).toEqual(["Failure 4", "Failure 3", "Failure 2", "Failure 1"]);
     // The light theme's primary is too dark for a ring on the dark surface.
     const close = page.getByRole("button", { name: "Close" }).first().element();
@@ -246,9 +247,13 @@ describe("Toaster", () => {
     await expect.element(page.getByRole("dialog", { name: "Mail" })).toBeVisible();
 
     const close = page.getByRole("alertdialog").getByRole("button", { name: "Close" });
-    const box = close.element().getBoundingClientRect();
-    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    expect(close.element().contains(top)).toBe(true);
+    await expect
+      .poll(() => {
+        const box = close.element().getBoundingClientRect();
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return close.element().contains(top);
+      })
+      .toBe(true);
     await userEvent.click(close);
     expect(toasts()).toBe(0);
     await expect.element(page.getByRole("dialog", { name: "Mail" })).toBeVisible();

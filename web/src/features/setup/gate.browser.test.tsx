@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   RouterProvider,
@@ -12,20 +12,15 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { ApiError } from "@/api/transport";
+import { testQueryClient } from "@/test/query-client";
+import { fakeServer, held, lose } from "@/test/server";
 import { SetupGate } from "./gate";
-
-// setDone answers the setup check: inbok is set up.
-function setDone(): Response {
-  return new Response(JSON.stringify({ data: { status: "done" } }), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 // app returns the gate around a home page, as the root route has it;
 // homeCheck is the home page's own beforeLoad, client the query cache.
 function app(
   homeCheck: () => void = () => {},
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  client = testQueryClient(),
   home = () => <h1>Home</h1>,
 ) {
   const root = createRootRoute({
@@ -49,17 +44,11 @@ function app(
   });
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 describe("SetupGate", () => {
   it("keeps the page mounted once setup is done, even when every query is reset", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<() => Promise<Response>>(async () => setDone()),
-    );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // The fake server's own answer: setup is done.
+    fakeServer().install();
+    const client = testQueryClient();
     let mounts = 0;
     function Home() {
       useEffect(() => {
@@ -78,14 +67,14 @@ describe("SetupGate", () => {
   });
 
   it("keeps the first load's loading view hidden for 300 ms, and leaves focus alone", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(() => new Promise(() => {})),
-    );
+    // The setup check never answers.
+    const server = fakeServer().install();
+    server.on("GET", "/api/v0/setup", () => new Promise<Response>(() => {}));
     await render(<RouterProvider router={app()} />);
     const loading = page.getByRole("status");
     await expect.element(loading).toHaveTextContent("Loading...");
-    // Hidden by CSS for the router's pending delay, then shown.
+    // Hidden by CSS for the router's pending delay, then shown (DESIGN.md
+    // "States": a loading view appears after 300 ms).
     const [hide] = loading.element().getAnimations();
     expect(hide?.effect?.getTiming().delay).toBe(300);
     await expect.poll(() => getComputedStyle(loading.element()).opacity).toBe("1");
@@ -93,17 +82,16 @@ describe("SetupGate", () => {
   });
 
   it("swaps a failed check for the loading view on Try again, then opens the page", async () => {
-    let answer: ((response: Response) => void) | undefined;
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockRejectedValueOnce(new TypeError("Offline"))
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            answer = resolve;
-          }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+    const server = fakeServer().install();
+    const answer = held();
+    // The second check waits, then answers that setup is done. Of two
+    // routes alike the later answers first, so it is added first.
+    server.once("GET", "/api/v0/setup", async (_asked, earlier) => {
+      await answer.promise;
+      return earlier();
+    });
+    // The first check never reaches the server.
+    server.once("GET", "/api/v0/setup", () => lose());
     await render(<RouterProvider router={app()} />);
 
     const heading = page.getByRole("heading", { name: "Couldn't load this page" });
@@ -116,15 +104,13 @@ describe("SetupGate", () => {
     await expect.element(loading).toHaveFocus();
     expect(loading.element().getAnimations()).toHaveLength(0);
 
-    answer?.(setDone());
+    answer.resolve();
     await expect.element(page.getByRole("heading", { name: "Home" })).toBeVisible();
   });
 
   it("moves focus to the heading again when the check fails again", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(() => Promise.reject(new TypeError("Offline"))),
-    );
+    const server = fakeServer().install();
+    server.on("GET", "/api/v0/setup", () => lose());
     await render(<RouterProvider router={app()} />);
 
     const heading = page.getByRole("heading", { name: "Couldn't load this page" });
@@ -134,13 +120,9 @@ describe("SetupGate", () => {
   });
 
   it("runs the page's own checks again on Try again", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn<typeof fetch>()
-        .mockRejectedValueOnce(new TypeError("Offline"))
-        .mockResolvedValueOnce(setDone()),
-    );
+    const server = fakeServer().install();
+    // The first check never reaches the server; the next finds setup done.
+    server.once("GET", "/api/v0/setup", () => lose());
     // The page's check fails behind the setup check's failure, once.
     let homeFails = true;
     await render(

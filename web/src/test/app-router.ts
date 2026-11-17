@@ -1,12 +1,10 @@
-import { createElement } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryHistory, createRouter } from "@tanstack/react-router";
-import { vi } from "vite-plus/test";
+import type { QueryClient } from "@tanstack/react-query";
+import { createMemoryHistory } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
-import { RouteError } from "@/components/route-states";
-import { watchSessionEnd } from "@/features/auth/session-end";
-import { ComposeStore } from "@/features/outgoing-messages/compose-store";
+import { buildRouter } from "@/router";
 import { routeTree } from "@/routeTree.gen";
+import { rememberQueryClient } from "./query-client";
+import { fakeServer } from "./server";
 
 // NOTE: a test mounts the app in a <div> inside <body>, not on the
 // document as the app's client entry does. The root route's shell would
@@ -18,67 +16,30 @@ import { routeTree } from "@/routeTree.gen";
 // are typed as any route's, which lack shellComponent.
 Object.assign(routeTree.options, { shellComponent: AppShell });
 
-const ok = 200;
-const unauthorized = 401;
-
-// A signed-in member's session, as the session read answers it.
-export const memberSession = {
-  email: "ana@example.com",
-  emailVerified: true,
-  role: "member",
-  totpRequired: false,
-};
-
-// appRouter returns the app's router, for a browser test, at address, on a memory history, after
-// it has loaded the page there, its guards' redirects followed. answer
-// answers the requests it knows, e.g. a mail page's reads; every other
-// read answers with session, or a 401 without one. answer also receives
-// the request's init, e.g. its method. Call
-// vi.unstubAllGlobals() afterwards.
+// appRouter returns the app's router (buildRouter in router.tsx), for a
+// browser test, at address, after it has loaded the page there, its
+// guards' redirects followed. server, which it installs, answers the
+// app's requests; left out, a visitor's server does, which knows no
+// session. prepare gets the router's query client before the first load,
+// e.g. to seed the cache. The client is router.options.context.queryClient;
+// the setup ends its data after the test (endQueryClients).
+//
+// It differs from the app's router in three ways: its history is in
+// memory, the root renders AppShell without the document (the NOTE
+// above), and a failed read is not tried again.
 export async function appRouter(
   address: string,
-  session?: typeof memberSession,
-  answer?: (url: string, init?: RequestInit) => Promise<Response> | undefined,
+  server = fakeServer(),
+  prepare?: (queryClient: QueryClient) => void,
 ) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
-      async (input, init) =>
-        answer?.(
-          typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-          init,
-        ) ??
-        (session
-          ? Response.json({ data: session }, { status: ok })
-          : Response.json(
-              {
-                type: "/api/v0/problems/unauthorized",
-                status: unauthorized,
-                title: "",
-                detail: "",
-              },
-              { status: unauthorized, headers: { "Content-Type": "application/problem+json" } },
-            )),
-    ),
-  );
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({ initialEntries: [address] }),
-    context: { queryClient, compose: new ComposeStore() },
-    // As the app's router does (router.tsx): a visit, a preloaded one too,
-    // waits for a read marked out of date.
-    defaultStaleReloadMode: "blocking",
-    defaultPreloadStaleTime: 0,
-    // As the app's router does (router.tsx): a failed read shows the
-    // router's failure view, an ended session's 401 its signed-out view.
-    defaultErrorComponent: RouteError,
-    // As the app's router does (router.tsx), so a rendered page reaches the
-    // query client.
-    Wrap: ({ children }) => createElement(QueryClientProvider, { client: queryClient }, children),
-  });
-  // As the app's router does (router.tsx).
-  watchSessionEnd(queryClient, router);
+  server.install();
+  const router = buildRouter(createMemoryHistory({ initialEntries: [address] }));
+  const queryClient = rememberQueryClient(router.options.context.queryClient);
+  // The app tries a failed read again after 1 s, then 2 s, which a test
+  // of a failure would wait out; api/retry.test.ts holds those rules.
+  const options = queryClient.getDefaultOptions();
+  queryClient.setDefaultOptions({ ...options, queries: { ...options.queries, retry: false } });
+  prepare?.(queryClient);
   await router.load();
   return router;
 }

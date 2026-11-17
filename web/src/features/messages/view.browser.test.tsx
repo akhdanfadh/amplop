@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { ApiError } from "@/api/transport";
@@ -16,10 +16,6 @@ function loaded(content: Partial<Extract<MessageContent, { status: "success" }>>
 function frames(): HTMLIFrameElement[] {
   return [...document.querySelectorAll("iframe")];
 }
-
-afterEach(async () => {
-  await page.viewport(414, 896);
-});
 
 describe("MessageContentView", () => {
   it("shows images from the web only once the member asks", async () => {
@@ -259,8 +255,10 @@ describe("Attachments at their limits", () => {
     const tooltip = page.getByRole("tooltip");
     await expect.element(tooltip).toBeVisible();
 
-    const box = tooltip.element().getBoundingClientRect();
-    expect(box.right).toBeLessThanOrEqual(375);
+    // The tooltip is placed after it first shows, so the look is retried.
+    await expect
+      .poll(() => tooltip.element().getBoundingClientRect().right)
+      .toBeLessThanOrEqual(375);
     // The text stays inside the tooltip's own box.
     expect(tooltip.element().scrollWidth).toBeLessThanOrEqual(tooltip.element().clientWidth);
   });

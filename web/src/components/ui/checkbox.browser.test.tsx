@@ -4,7 +4,7 @@ import { render } from "vitest-browser-react";
 import { Checkbox } from "./checkbox";
 
 describe("Checkbox", () => {
-  it("toggles on a press of its label and passes aria props to its input", async () => {
+  it("toggles on a press of its label, keeping its caller's id and description", async () => {
     const onChange = vi.fn<(selected: boolean) => void>();
     await render(
       <>

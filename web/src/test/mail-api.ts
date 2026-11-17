@@ -4,13 +4,20 @@ import {
   ConversationActionBody,
   ConversationChangesBody,
   type ConversationChange,
+  type ConversationMessage,
   type ConversationRow,
   type ListedAccount,
+  type MessageContent,
+  type OutgoingMessage,
   type PlaceCount,
+  type ProblemType,
 } from "@/api/generated/model";
+import { data, fakeServer, memberSession, problem, type Asked, type Server } from "./server";
 
+const created = 201;
 const notFound = 404;
-const unauthorized = 401;
+const invalid = 422;
+const busy = 503;
 
 // A connected account as the API lists it, fully synced.
 export function listedAccount(id: number, email: string, color = id): ListedAccount {
@@ -59,7 +66,66 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
   };
 }
 
-// MailApi is a fake inbok API for mail pages: it pages conversations as
+// message returns the one message of row, read, from Bo Tan to
+// ana@example.com, with row's date and subject, as Get Conversation lists
+// it; changes override any field.
+export function message(
+  row: ConversationRow,
+  changes: Partial<ConversationMessage> = {},
+): ConversationMessage {
+  return {
+    id: "00000000-0000-4000-8000-000000000901",
+    date: row.date,
+    subject: row.subject,
+    preview: "Hello",
+    from: [{ name: "Bo Tan", address: "bo@example.com" }],
+    to: [{ name: "", address: "ana@example.com" }],
+    cc: [],
+    replyTo: [],
+    labelIds: [],
+    spam: false,
+    trash: false,
+    sent: false,
+    starred: false,
+    unread: false,
+    answers: null,
+    attachments: false,
+    ...changes,
+  };
+}
+
+// A message's content with nothing to show, as Get Message Content
+// answers it.
+export const noContent: MessageContent = { remote: "none", attachments: [], bodies: [] };
+
+// outgoingMessage returns a message the server saved, waiting to be sent:
+// "Lunch", from studio@example.com, account 7, to ana@example.com, saved
+// at 08:00 on 16 November 2026; changes override any field.
+export function outgoingMessage(changes: Partial<OutgoingMessage> = {}): OutgoingMessage {
+  return {
+    id: "019a0000-0000-7000-8000-0000000000aa",
+    status: "waiting",
+    failure: null,
+    from: "studio@example.com",
+    connectedAccountId: 7,
+    to: ["ana@example.com"],
+    cc: [],
+    bcc: [],
+    subject: "Lunch",
+    body: "Noon?",
+    createdAt: "2026-11-16T08:00:00Z",
+    sentAt: null,
+    sentAgainAs: null,
+    dismissedAt: null,
+    outstanding: true,
+    reply: false,
+    allowedActions: [],
+    ...changes,
+  };
+}
+
+// MailApi is a fake inbok API for mail pages, its routes on server, where
+// a test adds its own: it pages conversations as
 // List Conversations does, counts new ones, lists accounts and places, and
 // answers a signed-in session; it applies actions and changes as the
 // server's rows show them, answers each with the changes that undo it, and
@@ -68,11 +134,12 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // makes the next conversation list request answer status, failOlder every
 // request for an older page until it is cleared, failAction the
 // next action, and refuse refuses an action on a conversation, by ID, with
-// a reason; signedOut answers everything 401, as after the session ended.
+// a reason; signedOut ends server's session, so everything answers 401.
 // It starts an account's sync, recording the account in syncs, unless
 // refuseSync names a status and problem type for that account;
 // failAccounts makes every accounts read answer that status; it renames
-// an account as Rename Account does, offers Gmail, and says setup is done.
+// an account as Rename Account does, offers Gmail, lists an empty Outbox,
+// and says setup is done.
 // It searches conversations by their subjects, each word anywhere in it,
 // as Search Conversations answers, a page at a time, each page after the
 // first starting searchShift results early, as a ranking a sync shifted
@@ -84,13 +151,17 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // labelWrites records each, method and path; refuseLabel, while set,
 // refuses the next as a 422 at body.name, or with a status alone, and
 // deleteOnly, while set, deletes that many labels of a delete before it
-// fails, as a delete Gmail stopped part way does.
+// fails, as a delete Gmail stopped part way does. It answers a
+// conversation's read with the messages listed for its ID in messages,
+// none unless a test lists them, and every message's content as one with
+// nothing to show.
 export type MailApi = {
   conversations: ConversationRow[];
+  messages: Record<string, ConversationMessage[]>;
   accounts: ListedAccount[];
   places: PlaceCount[];
   placesAfter: PlaceCount[] | undefined;
-  requests: string[];
+  readonly requests: string[];
   actions: { action: string; ids: string[] }[];
   changes: ConversationChange[][];
   failNext: number | undefined;
@@ -100,30 +171,30 @@ export type MailApi = {
   refuse: Record<string, "not-found" | "needs-reconnect" | "failed">;
   syncs: number[];
   failAccounts: number | undefined;
-  refuseSync: Record<number, { status: number; type: string }>;
+  refuseSync: Record<number, { status: number; type: ProblemType }>;
   failSearch: number | undefined;
   searchShift: number;
   searchDropped: number[];
   labelWrites: string[];
   refuseLabel: string | number | undefined;
   deleteOnly: number | undefined;
-  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  server: Server;
 };
 
 // mailApi returns a MailApi holding conversations and accounts.
 export function mailApi(conversations: ConversationRow[], accounts: ListedAccount[]): MailApi {
+  const server = fakeServer(memberSession);
   const api: MailApi = {
     conversations,
+    messages: {},
     accounts,
     places: [],
     placesAfter: undefined,
-    requests: [],
     actions: [],
     changes: [],
     failNext: undefined,
     failOlder: undefined,
     failAction: undefined,
-    signedOut: false,
     refuse: {},
     syncs: [],
     failAccounts: undefined,
@@ -134,145 +205,121 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     labelWrites: [],
     refuseLabel: undefined,
     deleteOnly: undefined,
-    fetch: async (input, init) => {
-      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
-      api.requests.push(url.pathname + url.search);
-      if (api.signedOut) return problem(unauthorized, "/api/v0/problems/unauthorized");
-      const { pathname: path, searchParams: search } = url;
-      if (path === "/api/v0/conversations") {
-        if (api.failNext !== undefined) {
-          const status = api.failNext;
-          api.failNext = undefined;
-          return problem(status);
-        }
-        if (api.failOlder !== undefined && search.has("before")) return problem(api.failOlder);
-        return Response.json({ data: { conversations: list(api.conversations, search) } });
-      }
-      if (path === "/api/v0/conversations/actions") {
-        const { action, ids } = ConversationActionBody.parse(
-          JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
-        );
-        api.actions.push({ action, ids });
-        if (api.failAction !== undefined) {
-          const status = api.failAction;
-          api.failAction = undefined;
-          return problem(status);
-        }
-        return answerChanges(api, ids, (c) => Object.assign(c, actionRows[action]));
-      }
-      if (path === "/api/v0/conversations/changes") {
-        const { changes } = ConversationChangesBody.parse(
-          JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
-        );
-        api.actions.push({ action: "changes", ids: changes.flatMap((c) => c.ids) });
-        api.changes.push(changes);
-        if (api.failAction !== undefined) {
-          const status = api.failAction;
-          api.failAction = undefined;
-          return problem(status);
-        }
-        return answerChanges(
-          api,
-          changes.flatMap((c) => c.ids),
-          (c) => {
-            const change = changes.find((one) => one.ids.includes(c.id));
-            if (change) applyChange(c, change);
-          },
-        );
-      }
-      if (path === "/api/v0/conversations/new-count") {
-        const after = Date.parse(search.get("after") ?? "");
-        const count = inPlace(api.conversations, search).filter((c) => Date.parse(c.date) > after);
-        return Response.json({ data: { count: count.length } });
-      }
-      if (path === "/api/v0/conversations/search") {
-        if (api.failSearch !== undefined) {
-          return problem(api.failSearch, "about:blank", { "Retry-After": "1" });
-        }
-        return Response.json({
-          data: searched(api.conversations, search, api.searchShift, api.searchDropped),
-        });
-      }
-      if (path.startsWith("/api/v0/conversations/")) {
-        const found = api.conversations.find((c) => path.endsWith(c.id));
-        return found
-          ? Response.json({ data: { conversation: found, messages: [], providerUrl: null } })
-          : problem(notFound);
-      }
-      const sync = /^\/api\/v0\/connected-accounts\/(\d+)\/sync$/.exec(path);
-      if (sync && init?.method === "POST") {
-        const id = Number(sync[1]);
-        const refusal = api.refuseSync[id];
-        if (refusal) return problem(refusal.status, refusal.type);
-        api.syncs.push(id);
-        const account = api.accounts.find((a) => a.id === id);
-        return account ? Response.json({ data: account.sync }) : problem(notFound);
-      }
-      const renamed = /^\/api\/v0\/connected-accounts\/(\d+)$/.exec(path);
-      if (renamed && init?.method === "PATCH") {
-        const account = api.accounts.find((a) => a.id === Number(renamed[1]));
-        if (!account) return problem(notFound);
-        const { name } = RenameConnectedAccountBody.parse(
-          JSON.parse(typeof init.body === "string" ? init.body : "{}"),
-        );
-        account.name = name.trim() === "" ? null : name.trim();
-        return Response.json({ data: { account } });
-      }
-      if (path === "/api/v0/labels" || path.startsWith("/api/v0/labels/")) {
-        return answerLabel(api, init?.method ?? "GET", path, init?.body);
-      }
-      // The root asks whether inbok still needs its first administrator.
-      if (path === "/api/v0/setup") {
-        return Response.json({ data: { status: "done" } });
-      }
-      if (path === "/api/v0/connected-accounts/providers") {
-        return Response.json({ data: { offered: ["gmail"] } });
-      }
-      if (path === "/api/v0/places") {
-        return Response.json({ data: { places: api.places } });
-      }
-      if (path === "/api/v0/connected-accounts") {
-        if (api.failAccounts !== undefined) return problem(api.failAccounts);
-        return Response.json({ data: { accounts: api.accounts, syncStopped: false } });
-      }
-      if (path === "/api/v0/sessions/current") {
-        return Response.json({
-          data: {
-            email: "ana@example.com",
-            emailVerified: true,
-            role: "member",
-            totpRequired: false,
-          },
-        });
-      }
-      return problem(notFound);
+    get signedOut() {
+      return server.session === undefined;
     },
+    set signedOut(out) {
+      server.session = out ? undefined : memberSession;
+    },
+    get requests() {
+      return server.requests.map((asked) => asked.path);
+    },
+    server,
   };
+
+  server.on("GET", "/api/v0/conversations", ({ url }) => {
+    if (api.failNext !== undefined) {
+      const status = api.failNext;
+      api.failNext = undefined;
+      return problem(status);
+    }
+    if (api.failOlder !== undefined && url.searchParams.has("before")) {
+      return problem(api.failOlder);
+    }
+    return data({ conversations: list(api.conversations, url.searchParams) });
+  });
+  server.on("POST", "/api/v0/conversations/actions", ({ body }) => {
+    const { action, ids } = ConversationActionBody.parse(body ?? {});
+    api.actions.push({ action, ids });
+    if (api.failAction !== undefined) {
+      const status = api.failAction;
+      api.failAction = undefined;
+      return problem(status);
+    }
+    return answerChanges(api, ids, (c) => Object.assign(c, actionRows[action]));
+  });
+  server.on("POST", "/api/v0/conversations/changes", ({ body }) => {
+    const { changes } = ConversationChangesBody.parse(body ?? {});
+    api.actions.push({ action: "changes", ids: changes.flatMap((c) => c.ids) });
+    api.changes.push(changes);
+    if (api.failAction !== undefined) {
+      const status = api.failAction;
+      api.failAction = undefined;
+      return problem(status);
+    }
+    return answerChanges(
+      api,
+      changes.flatMap((c) => c.ids),
+      (c) => {
+        const change = changes.find((one) => one.ids.includes(c.id));
+        if (change) applyChange(c, change);
+      },
+    );
+  });
+  server.on("GET", "/api/v0/conversations/new-count", ({ url }) => {
+    const after = Date.parse(url.searchParams.get("after") ?? "");
+    const count = inPlace(api.conversations, url.searchParams).filter(
+      (c) => Date.parse(c.date) > after,
+    );
+    return data({ count: count.length });
+  });
+  server.on("GET", "/api/v0/conversations/search", ({ url }) => {
+    if (api.failSearch !== undefined)
+      return problem(api.failSearch, "about:blank", { retryAfter: 1 });
+    return data(searched(api.conversations, url.searchParams, api.searchShift, api.searchDropped));
+  });
+  server.on("GET", "/api/v0/conversations/{id}", ({ params }) => {
+    const found = api.conversations.find((c) => c.id === params.id);
+    return found
+      ? data({ conversation: found, messages: api.messages[found.id] ?? [], providerUrl: null })
+      : problem(notFound);
+  });
+  server.on("GET", "/api/v0/messages/{id}/content", () => data(noContent));
+  server.on("POST", "/api/v0/connected-accounts/{id}/sync", ({ params }) => {
+    const id = Number(params.id);
+    const refusal = api.refuseSync[id];
+    if (refusal) return problem(refusal.status, refusal.type);
+    api.syncs.push(id);
+    const account = api.accounts.find((a) => a.id === id);
+    return account ? data(account.sync) : problem(notFound);
+  });
+  server.on("PATCH", "/api/v0/connected-accounts/{id}", ({ params, body }) => {
+    const account = api.accounts.find((a) => a.id === Number(params.id));
+    if (!account) return problem(notFound);
+    const { name } = RenameConnectedAccountBody.parse(body ?? {});
+    account.name = name.trim() === "" ? null : name.trim();
+    return data({ account });
+  });
+  server.on("POST", "/api/v0/labels", (asked) => answerLabel(api, asked));
+  server.on("PATCH", "/api/v0/labels/{id}", (asked) => answerLabel(api, asked));
+  server.on("DELETE", "/api/v0/labels/{id}", (asked) => answerLabel(api, asked));
+  server.on("GET", "/api/v0/connected-accounts/providers", () => data({ offered: ["gmail"] }));
+  server.on("GET", "/api/v0/places", () => data({ places: api.places }));
+  // The mail sidebar counts the Outbox's messages.
+  server.on("GET", "/api/v0/outgoing-messages", () => data({ messages: [] }));
+  server.on("GET", "/api/v0/connected-accounts", () => {
+    if (api.failAccounts !== undefined) return problem(api.failAccounts);
+    return data({ accounts: api.accounts, syncStopped: false });
+  });
   return api;
 }
 
-// answerLabel answers a label write, method at path with body, on api's
-// places and conversations, as the server and Gmail would.
-function answerLabel(api: MailApi, method: string, path: string, body: unknown): Response {
-  api.labelWrites.push(`${method} ${path}`);
+// answerLabel answers a label write, asked, on api's places and
+// conversations, as the server and Gmail would.
+function answerLabel(api: MailApi, { method, url, params, body }: Asked): Response {
+  api.labelWrites.push(`${method} ${url.pathname}`);
   const refusal = api.refuseLabel;
   if (refusal !== undefined) {
     api.refuseLabel = undefined;
     if (typeof refusal === "number") return problem(refusal);
-    return Response.json(
-      {
-        type: "/api/v0/problems/validation-error",
-        status: 422,
-        title: "Unprocessable Entity",
-        detail: "Check the values you entered.",
-        errors: [{ location: "body.name", message: refusal }],
-      },
-      { status: 422, headers: { "Content-Type": "application/problem+json" } },
-    );
+    return problem(invalid, "/api/v0/problems/validation-error", {
+      title: "Unprocessable Entity",
+      detail: "Check the values you entered.",
+      errors: [{ location: "body.name", message: refusal }],
+    });
   }
-  const sent = LabelWrite.parse(JSON.parse(typeof body === "string" ? body : "{}"));
-  const id = path.slice("/api/v0/labels/".length);
-  const found = api.places.find((p) => p.place === id && p.name !== null);
+  const sent = LabelWrite.parse(body ?? {});
+  const found = api.places.find((p) => p.place === params.id && p.name !== null);
   if (method === "POST") {
     const made = {
       accountId: sent.accountId ?? 0,
@@ -282,13 +329,13 @@ function answerLabel(api: MailApi, method: string, path: string, body: unknown):
       unread: 0,
     };
     api.places = [...api.places, made];
-    return Response.json({ data: labelResource(made) }, { status: 201 });
+    return data(labelResource(made), created);
   }
   if (!found) return problem(notFound, "/api/v0/problems/label-not-found");
   if (method === "PATCH") {
     const edited = { ...found, name: sent.name ?? found.name, parent: sent.parent ?? null };
     api.places = api.places.map((p) => (p === found ? edited : p));
-    return Response.json({ data: labelResource(edited) });
+    return data(labelResource(edited));
   }
   // Deepest first, the label itself last, as Gmail's code deletes.
   const tree = [found.place];
@@ -302,9 +349,9 @@ function answerLabel(api: MailApi, method: string, path: string, body: unknown):
   for (const c of api.conversations) c.labelIds = c.labelIds.filter((l) => !deleted.includes(l));
   if (api.deleteOnly !== undefined) {
     api.deleteOnly = undefined;
-    return problem(503, "/api/v0/problems/mail-provider-busy", { "Retry-After": "30" });
+    return problem(busy, "/api/v0/problems/mail-provider-busy", { retryAfter: 30 });
   }
-  return Response.json({ data: { deleted } });
+  return data({ deleted });
 }
 
 // What a label write may send, as the contract has it.
@@ -385,26 +432,12 @@ function answerChanges(
     if (change) undo.push(change);
   }
   if (api.placesAfter) api.places = api.placesAfter;
-  return Response.json({
-    data: {
-      conversations: changed,
-      refused: refused.map((id) => ({ id, reason: api.refuse[id] })),
-      undo,
-      places: api.placesAfter,
-    },
+  return data({
+    conversations: changed,
+    refused: refused.map((id) => ({ id, reason: api.refuse[id] })),
+    undo,
+    places: api.placesAfter,
   });
-}
-
-// problem returns an error response with status, and type.
-function problem(
-  status: number,
-  type = "about:blank",
-  headers: Record<string, string> = {},
-): Response {
-  return Response.json(
-    { type, status, title: "Failed", detail: "It failed." },
-    { status, headers: { "Content-Type": "application/problem+json", ...headers } },
-  );
 }
 
 // viewsOf returns the places row is in, as the lists filter: its views,

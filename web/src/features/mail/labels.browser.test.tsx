@@ -1,11 +1,9 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow, PlaceCount } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
-import { clearAccountCache } from "@/features/auth/session-cache";
-import { appRouter, memberSession } from "@/test/app-router";
+import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 // Labels' ids, as List Places gives them.
@@ -28,25 +26,15 @@ const workLabels = [
 ];
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
 
 // open renders the app at address over rows, of two accounts, Work's and
 // Home's, with their labels, Work's places when given, and returns its
 // router once the reading pane shows.
 async function open(rows: ConversationRow[], address: string, places = workLabels) {
-  await page.viewport(1440, 900);
   api = mailApi(rows, [listedAccount(1, "ana@work.example"), listedAccount(2, "ana@home.example")]);
   api.places = [...places, label(2, family, "Family")];
-  const router = await appRouter(address, memberSession, (url, init) => api.fetch(url, init));
+  const router = await appRouter(address, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   await expect.element(toolbar()).toBeVisible();
   return router;
 }
@@ -221,28 +209,26 @@ describe("Labels", () => {
 describe("Labels at the contract's limit", () => {
   it("applies 100 labels added, and waits with words at 101", async () => {
     const row = conversation(1, { accountId: 1 });
-    await page.viewport(1440, 900);
     api = mailApi([row], [listedAccount(1, "ana@work.example")]);
     // 101 labels, Label 001 to Label 101, as List Places gives them.
     api.places = Array.from({ length: 101 }, (_, i) => {
       const n = String(i + 1).padStart(3, "0");
       return label(1, `00000000-0000-4000-8000-000000001${n}`, `Label ${n}`);
     });
-    const router = await appRouter(`/mail/inbox/${row.id}`, memberSession, (url, init) =>
-      api.fetch(url, init),
-    );
+    const router = await appRouter(`/mail/inbox/${row.id}`, api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await expect.element(toolbar()).toBeVisible();
 
     await more("Labels");
     const items = page.getByRole("menuitemcheckbox");
     await expect.element(items.nth(100)).toBeInTheDocument();
-    for (let i = 0; i < 101; i++) {
-      // One press after another, as a member ticks them.
-      // oxlint-disable-next-line no-await-in-loop
-      await userEvent.click(items.nth(i));
-    }
+    await expect.element(page.getByRole("searchbox", { name: "Filter labels" })).toHaveFocus();
+    // One press after another, as a member ticks them, from the keyboard:
+    // down to the next label and Enter, 101 times, sent as one piece of
+    // typing. A pointer press on each took the test 11 s.
+    await userEvent.keyboard("{ArrowDown}{Enter}".repeat(101));
+    await expect.element(items.nth(100)).toHaveAttribute("aria-checked", "true");
+    expect(items.elements().filter((item) => item.ariaChecked === "true")).toHaveLength(101);
     const apply = page.getByRole("button", { name: "Apply" });
     await expect.element(page.getByText("Add or remove up to 100 at once.")).toBeVisible();
     await expect.element(apply).toBeDisabled();
@@ -250,7 +236,9 @@ describe("Labels at the contract's limit", () => {
 
     await expect.element(apply).toBeEnabled();
     expect(page.getByText("Add or remove up to 100 at once.").elements()).toHaveLength(0);
-    // 102 presses, one after another: slow on a busy machine.
+    // 101 real key presses, each redrawing a menu of 101 items: about 6 s
+    // here, and more than the default 15 s on a slower machine or under
+    // coverage.
   }, 60_000);
 });
 
@@ -313,7 +301,6 @@ describe("picked conversations of several accounts", () => {
     const work = conversation(3, { accountId: 1, subject: "Contract renewal" });
     const home = conversation(2, { accountId: 2, subject: "Internet bill" });
     const spare = conversation(1, { accountId: 3, subject: "Welcome aboard" });
-    await page.viewport(1440, 900);
     api = mailApi(
       [work, home, spare],
       [
@@ -323,11 +310,8 @@ describe("picked conversations of several accounts", () => {
       ],
     );
     api.places = [...workLabels, label(2, family, "Family")];
-    const router = await appRouter("/mail/inbox", memberSession, (url, init) =>
-      api.fetch(url, init),
-    );
+    const router = await appRouter("/mail/inbox", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await pick("Contract renewal");
     await pick("Internet bill");
     await pick("Welcome aboard");

@@ -51,9 +51,6 @@ beforeEach(() => {
 afterEach(() => {
   for (const queryClient of clients) queryClient.clear();
   clients.length = 0;
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-  vi.useRealTimers();
 });
 
 describe("read retries", () => {
@@ -220,12 +217,13 @@ describe("read retries", () => {
     await expect(result).resolves.toMatchObject({ kind: "response", status: httpStatus.ok });
   });
 
-  it.each([
-    "Fri, 23 Oct 2026 00:00:03 GMT",
-    "Friday, 23-Oct-26 00:00:03 GMT",
-    "Fri Oct 23 00:00:03 2026",
-  ])("honors Retry-After date %s on a 429", async (header) => {
-    const attempts = respond(httpStatus.tooManyRequests, { "Retry-After": header });
+  // retry-after.test.ts holds the header's rules: the forms of a date, and
+  // which values are unusable. The tests here prove only that a retry's wait
+  // comes from them.
+  it("honors a Retry-After date on a 429", async () => {
+    const attempts = respond(httpStatus.tooManyRequests, {
+      "Retry-After": "Fri, 23 Oct 2026 00:00:03 GMT",
+    });
     const result = client()
       .query(getGetHealthQueryOptions())
       .catch((err: unknown) => err);
@@ -235,24 +233,11 @@ describe("read retries", () => {
     await expect(result).resolves.toMatchObject({ status: httpStatus.tooManyRequests });
   });
 
-  it.each(["", "not a date", "-1", "1.5", "0x10", "Fri, 99 Oct 2026 00:00:03 GMT"])(
-    "uses normal backoff for unusable Retry-After %s",
-    async (header) => {
-      const attempts = respond(httpStatus.unavailable, { "Retry-After": header });
-      const result = client()
-        .query(getGetHealthQueryOptions())
-        .catch((err: unknown) => err);
-      await vi.advanceTimersByTimeAsync(3_000);
-
-      expect(attempts.map((time) => time - attempts[0])).toEqual([0, 1_000, 3_000]);
-      await expect(result).resolves.toMatchObject({ status: httpStatus.unavailable });
-    },
-  );
-
-  it("keeps normal backoff when the server's date has already passed", async () => {
-    const attempts = respond(httpStatus.unavailable, {
-      "Retry-After": "Fri, 23 Oct 2026 00:00:00 GMT",
-    });
+  it.each([
+    { header: "not a date", name: "an unusable Retry-After" },
+    { header: "Fri, 23 Oct 2026 00:00:00 GMT", name: "a Retry-After date that has already passed" },
+  ])("keeps normal backoff as the least wait for $name", async ({ header }) => {
+    const attempts = respond(httpStatus.unavailable, { "Retry-After": header });
     const result = client()
       .query(getGetHealthQueryOptions())
       .catch((err: unknown) => err);
@@ -286,19 +271,6 @@ describe("read retries", () => {
       await expect(result).resolves.toMatchObject({ status: httpStatus.unavailable });
     },
   );
-
-  it("applies HTTP's fifty-year rule to a legacy date's two-digit year", async () => {
-    const attempts = respond(httpStatus.unavailable, {
-      "Retry-After": "Thursday, 23-Oct-76 00:00:00 GMT",
-    });
-    const result = client()
-      .query(getGetHealthQueryOptions())
-      .catch((err: unknown) => err);
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    expect(attempts).toHaveLength(1);
-    await expect(result).resolves.toMatchObject({ status: httpStatus.unavailable });
-  });
 
   it("ignores Retry-After outside 429 and 503", async () => {
     const attempts = respond(httpStatus.badGateway, { "Retry-After": "60" });

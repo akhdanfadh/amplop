@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { testQueryClient } from "@/test/query-client";
 import { expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
@@ -10,6 +10,6 @@ it("closes every toast, so the next member sees none of the last one's", async (
   showError("Couldn't sign out");
   await expect.element(page.getByRole("alertdialog")).toBeVisible();
 
-  clearAccountCache(new QueryClient());
+  clearAccountCache(testQueryClient());
   await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
 });

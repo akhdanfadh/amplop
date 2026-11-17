@@ -1,7 +1,7 @@
 // First: Zod's settings must apply to every schema the imports below create.
 import "./zod-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createRouter, type Router } from "@tanstack/react-router";
+import { createRouter, type Router, type RouterHistory } from "@tanstack/react-router";
 import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { retryOptions } from "@/api/retry";
 import { NotFound, RouteError, RoutePending, pendingAfterMs } from "@/components/route-states";
@@ -24,7 +24,13 @@ export function getRouter(): Router<typeof routeTree> {
   // Before the router reads the address or any request starts, so a failed
   // request cannot leave a link's secret in the address bar.
   captureLinkSecret([verifyEmailPath, completePath, resetPath]);
+  return buildRouter();
+}
 
+// buildRouter returns the app's router with its query cache, compose
+// store, and session-end rule, on history, e.g. a test's memory history;
+// without one the router makes the browser's.
+export function buildRouter(history?: RouterHistory): Router<typeof routeTree> {
   const queryClient = new QueryClient({
     defaultOptions: retryOptions,
   });
@@ -34,6 +40,7 @@ export function getRouter(): Router<typeof routeTree> {
 
   const router = createRouter({
     routeTree,
+    history,
     context: { queryClient, compose: new ComposeStore() },
     defaultPendingMs: pendingAfterMs,
     // NOTE: on the first load TanStack shows a pending page's view at once,

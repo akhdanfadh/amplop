@@ -10,7 +10,6 @@ afterEach(() => {
     stop();
     frame.remove();
   }
-  vi.useRealTimers();
 });
 
 // show watches a frame width pixels wide showing the test body name, as
@@ -164,7 +163,8 @@ describe("watch", () => {
   });
 
   it("fails on a body that never finishes", async () => {
-    // Only the clock: the frame's polling keeps its real timer.
+    // Only the date, not fakeClock: moving that 16 s would run the frame's
+    // 100 ms poll 160 times; the poll keeps its real timer.
     vi.useFakeTimers({ toFake: ["Date"] });
     const view = show("stall");
     await expect.poll(() => view.frame.contentDocument?.body?.textContent).toContain("start");

@@ -271,49 +271,38 @@ describe("replyErrorMessage", () => {
   });
 });
 
-describe("sendAgainErrorMessage", () => {
-  it("says the status changed on 409 not-sendable-again", () => {
-    expect(sendAgainErrorMessage(problem(409, "/api/v0/problems/not-sendable-again"))).toBe(
-      "This message can't be sent again: its status has changed.",
-    );
+// Send again and Dismiss act on a message in the Outbox, so each words the
+// same three failures, in its own words where the two differ.
+describe.each([
+  {
+    name: "sendAgainErrorMessage",
+    message: sendAgainErrorMessage,
+    changedType: "/api/v0/problems/not-sendable-again",
+    changed: "This message can't be sent again: its status has changed.",
+    unconfirmed:
+      "We couldn't confirm whether it was sent again. Trying again is safe: it's sent again at most once.",
+  },
+  {
+    name: "dismissErrorMessage",
+    message: dismissErrorMessage,
+    changedType: "/api/v0/problems/not-dismissible",
+    changed: "This message can't be dismissed: its status has changed.",
+    unconfirmed: "We couldn't confirm whether it was dismissed. Trying again is safe.",
+  },
+] as const)("$name", ({ message, changedType, changed, unconfirmed }) => {
+  it("says the status changed on its own 409", () => {
+    expect(message(problem(409, changedType))).toBe(changed);
   });
 
   it("says the message is gone on its own 404 only", () => {
-    expect(
-      sendAgainErrorMessage(problem(404, "/api/v0/problems/outgoing-message-not-found")),
-    ).toContain("isn't in your Outbox");
-    expect(sendAgainErrorMessage(problem(404, "/api/v0/problems/not-found"))).toBe(
-      "The server's detail.",
+    expect(message(problem(404, "/api/v0/problems/outgoing-message-not-found"))).toBe(
+      "This message isn't in your Outbox. It may have been removed.",
     );
+    expect(message(problem(404, "/api/v0/problems/not-found"))).toBe("The server's detail.");
   });
 
   it("says trying again is safe after a lost answer", () => {
-    expect(sendAgainErrorMessage(new ApiError("timeout", { method: "POST" }))).toContain(
-      "Trying again is safe",
-    );
-  });
-});
-
-describe("dismissErrorMessage", () => {
-  it("says the status changed on 409 not-dismissible", () => {
-    expect(dismissErrorMessage(problem(409, "/api/v0/problems/not-dismissible"))).toBe(
-      "This message can't be dismissed: its status has changed.",
-    );
-  });
-
-  it("says the message is gone on its own 404 only", () => {
-    expect(
-      dismissErrorMessage(problem(404, "/api/v0/problems/outgoing-message-not-found")),
-    ).toContain("isn't in your Outbox");
-    expect(dismissErrorMessage(problem(404, "/api/v0/problems/not-found"))).toBe(
-      "The server's detail.",
-    );
-  });
-
-  it("says trying again is safe after a lost answer", () => {
-    expect(dismissErrorMessage(new ApiError("timeout", { method: "POST" }))).toContain(
-      "Trying again is safe",
-    );
+    expect(message(new ApiError("timeout", { method: "POST" }))).toBe(unconfirmed);
   });
 });
 

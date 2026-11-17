@@ -4,7 +4,6 @@ import { applyTheme, readTheme, storeTheme, themeKey, themeScript } from "./them
 const html = document.documentElement;
 
 afterEach(() => {
-  localStorage.clear();
   html.classList.remove("dark");
   document.body.replaceChildren();
 });
@@ -14,10 +13,11 @@ function frame(): Promise<number> {
   return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
-// betweenFrames waits for an ordinary task, between two frames, where a
+// betweenFrames, called in a frame, waits for the next ordinary task,
+// which runs once that frame is drawn and before the next: where a
 // click's handler runs.
 function betweenFrames(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // themed adds an element whose colours come from the theme and fade when
@@ -37,7 +37,7 @@ function runScript() {
 }
 
 describe("theme", () => {
-  it("head script applies a stored dark or light choice", () => {
+  it("shows a stored dark or light choice before the app starts", () => {
     localStorage.setItem(themeKey, "dark");
     runScript();
     expect(html.classList.contains("dark")).toBe(true);
@@ -47,7 +47,7 @@ describe("theme", () => {
     expect(html.classList.contains("dark")).toBe(false);
   });
 
-  it("head script and applyTheme agree on the system choice", () => {
+  it("shows the system's choice the same before and after the app starts", () => {
     runScript();
     const fromScript = html.classList.contains("dark");
     applyTheme("system");

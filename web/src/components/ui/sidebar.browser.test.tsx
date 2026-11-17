@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { InboxIcon, PlusIcon } from "lucide-react";
 import { useLayout } from "@/hooks/use-layout";
 import { shortcutModifier } from "@/lib/shortcut";
+import { fakeClock } from "@/test/clock";
 import { Button } from "./button";
 import { Popover, PopoverTrigger } from "./popover";
 import {
@@ -28,6 +29,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "./sidebar";
+import { restMs } from "./tooltip";
 
 // Frame is a sidebar named Mail beside some content: a trigger and a text
 // field. The sidebar's header has a wordmark the rail hides. Its owner
@@ -144,6 +146,14 @@ function navWidth(): number {
   return page.getByRole("navigation", { name: "Mail" }).element().getBoundingClientRect().width;
 }
 
+// hoverSettled waits until the pointer is over element, then ends at once
+// any colour fade the hover began there (150 ms in the app), so the style
+// read next is the one the hover leaves.
+async function hoverSettled(element: Element): Promise<void> {
+  await expect.poll(() => element.matches(":hover")).toBe(true);
+  for (const fade of element.getAnimations()) fade.finish();
+}
+
 // frame lets React render what a native event changed.
 function frame(): Promise<void> {
   return new Promise((resolve) =>
@@ -205,14 +215,14 @@ function LabelsFrame() {
 
 describe("Sidebar", () => {
   it("collapses to the rail and back with Ctrl+B in a wide window", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await expect.element(page.getByRole("navigation", { name: "Mail" })).toBeVisible();
-    expect(navWidth()).toBe(240);
+    // DESIGN.md "Panes and widths": the sidebar is 240 px, its rail 56 px.
+    await expect.poll(navWidth).toBe(240);
 
     await userEvent.keyboard("{Control>}b{/Control}");
     expect(state()).toBe("collapsed");
-    expect(navWidth()).toBe(56);
+    await expect.poll(navWidth).toBe(56);
     await expect.element(expandButton()).toBeInTheDocument();
 
     // Caps Lock gives "B"; the key, not the letter, counts.
@@ -221,7 +231,6 @@ describe("Sidebar", () => {
   });
 
   it("takes Cmd+B too, but not Ctrl+Alt+B or a held key", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.keyboard("{Meta>}b{/Meta}");
     expect(state()).toBe("collapsed");
@@ -241,7 +250,6 @@ describe("Sidebar", () => {
   });
 
   it("follows the key in a non-Latin layout, the letter in a Latin one", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     // Cyrillic: the B key types "и".
     press({ key: "и", code: "KeyB", ctrlKey: true });
@@ -262,7 +270,6 @@ describe("Sidebar", () => {
   });
 
   it("keeps focus in the sidebar when the rail hides the focused part", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     const wordmark = page.getByRole("link", { name: "inbok" });
     wordmark.element().focus();
@@ -271,19 +278,20 @@ describe("Sidebar", () => {
     await expect.element(expandButton()).toHaveFocus();
   });
 
-  it("never lets CSS hide the sidebar React chose", async () => {
+  it("has no breakpoint class, which a member's larger text would move", async () => {
     // A breakpoint in rem follows the browser's default font size, which
     // the layout's px queries do not; a member with a larger font would
     // be left without navigation.
     await page.viewport(1100, 800);
     await render(<Frame />);
+    // The classes are the rule here: no window or font size a test can
+    // set shows that a breakpoint class is absent at every other one.
     for (const element of document.querySelectorAll("[data-slot^=sidebar]")) {
       expect(element.className).not.toMatch(/\b(sm|md|lg|xl|2xl):/);
     }
   });
 
   it("leaves Ctrl+B to a text field and to Ctrl+Shift+B", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.click(page.getByRole("textbox", { name: "Search mail" }));
     await userEvent.keyboard("{Control>}b{/Control}");
@@ -299,15 +307,17 @@ describe("Sidebar", () => {
     await render(<Frame />);
     // The member's open choice is for the full layout; this one shows the rail.
     expect(state()).toBe("collapsed");
-    expect(navWidth()).toBe(56);
+    // DESIGN.md "Panes and widths": from 1024 px the sidebar is a 56 px rail.
+    await expect.poll(navWidth).toBe(56);
 
     await userEvent.click(expandButton());
     await expect.element(sheet()).toBeVisible();
     // Open in the drawer, the items show their names, not a rail's icons.
     await expect.element(sheet().getByText("Members")).toBeVisible();
     // The content keeps its place: only the rail's room is reserved.
+    // The room the sidebar reserves beside the content has no role.
     const gap = document.querySelector("[data-slot=sidebar-gap]");
-    expect(gap?.getBoundingClientRect().width).toBe(56);
+    await expect.poll(() => gap?.getBoundingClientRect().width).toBe(56);
 
     // It collapses back with its own button, Escape, or a press beside it.
     await userEvent.click(sheet().getByRole("button", { name: "Collapse sidebar" }));
@@ -353,7 +363,6 @@ describe("Sidebar", () => {
   });
 
   it("leaves Ctrl+B alone in an open popover", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     await userEvent.click(page.getByRole("button", { name: "Member menu" }));
     await expect.element(page.getByRole("dialog", { name: "Member menu" })).toBeVisible();
@@ -395,7 +404,9 @@ describe("Sidebar", () => {
     await expect.element(drawer).toBeVisible();
     await expect.element(drawer.getByRole("navigation", { name: "Mail" })).toBeVisible();
     const panel = document.querySelector("[data-slot=sheet-content]");
-    expect(panel?.getBoundingClientRect().width).toBe(288);
+    // The sidebar's own drawer width, 18rem (`--sheet-width`); DESIGN.md
+    // gives the drawer no width.
+    await expect.poll(() => panel?.getBoundingClientRect().width).toBe(288);
 
     // The phone shows the same drawer, so it stays open.
     await page.viewport(390, 844);
@@ -426,7 +437,6 @@ describe("Sidebar", () => {
   });
 
   it("marks the open item with a bar and aria-current, not bold, which means unread", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     const link = page.getByRole("link", { name: "Inbox" });
     await expect.element(link).toHaveAttribute("aria-current", "page");
@@ -436,13 +446,11 @@ describe("Sidebar", () => {
     // Its tint stays while hovered.
     const tint = getComputedStyle(inbox).backgroundColor;
     await userEvent.hover(link);
-    // After the colour transition (150 ms) would have run.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await hoverSettled(inbox);
     expect(getComputedStyle(inbox).backgroundColor).toBe(tint);
   });
 
   it("marks the current one of a set that is not a page with the bar alone", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -478,7 +486,6 @@ describe("Sidebar", () => {
   });
 
   it("keeps a nested open item's tint while hovered", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -499,12 +506,11 @@ describe("Sidebar", () => {
     const link = page.getByRole("link", { name: "Work" });
     const tint = getComputedStyle(link.element()).backgroundColor;
     await userEvent.hover(link);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await hoverSettled(link.element());
     expect(getComputedStyle(link.element()).backgroundColor).toBe(tint);
   });
 
   it("cuts a long name short before its count, which keeps its width", async () => {
-    await page.viewport(1440, 900);
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -526,10 +532,12 @@ describe("Sidebar", () => {
     const name = link.querySelector("span:not([data-slot])");
     const count = link.querySelector("[data-slot=sidebar-menu-badge]");
     if (!name || !count) throw new Error("no name or count");
-    expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(
-      count.getBoundingClientRect().left,
-    );
-    expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    await vi.waitFor(() => {
+      expect(name.getBoundingClientRect().right).toBeLessThanOrEqual(
+        count.getBoundingClientRect().left,
+      );
+      expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+    });
     // A screen reader hears the count with the name.
     await expect
       .element(
@@ -539,37 +547,39 @@ describe("Sidebar", () => {
   });
 
   it("names each icon in a tooltip on the rail", async () => {
-    await page.viewport(1440, 900);
+    const clock = fakeClock();
     await render(<Frame />);
     await userEvent.keyboard("{Control>}b{/Control}");
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Members");
   });
 
   it("ends a group's label with its action, which the rail hides", async () => {
-    await page.viewport(1440, 900);
     await render(<LabelsFrame />);
-    const label = page.getByText("Labels").element().getBoundingClientRect();
     const action = page.getByRole("button", { name: "Add label" }).element();
-    const box = action.getBoundingClientRect();
-    expect(box.top + box.height / 2).toBe(label.top + label.height / 2);
-    expect(box.right).toBe(label.right);
-    // As tall as the rows beside it.
     const field = page.getByRole("textbox", { name: "Filter labels" }).element();
-    expect(field.getBoundingClientRect().height).toBe(32);
+    await vi.waitFor(() => {
+      const label = page.getByText("Labels").element().getBoundingClientRect();
+      const box = action.getBoundingClientRect();
+      expect(box.top + box.height / 2).toBe(label.top + label.height / 2);
+      expect(box.right).toBe(label.right);
+      // As tall as the rows beside it (DESIGN.md "Space, size, shape,
+      // motion": nav rows are 32 px).
+      expect(field.getBoundingClientRect().height).toBe(32);
+    });
 
     await userEvent.keyboard("{Control>}b{/Control}");
     expect(action.checkVisibility()).toBe(false);
   });
 
   it("keeps a group's items in place on the rail, its label a hairline", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     const members = page.getByRole("button", { name: "Members" }).element();
     const before = members.getBoundingClientRect().top;
 
     await userEvent.keyboard("{Control>}b{/Control}");
-    expect(members.getBoundingClientRect().top).toBe(before);
+    await expect.poll(() => members.getBoundingClientRect().top).toBe(before);
     // Still named for screen readers, its words hidden behind a line.
     const label = page.getByText("This inbok").element();
     expect(getComputedStyle(label).color).toBe("rgba(0, 0, 0, 0)");
@@ -577,13 +587,12 @@ describe("Sidebar", () => {
   });
 
   it("names the shortcut in the trigger's tooltip", async () => {
-    await page.viewport(1440, 900);
     await render(<Frame />);
     // The keyboard reaches the trigger after the wordmark; focus opens its
     // tooltip.
     await userEvent.keyboard("{Tab}{Tab}");
     await expect
-      .poll(() => document.querySelector("[role=tooltip]")?.textContent)
+      .poll(() => page.getByRole("tooltip").query()?.textContent)
       .toBe(`Collapse sidebar (${shortcutModifier()}+B)`);
   });
 
@@ -622,27 +631,41 @@ describe("Sidebar", () => {
     await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
   });
 
-  it("gives focus to the sidebar's button when the layout takes the focused part away", async () => {
-    await page.viewport(390, 844);
-    await render(<TopBarFrame />);
-    page.getByRole("button", { name: "Open sidebar" }).element().focus();
-    await page.viewport(1440, 900);
-    await expect.element(sidebarButton("Collapse sidebar")).toHaveFocus();
+  it.each([
+    {
+      part: "the top bar's button, in a window grown wide",
+      from: [390, 844],
+      focused: () => page.getByRole("button", { name: "Open sidebar" }),
+      to: [1440, 900],
+      takes: () => sidebarButton("Collapse sidebar"),
+    },
+    {
+      part: "the wordmark, which the rail hides",
+      from: [1440, 900],
+      focused: () => page.getByRole("link", { name: "inbok" }),
+      to: [1100, 800],
+      takes: () => sidebarButton("Expand sidebar"),
+    },
+    {
+      // The drawer is in the same place at both widths; the page changes.
+      part: "a focused part of the page",
+      from: [390, 844],
+      focused: () => page.getByRole("button", { name: "Phone only" }),
+      to: [900, 800],
+      takes: () => page.getByRole("button", { name: "Open sidebar" }),
+    },
+  ])(
+    "gives focus to the sidebar's button when a resize takes away $part",
+    async ({ from, focused, to, takes }) => {
+      await page.viewport(from[0], from[1]);
+      await render(<TopBarFrame />);
+      focused().element().focus();
+      await expect.element(focused()).toHaveFocus();
 
-    // The rail hides the wordmark.
-    page.getByRole("link", { name: "inbok" }).element().focus();
-    await page.viewport(1100, 800);
-    await expect.element(sidebarButton("Expand sidebar")).toHaveFocus();
-  });
-
-  it("gives focus to the sidebar's button when a resize takes away a focused part of the page", async () => {
-    await page.viewport(390, 844);
-    await render(<TopBarFrame />);
-    page.getByRole("button", { name: "Phone only" }).element().focus();
-    // The drawer is in the same place at both widths; the page changes.
-    await page.viewport(900, 800);
-    await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
-  });
+      await page.viewport(to[0], to[1]);
+      await expect.element(takes()).toHaveFocus();
+    },
+  );
 
   it("leaves focus in the page where it is when the layout changes", async () => {
     await page.viewport(1440, 900);
@@ -655,21 +678,23 @@ describe("Sidebar", () => {
   });
 
   it("shows an open item's detail on hover, and its name on the rail", async () => {
-    await page.viewport(1440, 900);
+    const clock = fakeClock();
     await render(<Frame />);
     // React Aria shows tooltips on hover once the pointer is in use.
     await userEvent.click(page.getByText("The list"));
 
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("2 members, 1 invited.");
 
     await userEvent.click(sidebarButton("Collapse sidebar"));
     await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Members");
   });
 
   it("shows a sub item's detail on hover", async () => {
-    await page.viewport(1440, 900);
+    const clock = fakeClock();
     await render(
       <SidebarProvider open onOpenChange={() => {}}>
         <Sidebar label="Mail">
@@ -692,6 +717,7 @@ describe("Sidebar", () => {
     await userEvent.click(page.getByText("The list"));
 
     await userEvent.hover(page.getByRole("link", { name: "Projects" }));
+    await clock.advance(restMs);
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Clients/Northwind/Projects");
   });
 });

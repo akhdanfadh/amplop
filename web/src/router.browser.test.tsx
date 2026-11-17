@@ -1,11 +1,7 @@
 import { createMemoryHistory } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { NotFound, RouteError, RoutePending } from "@/components/route-states";
 import { getRouter } from "./router";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("getRouter", () => {
   it("gives every page the app's states, holding none of the first load's", async () => {
@@ -31,8 +27,8 @@ describe("getRouter", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  // The pages' tests build their own routers with the same two options;
-  // this holds the app's to them.
+  // A page's test opens the app's router (appRouter), so it waits as
+  // the app does; this holds the app's router to the two options.
   it("waits on a visit for a read marked out of date, a preloaded visit too", () => {
     expect(getRouter().options).toMatchObject({
       defaultStaleReloadMode: "blocking",

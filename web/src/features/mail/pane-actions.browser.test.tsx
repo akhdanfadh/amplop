@@ -1,28 +1,22 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
-import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { shortcutModifier } from "@/lib/shortcut";
-import { appRouter, memberSession } from "@/test/app-router";
-import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { appRouter } from "@/test/app-router";
+import { fakeClock } from "@/test/clock";
+import { conversation, listedAccount, mailApi, message, type MailApi } from "@/test/mail-api";
 
 let api: MailApi;
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
 
-afterEach(async () => {
-  closeToasts();
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-  vi.unstubAllGlobals();
-});
+// How late a slow place's list answers.
+const lateMs = 400;
 
 // open renders the app wide, or width wide, at /mail/<place>/<id of
 // rows[open]>, over rows, one account's, and returns its router. A list of
-// slowPlace answers its pages 400 ms late, as a real server can.
+// slowPlace answers its pages lateMs late, as a real server can.
 async function open(
   rows: ConversationRow[],
   index: number,
@@ -32,18 +26,14 @@ async function open(
 ) {
   await page.viewport(width, 900);
   api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-  const router = await appRouter(`/mail/${place}/${rows[index].id}`, memberSession, (url, init) => {
-    // The session is the member's until api signs out.
-    if (new URL(url, location.href).pathname === "/api/v0/sessions/current") {
-      return api.signedOut ? api.fetch(url, init) : undefined;
+  api.server.on("GET", "/api/v0/conversations", async ({ url }, earlier) => {
+    if (slowPlace && url.searchParams.get("place") === slowPlace) {
+      await new Promise((done) => setTimeout(done, lateMs));
     }
-    if (slowPlace && url.includes(`place=${slowPlace}`)) {
-      return new Promise((done) => setTimeout(done, 400)).then(() => api.fetch(url, init));
-    }
-    return api.fetch(url, init);
+    return earlier();
   });
+  const router = await appRouter(`/mail/${place}/${rows[index].id}`, api.server);
   await render(<RouterProvider router={router} />);
-  current = router;
   await expect.element(toolbar()).toBeVisible();
   return router;
 }
@@ -76,53 +66,24 @@ function bar() {
   return page.getByRole("region", { name: "Undo" });
 }
 
-// hold makes api's answers to requests to path wait, each until released
-// in turn, and returns what releases the next and how many wait.
-function hold(path: string): { release: () => void; waiting: () => number } {
-  const fetch = api.fetch;
+// hold makes api's answers to the writes to path wait, each until
+// released in turn, and returns what releases the next and how many wait.
+function hold(path: "/api/v0/conversations/actions" | "/api/v0/conversations/changes"): {
+  release: () => void;
+  waiting: () => number;
+} {
   const waiting: (() => void)[] = [];
-  api.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (new URL(url, location.href).pathname !== path) return fetch(input, init);
+  api.server.on("POST", path, async (_, earlier) => {
     await new Promise<void>((done) => waiting.push(done));
-    return fetch(input, init);
-  };
+    return earlier();
+  });
   return { release: () => waiting.shift()?.(), waiting: () => waiting.length };
 }
 
 // withMessage makes api answer the read of row with one message, so the
 // pane offers Reply.
 function withMessage(row: ConversationRow): void {
-  const fetch = api.fetch;
-  api.fetch = async (input, init) => {
-    const url = input instanceof Request ? input.url : String(input);
-    const { pathname } = new URL(url, location.href);
-    if (pathname === `/api/v0/conversations/${row.id}`) {
-      const message = {
-        id: "00000000-0000-4000-8000-000000000901",
-        date: row.date,
-        subject: row.subject,
-        preview: "Hello",
-        from: [{ name: "Bo Tan", address: "bo@example.com" }],
-        to: [{ name: "", address: "ana@example.com" }],
-        cc: [],
-        replyTo: [],
-        labelIds: [],
-        spam: false,
-        trash: false,
-        sent: false,
-        starred: false,
-        unread: false,
-        answers: null,
-        attachments: false,
-      };
-      return Response.json({ data: { conversation: row, messages: [message], providerUrl: null } });
-    }
-    if (pathname.includes("/content")) {
-      return Response.json({ data: { remote: "none", attachments: [], bodies: [] } });
-    }
-    return fetch(input, init);
-  };
+  api.messages[row.id] = [message(row)];
 }
 
 // press sends a key press to target, as from the keyboard, and returns
@@ -215,6 +176,7 @@ describe("the reading pane's actions", () => {
       conversation(2),
       conversation(1, { trash: true, inbox: false, allMail: false }),
     ];
+    const clock = fakeClock();
     const router = await open(rows, 0, "inbox", "trash");
 
     await userEvent.click(toolbar().getByRole("button", { name: "Delete" }));
@@ -222,6 +184,9 @@ describe("the reading pane's actions", () => {
     await userEvent.click(
       page.getByRole("navigation", { name: "Mail" }).getByRole("link", { name: /Trash/ }).first(),
     );
+    // Trash's first page is asked for, and answers late.
+    await expect.poll(() => api.requests.some((r) => r.includes("place=trash"))).toBe(true);
+    await clock.advance(lateMs);
 
     await expect.element(list().getByRole("row", { name: /Subject 3/ })).toBeVisible();
     await expect.element(list().getByRole("row", { name: /Subject 1/ })).toBeVisible();
@@ -357,13 +322,8 @@ describe("the reading pane's actions", () => {
     // e.g. Settings, then Back to mail, a link to the conversation.
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-    await page.viewport(1440, 900);
-    const router = await appRouter("/mail/starred", memberSession, (url, init) => {
-      if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-      return api.fetch(url, init);
-    });
+    const router = await appRouter("/mail/starred", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await router.navigate({
       to: "/mail/$place/$conversationId",
       params: { place: "inbox", conversationId: rows[0].id },
@@ -378,13 +338,8 @@ describe("the reading pane's actions", () => {
   it("goes back through history to the list whose row opened the conversation", async () => {
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-    await page.viewport(1440, 900);
-    const router = await appRouter("/mail/inbox", memberSession, (url, init) => {
-      if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-      return api.fetch(url, init);
-    });
+    const router = await appRouter("/mail/inbox", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await userEvent.click(list().getByRole("row", { name: /Subject 2/ }));
     await expect.element(toolbar()).toBeVisible();
 
@@ -399,13 +354,8 @@ describe("the reading pane's actions", () => {
     // Another page, then the first conversation by its address.
     const rows = [conversation(2), conversation(1)];
     api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
-    await page.viewport(1440, 900);
-    const router = await appRouter("/mail/starred", memberSession, (url, init) => {
-      if (new URL(url, location.href).pathname === "/api/v0/sessions/current") return undefined;
-      return api.fetch(url, init);
-    });
+    const router = await appRouter("/mail/starred", api.server);
     await render(<RouterProvider router={router} />);
-    current = router;
     await router.navigate({
       to: "/mail/$place/$conversationId",
       params: { place: "inbox", conversationId: rows[0].id },
@@ -422,13 +372,19 @@ describe("the reading pane's actions", () => {
 
   it("keeps focus on the button whose action changes, e.g. Archive to Move to Inbox", async () => {
     await open([conversation(1)], 0, "all");
+    // A button's icon has no role or name of its own: its drawing is read.
+    const drawing = (name: string) =>
+      toolbar().getByRole("button", { name }).element().querySelector("svg")?.innerHTML;
+    const archive = drawing("Archive");
+    expect(archive).toBeTruthy();
     toolbar().getByRole("button", { name: "Archive" }).element().focus();
 
     await userEvent.keyboard("{Enter}");
 
     await expect.element(toolbar().getByRole("button", { name: "Move to Inbox" })).toHaveFocus();
-    // Move to Inbox, not Archive's box.
-    expect(document.activeElement?.querySelector(".lucide-archive-restore")).not.toBeNull();
+    // Its icon changed with its name: no longer Archive's box.
+    expect(drawing("Move to Inbox")).toBeTruthy();
+    expect(drawing("Move to Inbox")).not.toBe(archive);
   });
 
   it("runs a double click on Archive once, not Archive then Move to Inbox", async () => {
@@ -523,6 +479,7 @@ describe("the reading pane's actions", () => {
   });
 
   it("says nothing of an Undo that fails after sign-out", async () => {
+    const clock = fakeClock();
     const rows = [conversation(2), conversation(1)];
     const router = await open(rows, 0);
     await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
@@ -535,7 +492,10 @@ describe("the reading pane's actions", () => {
     changes.release();
 
     await expect.poll(() => api.actions.at(-1)?.action).toBe("changes");
-    await new Promise((done) => setTimeout(done, 200));
+    // Two rounds on: the failure, and what it would say, have reached
+    // the page.
+    await clock.advance(100);
+    await clock.advance(100);
     expect(page.getByText("Couldn't undo").query()).toBeNull();
   });
 
@@ -546,12 +506,10 @@ describe("the reading pane's actions", () => {
     await expect.poll(() => api.actions).toHaveLength(1);
     // The session ends as the Undo is sent: any request before it would
     // open sign-in first.
-    const answer = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes("/conversations/changes")) api.signedOut = true;
-      return answer(input, init);
-    };
+    api.server.on("POST", "/api/v0/conversations/changes", (_, earlier) => {
+      api.signedOut = true;
+      return earlier();
+    });
 
     await userEvent.click(bar().getByRole("button", { name: "Undo" }));
 
@@ -640,9 +598,9 @@ describe("the Undo bar's keys", () => {
     }
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }).last());
-    const message = page.getByRole("textbox", { name: "Message" });
-    await expect.element(message).toHaveFocus();
-    expect(press(message.element(), ctrlZ)).toBe(false);
+    const editor = page.getByRole("textbox", { name: "Message" });
+    await expect.element(editor).toHaveFocus();
+    expect(press(editor.element(), ctrlZ)).toBe(false);
 
     expect(api.actions.map((a) => a.action)).toEqual(["archive"]);
     await expect.element(bar()).toBeVisible();
@@ -664,9 +622,7 @@ describe("the Undo bar's keys", () => {
 
     await userEvent.keyboard("{Tab}");
 
-    await expect
-      .poll(() => document.querySelector("[role=tooltip]")?.textContent)
-      .toBe(`Undo (${key}+Z)`);
+    await expect.poll(() => page.getByRole("tooltip").query()?.textContent).toBe(`Undo (${key}+Z)`);
     // And which conversation it puts back.
     await expect
       .element(bar().getByRole("button", { name: "Undo" }))

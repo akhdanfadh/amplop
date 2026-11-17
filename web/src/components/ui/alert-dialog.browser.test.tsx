@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import {
@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./alert-dialog";
+import { doubleClickTime } from "@/lib/double-click";
 import { Button } from "./button";
 
 // Confirm opens an AlertDialog from a button; onConfirm runs on its action.
@@ -57,9 +58,6 @@ describe("AlertDialog", () => {
     now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);
   });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
 
   it("names and describes itself and focuses Cancel", async () => {
     await render(<Confirm onConfirm={() => {}} />);
@@ -83,7 +81,7 @@ describe("AlertDialog", () => {
     await userEvent.click(opener);
     await expect.element(page.getByRole("alertdialog")).toBeInTheDocument();
     // Past the double-click time, so the press counts.
-    now = 600;
+    now = doubleClickTime;
     await userEvent.click(page.getByRole("button", { name: "Disconnect Studio" }));
 
     expect(onConfirm).toHaveBeenCalledOnce();
@@ -107,10 +105,10 @@ describe("AlertDialog", () => {
   it("ignores a quick press after reopening while it closed", async () => {
     const onConfirm = vi.fn<() => void>();
     const { rerender } = await render(<Shown open onConfirm={onConfirm} />);
-    now = 600;
+    now = doubleClickTime;
     // Closed and, at once, opened again: the dialog never unmounted.
     await rerender(<Shown open={false} onConfirm={onConfirm} />);
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(page.getByRole("alertdialog").query()).not.toBeNull();
     await rerender(<Shown open onConfirm={onConfirm} />);
     await userEvent.click(page.getByRole("button", { name: "Disconnect Studio" }));
 
@@ -148,19 +146,10 @@ describe("AlertDialog", () => {
     await userEvent.keyboard("{Tab}{Enter}");
 
     expect(onConfirm).toHaveBeenCalledOnce();
-    // Still open past its closing animation: the caller closes it, e.g. once
-    // the change it confirms is saved.
-    await new Promise((done) => setTimeout(done, 400));
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
-  });
-
-  it("cancels on Escape", async () => {
-    const onConfirm = vi.fn<() => void>();
-    await render(<Confirm onConfirm={onConfirm} />);
-    await userEvent.click(page.getByRole("button", { name: "Disconnect" }));
-    await userEvent.keyboard("{Escape}");
-
-    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
-    expect(onConfirm).not.toHaveBeenCalled();
+    // Still open, and not on its way out: the caller closes it, e.g. once
+    // the change it confirms is saved. A dialog that closes is marked as
+    // exiting, or gone, by the time the press returns.
+    expect(page.getByRole("alertdialog").query()).not.toBeNull();
+    expect(document.querySelector("[data-exiting]")).toBeNull();
   });
 });

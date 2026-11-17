@@ -1,44 +1,22 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { render } from "vitest-browser-react";
 import {
   ConversationView,
   type ConversationAccount,
   type ConversationMessage,
 } from "./conversation";
-import type { ListedAccount } from "@/api/generated/model";
+import type { ListedAccount, MessageContent } from "@/api/generated/model";
 import type { MailAddress } from "@/features/outgoing-messages/reply-defaults";
-
-const ok = 200;
+import { listedAccount, mailApi } from "@/test/mail-api";
+import { type Server, data } from "@/test/server";
+import { stubRouter } from "@/test/stub-router";
 
 const account: ConversationAccount = { id: 7, name: "Work", email: "me@example.com", color: 3 };
 // The account as the accounts read lists it, for the reply editor.
 const listed: ListedAccount = {
-  id: account.id,
-  provider: "gmail",
-  email: account.email,
+  ...listedAccount(account.id, account.email, account.color),
   name: account.name,
-  color: account.color,
-  status: "usable",
-  createdAt: "2026-11-01T00:00:00Z",
-  needsReconnectSince: null,
-  allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
-  sync: {
-    status: "complete",
-    failure: null,
-    failedAt: null,
-    lastSyncedAt: "2026-11-13T08:00:00Z",
-    messagesSoFar: null,
-  },
 };
 const me: MailAddress = { name: "Me", address: "me@example.com" };
 const ana: MailAddress = { name: "Ana Lima", address: "ana@example.com" };
@@ -78,45 +56,31 @@ function thread(count: number): ConversationMessage[] {
   return Array.from({ length: count }, (_, i) => message(i + 1));
 }
 
-// The message IDs whose content the view asked for.
-let read: string[] = [];
+// content returns the content of message id as Get Message Content
+// answers it: one text body, "Body of <id>", and no attachments.
+function content(id: string): MessageContent {
+  return {
+    remote: "none",
+    attachments: [],
+    bodies: [
+      {
+        type: "text",
+        partId: "0",
+        text: `Body of ${id}`,
+        clipped: false,
+        url: `/api/v0/messages/${id}/parts/0`,
+        remoteUrl: null,
+      },
+    ],
+  };
+}
 
-beforeEach(() => {
-  read = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<(input: string) => Promise<Response>>(async (input) => {
-      if (input === "/api/v0/connected-accounts")
-        return Response.json({ data: { accounts: [listed], syncStopped: false } }, { status: ok });
-      const id = /\/messages\/([^/]+)\/content/.exec(input)?.[1] ?? "";
-      read.push(id);
-      return Response.json(
-        {
-          data: {
-            remote: "none",
-            attachments: [],
-            bodies: [
-              {
-                type: "text",
-                partId: "0",
-                text: `Body of ${id}`,
-                clipped: false,
-                url: `/api/v0/messages/${id}/parts/0`,
-                remoteUrl: null,
-              },
-            ],
-          },
-        },
-        { status: ok },
-      );
-    }),
-  );
-});
-
-afterEach(async () => {
-  vi.unstubAllGlobals();
-  await page.viewport(414, 896);
-});
+// read returns the message IDs whose content the view asked server for.
+function read(server: Server): string[] {
+  return server.requests
+    .filter((asked) => asked.url.pathname.endsWith("/content"))
+    .map((asked) => asked.params.id);
+}
 
 // Harness holds the view in a box width pixels wide and 600 high, the
 // pane, with a button that removes the first message, as a sync would,
@@ -156,7 +120,9 @@ function Harness({
 }
 
 // show draws the view of messages in Harness, inside a router, as a page
-// places it, with what else is given.
+// places it, with what else is given, over a signed-in member's server
+// that lists the account and answers each message's content. It returns
+// the server.
 async function show(
   messages: ConversationMessage[],
   width = 700,
@@ -164,22 +130,13 @@ async function show(
   nextStart?: string,
 ) {
   await page.viewport(width + 100, 800);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const root = createRootRoute();
-  const conversation = createRoute({
-    getParentRoute: () => root,
-    path: "/",
-    component: () => (
-      <QueryClientProvider client={client}>
-        <Harness messages={messages} width={width} slots={slots} nextStart={nextStart} />
-      </QueryClientProvider>
-    ),
-  });
-  const router = createRouter({
-    routeTree: root.addChildren([conversation]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-  });
-  return render(<RouterProvider router={router} />);
+  const { server } = mailApi([], [listed]);
+  server.on("GET", "/api/v0/messages/{id}/content", ({ params }) => data(content(params.id)));
+  server.install();
+  await stubRouter(
+    <Harness messages={messages} width={width} slots={slots} nextStart={nextStart} />,
+  );
+  return server;
 }
 
 // middle returns how far down the window element's middle is.
@@ -201,7 +158,7 @@ describe("ConversationView", () => {
   it("opens the newest and unread messages, and counts the folded middle", async () => {
     const messages = thread(12);
     messages[5] = message(6, { unread: true });
-    await show(messages);
+    const server = await show(messages);
 
     await expect.element(page.getByText(`Body of ${messages[11].id}`)).toBeVisible();
     await expect.element(page.getByText(`Body of ${messages[5].id}`)).toBeVisible();
@@ -210,7 +167,7 @@ describe("ConversationView", () => {
     await expect.element(page.getByRole("button", { name: "3 more messages" })).toBeVisible();
     expect(page.getByRole("button", { name: /Preview/ }).all()).toHaveLength(3);
     // Only open messages load their content.
-    expect(new Set(read)).toEqual(new Set([messages[5].id, messages[11].id]));
+    expect(new Set(read(server))).toEqual(new Set([messages[5].id, messages[11].id]));
   });
 
   it("opens the message it starts at, and another it is told to start at", async () => {
@@ -364,12 +321,14 @@ describe("ConversationView", () => {
     const name = page.getByText("Bartholomew Fitzgerald").element();
 
     // Below the name, and on one line.
-    expect(address.getBoundingClientRect().top).toBeGreaterThan(
-      name.getBoundingClientRect().bottom - 1,
-    );
-    expect(address.getBoundingClientRect().height).toBeLessThan(
-      2 * Number.parseFloat(getComputedStyle(address).lineHeight),
-    );
+    await vi.waitFor(() => {
+      expect(address.getBoundingClientRect().top).toBeGreaterThan(
+        name.getBoundingClientRect().bottom - 1,
+      );
+      expect(address.getBoundingClientRect().height).toBeLessThan(
+        2 * Number.parseFloat(getComputedStyle(address).lineHeight),
+      );
+    });
   });
 
   it("ends with the reply editor, answering the newest message", async () => {
@@ -389,8 +348,10 @@ describe("ConversationView", () => {
     await expect.element(editor.getByText("ana@example.com")).toBeVisible();
     // Below the newest message, the last thing in the view.
     const newest = page.getByRole("article", { name: /Ben/ }).element();
-    expect(editor.element().getBoundingClientRect().top).toBeGreaterThan(
-      newest.getBoundingClientRect().bottom - 1,
+    await vi.waitFor(() =>
+      expect(editor.element().getBoundingClientRect().top).toBeGreaterThan(
+        newest.getBoundingClientRect().bottom - 1,
+      ),
     );
   });
 
@@ -399,10 +360,13 @@ describe("ConversationView", () => {
 
     // Class merging keeps the view's sizes over the components' own.
     const fold = page.getByRole("button", { name: "Fold the message from Ana Lima" }).element();
-    const avatar = fold.firstElementChild?.getBoundingClientRect();
-    expect([avatar?.width, avatar?.height]).toEqual([36, 36]);
-    const details = page.getByRole("button", { name: "Details" }).element().getBoundingClientRect();
-    expect([details.width, details.height]).toEqual([20, 20]);
+    const details = page.getByRole("button", { name: "Details" }).element();
+    await vi.waitFor(() => {
+      const avatar = fold.firstElementChild?.getBoundingClientRect();
+      expect([avatar?.width, avatar?.height]).toEqual([36, 36]);
+      const button = details.getBoundingClientRect();
+      expect([button.width, button.height]).toEqual([20, 20]);
+    });
   });
 
   it("opens the editor below an older message from its own Reply", async () => {
@@ -419,8 +383,10 @@ describe("ConversationView", () => {
     await expect.element(editor.getByText("ben@example.com")).toBeVisible();
     // Below Ben's message, above the newest.
     const newest = page.getByRole("article", { name: /Ana Lima/ }).element();
-    expect(editor.element().getBoundingClientRect().bottom).toBeLessThan(
-      newest.getBoundingClientRect().top + 1,
+    await vi.waitFor(() =>
+      expect(editor.element().getBoundingClientRect().bottom).toBeLessThan(
+        newest.getBoundingClientRect().top + 1,
+      ),
     );
     // One editor: every Reply hides until it closes.
     await expect
@@ -528,9 +494,12 @@ describe("ConversationView", () => {
       .element(page.getByText("Body of 00000000-0000-4000-8000-000000000002"))
       .toBeVisible();
     await expect.element(shown).toHaveFocus();
-    const pane = document.querySelector("[data-pane]")?.getBoundingClientRect().top ?? 0;
-    const row = shown.element().closest("li")?.getBoundingClientRect().top ?? 0;
-    expect(Math.round(row - pane)).toBe(48);
+    await vi.waitFor(() => {
+      const pane = document.querySelector("[data-pane]")?.getBoundingClientRect().top ?? 0;
+      const row = shown.element().closest("li")?.getBoundingClientRect().top ?? 0;
+      // DESIGN.md "Reading pane": the toolbar's bar keeps one 48 px row.
+      expect(Math.round(row - pane)).toBe(48);
+    });
     await userEvent.keyboard("{Enter}");
     await expect
       .element(page.getByText("Body of 00000000-0000-4000-8000-000000000002"))
@@ -553,8 +522,10 @@ describe("ConversationView", () => {
 
     const line = page.getByRole("button", { name: /^In reply to first\.last/ });
     await expect.element(line).toBeVisible();
-    const pane = document.querySelector("[data-pane]")?.getBoundingClientRect();
-    expect(line.element().getBoundingClientRect().right).toBeLessThanOrEqual(pane?.right ?? 0);
+    await vi.waitFor(() => {
+      const pane = document.querySelector("[data-pane]")?.getBoundingClientRect();
+      expect(line.element().getBoundingClientRect().right).toBeLessThanOrEqual(pane?.right ?? 0);
+    });
   });
 
   it("opens a message the line names even when its row was already in sight", async () => {
@@ -566,12 +537,13 @@ describe("ConversationView", () => {
       .element(page.getByText("Body of 00000000-0000-4000-8000-000000000001"))
       .toBeVisible();
     // It flashes, so the press shows even with the message in sight.
-    const row = page
-      .getByRole("button", { name: "Fold the message from Ana Lima" })
-      .first()
-      .element()
-      .closest("li");
-    expect(row && getComputedStyle(row).animationName).toBe("flash-selection");
+    // The flash starts a frame after the press.
+    await expect
+      .poll(() => {
+        const row = firstAnaRow();
+        return row && getComputedStyle(row).animationName;
+      })
+      .toBe("flash-selection");
   });
 
   it("keeps the toolbar's faded subject from taking the pointer or a selection", async () => {
@@ -609,12 +581,42 @@ describe("ConversationView", () => {
 
     await userEvent.click(line);
     await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
-    await new Promise((done) => setTimeout(done, 600));
+    // The first flash, a CSS animation no fake clock moves, is moved on
+    // itself, past where the second one's start is looked for below.
+    const first = firstAnaRow()?.getAnimations()[0];
+    if (!first) throw new Error("the row has no flash");
+    first.currentTime = 600;
     await userEvent.click(line);
 
     await expect
       .poll(() => Number(firstAnaRow()?.getAnimations()[0]?.currentTime ?? 9999))
       .toBeLessThan(400);
+  });
+
+  it("ends a message's flash with its animation, and flashes it again on a later press", async () => {
+    await show([message(1), message(2), message(3, { answers: messageId(1) })]);
+    const line = page.getByRole("button", { name: /^In reply to Ana Lima on / });
+    // flashName returns the animation the first message's row is styled
+    // with: "flash-selection" while it is marked to flash, else "none".
+    const flashName = () => {
+      const row = firstAnaRow();
+      return row && getComputedStyle(row).animationName;
+    };
+
+    await userEvent.click(line);
+    await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
+    // The flash, a CSS animation of 1.6 s, is ended itself, not waited out.
+    firstAnaRow()?.getAnimations()[0]?.finish();
+
+    // The row keeps no mark of the flash. A member sees no difference at
+    // this moment, a finished animation paints nothing; the mark left on
+    // would start the flash again by itself whenever the row is drawn
+    // anew, so the style is the one place that shows it gone.
+    await expect.poll(flashName).toBe("none");
+
+    await userEvent.click(line);
+    await expect.poll(flashName).toBe("flash-selection");
+    await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
   });
 
   it("says nothing of the message answered when it is the one just before", async () => {
@@ -676,13 +678,19 @@ describe("ConversationView", () => {
 
     // One Reply, on the sender's line, wide and then narrow, where it keeps
     // focus.
-    expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
+    await vi.waitFor(() =>
+      expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2),
+    );
     const pane = document.querySelector<HTMLElement>("[data-pane]");
-    if (pane) pane.style.width = "390px";
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!pane) throw new Error("the view has no pane");
+    pane.style.width = "390px";
 
-    expect(page.getByRole("button", { name: "Reply", exact: true }).elements()).toHaveLength(2);
-    expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
-    expect(document.activeElement).toBe(button);
+    // The pane's width decides the layout in CSS alone, so a look after
+    // the change sees the narrow one.
+    await vi.waitFor(() => {
+      expect(page.getByRole("button", { name: "Reply", exact: true }).elements()).toHaveLength(2);
+      expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
+      expect(document.activeElement).toBe(button);
+    });
   });
 });

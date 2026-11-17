@@ -1,7 +1,8 @@
 import "@/zod-config";
 import { StrictMode } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
-import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
+import { QueryClientProvider, useMutation } from "@tanstack/react-query";
+import { testQueryClient } from "@/test/query-client";
 import * as z from "zod";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
@@ -101,7 +102,7 @@ async function show(send: Send) {
   const screen = await render(
     <StrictMode>
       <CatchBoundary getResetKey={() => 0} errorComponent={() => <p>Crashed</p>}>
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider client={testQueryClient()}>
           <TestForm send={send} onDone={onDone} />
         </QueryClientProvider>
       </CatchBoundary>
@@ -395,7 +396,7 @@ describe("a code field", () => {
 
     await expect.element(action).toHaveFocus();
     const label = page.getByText("Authenticator code", { exact: true }).element();
-    expect(Math.abs(top(action.element()) - top(label))).toBeLessThan(8);
+    await expect.poll(() => Math.abs(top(action.element()) - top(label))).toBeLessThan(8);
   });
 });
 
@@ -643,7 +644,7 @@ function MessageTestForm({ send }: { send: (value: MessageValues) => Promise<voi
 describe("message editor rows", () => {
   it("focus the message when asked, and tie each row to its note and error", async () => {
     await render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={testQueryClient()}>
         <MessageTestForm send={async () => {}} />
       </QueryClientProvider>,
     );
@@ -662,7 +663,7 @@ describe("message editor rows", () => {
   it("lock every row while the form sends", async () => {
     const request = pending();
     await render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={testQueryClient()}>
         <MessageTestForm send={() => request.promise} />
       </QueryClientProvider>,
     );
@@ -681,7 +682,7 @@ describe("message editor rows", () => {
 
   it("show long values whole: an account in the open list and a row's error", async () => {
     await render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={testQueryClient()}>
         <MessageTestForm send={async () => {}} />
       </QueryClientProvider>,
     );
