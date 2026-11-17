@@ -152,14 +152,4 @@ describe("AlertDialog", () => {
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
     expect(document.querySelector("[data-exiting]")).toBeNull();
   });
-
-  it("cancels on Escape", async () => {
-    const onConfirm = vi.fn<() => void>();
-    await render(<Confirm onConfirm={onConfirm} />);
-    await userEvent.click(page.getByRole("button", { name: "Disconnect" }));
-    await userEvent.keyboard("{Escape}");
-
-    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
 });

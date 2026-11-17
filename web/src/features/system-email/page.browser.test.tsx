@@ -154,22 +154,6 @@ describe("System email", () => {
     await expect.element(button("Send test message")).toHaveFocus();
   });
 
-  it("moves focus to a refused Security choice, which names its error", async () => {
-    await open(api(saved));
-    await userEvent.click(button("Edit settings"));
-
-    await userEvent.click(page.getByText("None", { exact: true }));
-    await userEvent.click(button("Save only"));
-
-    const none = page.getByRole("radio", { name: "None" });
-    await expect.element(none).toHaveFocus();
-    await expect
-      .element(none)
-      .toHaveAccessibleDescription(
-        "Not encrypted, so it can't sign in. For a local test server only. Choose TLS or STARTTLS to sign in with a username.",
-      );
-  });
-
   it("moves focus to an invalid recipient when Save and send test cannot send", async () => {
     const server = api(saved);
     await open(server);

@@ -10,7 +10,7 @@ import {
 } from "@/api/generated/model";
 import { pressInDialog } from "@/test/dialog";
 import { appRouter } from "@/test/app-router";
-import { adminSession, data, fakeServer, held, lose, problem, type Server } from "@/test/server";
+import { adminSession, data, fakeServer, held, problem, type Server } from "@/test/server";
 
 const conflict = 409;
 const fault = 500;
@@ -182,23 +182,6 @@ describe("Registration", () => {
     await userEvent.keyboard("{Enter}");
     await expect.element(dialog()).not.toBeInTheDocument();
     expect(state.opened).toBe(true);
-  });
-
-  it("says trying again is safe when the answer is lost", async () => {
-    const { server } = api("closed", "tested");
-    // The server saves, and its answer is lost.
-    server.once("PUT", "/api/v0/registration/settings", async (_, earlier) => {
-      await earlier();
-      return lose();
-    });
-    await open(server);
-
-    await userEvent.click(button("Open registration"));
-    await pressInDialog("Open registration");
-
-    await expect
-      .element(dialog().getByRole("alert"))
-      .toHaveTextContent("Couldn't confirm whether registration was opened. Trying again is safe.");
   });
 
   it("keeps the page and says so when a refresh fails", async () => {

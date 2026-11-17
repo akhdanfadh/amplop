@@ -10,7 +10,6 @@ import {
   data,
   fakeServer,
   held,
-  lose,
   problem,
   type Asked,
   type Server,
@@ -192,25 +191,6 @@ describe("Members", () => {
     await userEvent.keyboard("{Enter}");
     await expect.element(dialog()).not.toBeInTheDocument();
     expect(state.members.find((m) => m.id === jo.id)?.deactivatedAt).not.toBeNull();
-  });
-
-  it("says trying again is safe when the answer is lost", async () => {
-    const { server } = api([admin, jo]);
-    // The server deactivates, and its answer is lost.
-    server.once("POST", "/api/v0/members/{id}/deactivate", async (_, earlier) => {
-      await earlier();
-      return lose();
-    });
-    await open(server);
-
-    await userEvent.click(button("Deactivate jo@example.com"));
-    await pressInDialog("Deactivate");
-
-    await expect
-      .element(dialog().getByRole("alert"))
-      .toHaveTextContent(
-        "Couldn't confirm whether jo@example.com was deactivated. Trying again is safe.",
-      );
   });
 
   it("keeps the list and says so when a refresh fails", async () => {

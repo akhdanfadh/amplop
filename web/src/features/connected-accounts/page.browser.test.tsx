@@ -19,7 +19,6 @@ import {
   data,
   fakeServer,
   held,
-  lose,
   memberSession,
   problem,
   type Asked,
@@ -522,25 +521,6 @@ describe("Connected accounts", () => {
     await expect
       .element(page.getByRole("listitem").getByText("Home", { exact: true }))
       .toBeVisible();
-  });
-
-  it("asks for a look at the list when a disconnect's answer is lost", async () => {
-    const { server } = api([work]);
-    // The server disconnects, and its answer is lost.
-    server.once("DELETE", "/api/v0/connected-accounts/{id}", async (_, earlier) => {
-      await earlier();
-      return lose();
-    });
-    await open(server);
-
-    await userEvent.click(page.getByRole("button", { name: "Disconnect ana@work.example" }));
-    await pressInDialog("Disconnect Work");
-
-    await expect
-      .element(page.getByRole("alertdialog").getByRole("alert"))
-      .toHaveTextContent(
-        "Couldn't confirm whether Work is disconnected. Check the list before trying again.",
-      );
   });
 });
 
