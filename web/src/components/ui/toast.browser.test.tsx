@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Button } from "./button";
@@ -42,10 +42,6 @@ beforeEach(() => {
   // its own real timers, but moves this clock about 50 ms per 50 ms while
   // a locator waits, so the checks below keep a margin.
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-});
-
-afterEach(() => {
-  closeToasts();
 });
 
 describe("Toaster", () => {

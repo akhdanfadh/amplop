@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
 import type {
   AccountProviders,
@@ -111,16 +111,11 @@ function holdReads(server: Server): () => void {
   return reads.resolve;
 }
 
-// The page open now: its router, whose reads end with the test, and its
-// server.
-let opened: { router: Awaited<ReturnType<typeof appRouter>>; server: Server } | undefined;
-
 // open renders the app at path, Connected accounts when left out, its
 // requests answered by server. It waits for Connected accounts' heading
 // unless loaded is false, and returns the router and its query client.
 async function open(server: Server, path = "/settings/connected-accounts", loaded = true) {
   const router = await appRouter(path, server);
-  opened = { router, server };
   await render(<RouterProvider router={router} />);
   const result = { router, client: router.options.context.queryClient };
   if (!loaded) return result;
@@ -129,17 +124,6 @@ async function open(server: Server, path = "/settings/connected-accounts", loade
     .toBeVisible();
   return result;
 }
-
-afterEach(async () => {
-  // The page reads the list on a timer, and a read still running would
-  // reach the real network once the fetch stub is gone: the page goes
-  // first, then its reads.
-  await cleanup();
-  const queryClient = opened?.router.options.context.queryClient;
-  await queryClient?.cancelQueries();
-  queryClient?.clear();
-  opened = undefined;
-});
 
 const work = { ...listedAccount(1, "ana@work.example"), name: "Work" };
 const home = listedAccount(2, "ana@home.example");

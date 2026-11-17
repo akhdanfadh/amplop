@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
 import {
   NewRegistrationSettings,
@@ -88,15 +88,14 @@ const serverFault = () =>
     detail: "Something went wrong on our side.",
   });
 
-// The page open now: its router, whose reads end with the test, and its
-// server.
-let opened: { router: Awaited<ReturnType<typeof appRouter>>; server: Server } | undefined;
+// The router of the page open now, whose reads reread marks.
+let opened: Awaited<ReturnType<typeof appRouter>> | undefined;
 
 // open renders the app at Registration, its requests answered by server,
 // and returns its router.
 async function open(server: Server) {
   const router = await appRouter("/settings/registration", server);
-  opened = { router, server };
+  opened = router;
   await render(<RouterProvider router={router} />);
   return router;
 }
@@ -104,18 +103,8 @@ async function open(server: Server) {
 // reread marks every read out of date, so the page reads its own again,
 // as it does e.g. on returning to the window.
 async function reread(): Promise<void> {
-  await opened?.router.options.context.queryClient.invalidateQueries();
+  await opened?.options.context.queryClient.invalidateQueries();
 }
-
-afterEach(async () => {
-  // A refresh still running would otherwise reach the real network once
-  // the fetch stub is gone: the page goes first, then its reads.
-  await cleanup();
-  const queryClient = opened?.router.options.context.queryClient;
-  await queryClient?.cancelQueries();
-  queryClient?.clear();
-  opened = undefined;
-});
 
 const button = (name: string) => page.getByRole("button", { name, exact: true });
 const dialog = () => page.getByRole("alertdialog");

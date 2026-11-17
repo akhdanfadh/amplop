@@ -1,10 +1,9 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
 import { getGetCurrentSessionQueryKey, getGetTOTPStatusQueryKey } from "@/api/generated/inbok";
 import type { ListedSessions, SentEmailVerification, TotpStatus } from "@/api/generated/model";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter } from "@/test/app-router";
 import { data, fakeServer, held, memberSession, problem, type Server } from "@/test/server";
 
@@ -31,14 +30,6 @@ const sentTo: SentEmailVerification = { address: "ana@example.com" };
 // serverFault is a server fault, as the API words one.
 const serverFault = () => problem(fault, "/api/v0/problems/internal-error");
 
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
-
 // openSecurity renders the app at Security for a member whose address is
 // not verified, with two-factor authentication off and one signed-in
 // browser, and returns the server and the query client, to refresh a read
@@ -48,7 +39,6 @@ async function openSecurity() {
   server.on("GET", "/api/v0/totp", () => data(twoFactorOff));
   server.on("GET", "/api/v0/sessions", () => data(browsers));
   const router = await appRouter("/settings/security", server);
-  current = router;
   await render(<RouterProvider router={router} />);
   await expect.element(page.getByText(/Firefox on Linux/)).toBeVisible();
   return { server, queryClient: router.options.context.queryClient };

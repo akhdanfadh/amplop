@@ -1,8 +1,7 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { render } from "vitest-browser-react";
 import { appRouter } from "@/test/app-router";
 import { conversation, listedAccount, mailApi } from "@/test/mail-api";
 import { memberSession } from "@/test/server";
@@ -11,21 +10,13 @@ import { reminderText, remindersLabel } from "./text";
 // A phone's window width, where the frame has a top bar.
 const phoneWidth = 390;
 
-let current: Awaited<ReturnType<typeof appRouter>> | undefined;
-
-afterEach(async () => {
-  await cleanup();
-  if (current) clearAccountCache(current.options.context.queryClient);
-  current = undefined;
-});
-
 describe("the setup reminders in the app", () => {
   it("stack under a phone's top bar, above the page, within its width", async () => {
     await page.viewport(phoneWidth, 800);
     const api = mailApi([conversation(1)], [listedAccount(1, "ana@example.com")]);
     api.server.session = { ...memberSession, emailVerified: false };
-    current = await appRouter("/mail/inbox", api.server);
-    await render(<RouterProvider router={current} />);
+    const router = await appRouter("/mail/inbox", api.server);
+    await render(<RouterProvider router={router} />);
 
     const reminders = page.getByRole("region", { name: remindersLabel });
     await expect

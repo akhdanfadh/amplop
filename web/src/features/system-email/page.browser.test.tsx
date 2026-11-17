@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
-import { cleanup, render } from "vitest-browser-react";
+import { render } from "vitest-browser-react";
 import { RouterProvider } from "@tanstack/react-router";
 import {
   NewSystemEmailSettings,
@@ -65,28 +65,13 @@ function api(
 const sent = (requests: Asked[]) =>
   requests.map((request) => `${request.method} ${request.url.pathname}`);
 
-// The page open now: its router, whose reads end with the test, and its
-// server.
-let opened: { router: Awaited<ReturnType<typeof appRouter>>; server: Server } | undefined;
-
 // open renders the app at System email, its requests answered by server,
 // and returns its router.
 async function open(server: Server) {
   const router = await appRouter("/settings/system-email", server);
-  opened = { router, server };
   await render(<RouterProvider router={router} />);
   return router;
 }
-
-afterEach(async () => {
-  // A refresh still running would otherwise reach the real network once
-  // the fetch stub is gone: the page goes first, then its reads.
-  await cleanup();
-  const queryClient = opened?.router.options.context.queryClient;
-  await queryClient?.cancelQueries();
-  queryClient?.clear();
-  opened = undefined;
-});
 
 const button = (name: string) => page.getByRole("button", { name, exact: true });
 const field = (name: string) => page.getByRole("textbox", { name, exact: true });
