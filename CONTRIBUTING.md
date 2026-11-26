@@ -35,6 +35,11 @@ To create the first administrator, follow
 then open `http://localhost:5173/setup`. After setup, sign in at
 `http://localhost:5173/sign-in`.
 
+## Branches
+
+Development happens on `dev`, and pull requests target it. `main` will
+hold the latest release once there is one.
+
 ## The name
 
 Write amplop in lowercase, even at the start of a sentence, in docs,
