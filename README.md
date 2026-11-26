@@ -3,6 +3,11 @@
 A self-hosted webmail client that brings your Gmail accounts into one
 inbox, on your own server.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/screenshots/inbox-dark.png">
+  <img alt="amplop's inbox: mail from two Gmail accounts in one list, with a conversation open beside it" src=".github/screenshots/inbox-light.png">
+</picture>
+
 amplop is in early development: Gmail is its only provider so far, and
 there is no release yet, so expect breaking changes before 1.0.
 
