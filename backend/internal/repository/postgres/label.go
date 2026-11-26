@@ -8,10 +8,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/label"
-	"inbok/internal/mailsync"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/label"
+	"amplop/internal/mailsync"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // ReadLabelAccount returns the account of userID's label id, or

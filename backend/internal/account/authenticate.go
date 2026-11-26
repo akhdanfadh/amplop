@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
 )
 
 // dummyPasswordHash is the fixed Argon2id hash checked for unknown accounts.
 // Its work parameters match new passwords; the input is not a secret.
-const dummyPasswordHash = "$argon2id$v=19$m=19456,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg$DCD4ERxMEHwAyfsOVs7QftC+Pw565z7RS2Cs1YOL4dY"
+const dummyPasswordHash = "$argon2id$v=19$m=19456,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg$UtGYoBi14hmM9+fDYjSJeHwxppuVkz5WIA1Av0p04Hk"
 
 var (
 	// ErrUserNotFound means no account matches the storage lookup. Writes made

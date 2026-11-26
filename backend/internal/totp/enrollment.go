@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/randomsecret"
+	"amplop/internal/account"
+	"amplop/internal/randomsecret"
 )
 
 // State identifies whether a factor is absent, being set up, past its enrollment

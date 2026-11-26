@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/encryption"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/encryption"
 )
 
 // fakeRemovals answers every Revoke with outcome and err and every Discard

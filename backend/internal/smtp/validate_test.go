@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 // Input that would change the SMTP commands, or cannot be dialed, is refused
@@ -20,8 +20,8 @@ func TestSendUnsafeInput(t *testing.T) {
 		{"recipient", func(_ *systememail.Server, _ *string, m *systememail.Message) {
 			m.To = "admin@example.org>\r\nRCPT TO:<victim@example.net"
 		}},
-		{"sender", func(_ *systememail.Server, _ *string, m *systememail.Message) { m.FromAddress = "inbok@example.com\n" }},
-		{"username", func(s *systememail.Server, _ *string, _ *systememail.Message) { s.Username = "inbok\x00admin" }},
+		{"sender", func(_ *systememail.Server, _ *string, m *systememail.Message) { m.FromAddress = "amplop@example.com\n" }},
+		{"username", func(s *systememail.Server, _ *string, _ *systememail.Message) { s.Username = "amplop\x00admin" }},
 		{"password", func(_ *systememail.Server, p *string, _ *systememail.Message) { *p = "app\x00password" }},
 		{"ESMTP parameter", func(_ *systememail.Server, _ *string, m *systememail.Message) {
 			m.To = "admin@example.org> NOTIFY=SUCCESS"

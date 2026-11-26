@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/account"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/account"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 const (

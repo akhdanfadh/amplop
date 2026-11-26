@@ -20,11 +20,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordreset"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordreset"
+	"amplop/internal/session"
 )
 
 // resetRequestMemory keeps accounts, the links sent to them, and the jobs
@@ -99,7 +99,7 @@ func TestRequestPasswordResetLinkSameResponse(t *testing.T) {
 
 	// Then only the eligible account got a link, and every response is the
 	// same.
-	assert.Equal(t, []string{"Reset your inbok password"}, mailer.subjects)
+	assert.Equal(t, []string{"Reset your amplop password"}, mailer.subjects)
 	assert.Equal(t, []string{"member@example.org"}, mailer.recipients)
 	for _, response := range responses {
 		assert.Equal(t, http.StatusAccepted, response.Code)

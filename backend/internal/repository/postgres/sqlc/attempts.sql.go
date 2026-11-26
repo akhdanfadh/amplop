@@ -87,7 +87,7 @@ func (q *Queries) ListSignInAttempts(ctx context.Context, clientPrefix string) (
 }
 
 const lockAttemptClient = `-- name: LockAttemptClient :exec
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.sign-in:' || $1::text, 0))
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.sign-in:' || $1::text, 0))
 `
 
 // LockAttemptClient takes a transaction-scoped advisory lock for one client.

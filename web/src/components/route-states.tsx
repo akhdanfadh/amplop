@@ -60,7 +60,7 @@ export function StatePage({
   if (region === "pane") {
     return (
       <section className={className} aria-labelledby={headingId}>
-        <title>{`${title} - inbok`}</title>
+        <title>{`${title} - amplop`}</title>
         <h2 {...heading}>{title}</h2>
         {children}
       </section>
@@ -69,7 +69,7 @@ export function StatePage({
   return (
     <main className={className}>
       {/* React puts it in the head, and takes it out when the state ends. */}
-      <title>{`${title} - inbok`}</title>
+      <title>{`${title} - amplop`}</title>
       <h1 {...heading}>{title}</h1>
       {children}
     </main>
@@ -186,7 +186,7 @@ export function RouteError({ error }: ErrorComponentProps): ReactElement {
 export function CrashScreen(): ReactElement {
   return (
     <StatePage title="This page stopped working">
-      <p>inbok ran into a problem it didn&apos;t expect. Nothing you saved is lost.</p>
+      <p>amplop ran into a problem it didn&apos;t expect. Nothing you saved is lost.</p>
       <Button
         type="button"
         variant="outline"
@@ -198,7 +198,7 @@ export function CrashScreen(): ReactElement {
       <p>
         If it happens again, {/* A page load, not the router, for a fresh start after a crash. */}
         <a href="/" className={textLink}>
-          open inbok&apos;s start page
+          open amplop&apos;s start page
         </a>
         .
       </p>
@@ -221,7 +221,7 @@ function SignedOut(): ReactElement {
   );
 }
 
-// NotFound is shown for an address inbok has no page for, e.g. a mistyped
+// NotFound is shown for an address amplop has no page for, e.g. a mistyped
 // one or a link to something removed.
 export function NotFound(): ReactElement {
   return (
@@ -229,7 +229,7 @@ export function NotFound(): ReactElement {
       <p>
         There&apos;s no page at this address. Check it for typing mistakes, or{" "}
         <Link to="/" className={textLink}>
-          open inbok&apos;s start page
+          open amplop&apos;s start page
         </Link>
         .
       </p>

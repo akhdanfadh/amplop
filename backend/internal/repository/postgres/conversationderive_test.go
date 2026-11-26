@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/mailsync"
+	"amplop/internal/mailsync"
 )
 
 // threadMailboxes are a Gmail account's mailboxes with every role a

@@ -5,7 +5,7 @@ import type { AccountSync, ConnectedAccounts, ListedAccount } from "@/api/genera
 // current.
 export const busyRefresh = 2_000;
 export const idleRefresh = 60_000;
-// How long after a Check now the list is read often, inbok's choice: a check
+// How long after a Check now the list is read often, amplop's choice: a check
 // that finds a few messages ends within seconds, so its time and mail show.
 export const syncNowRefresh = 30_000;
 
@@ -26,7 +26,7 @@ export type SyncView =
       failedAt: string;
       failure: SyncFailure;
       // complete for a failed check of a copy that is current, failed for
-      // a failed full sync, which inbok tries again an hour later.
+      // a failed full sync, which amplop tries again an hour later.
       status: FailedStatus;
       // When a complete account's mail was last up to date; null for a
       // failed full sync, which has no current copy.
@@ -52,7 +52,7 @@ export function syncView(sync: AccountSync): SyncView {
 }
 
 // syncBusy reports whether account's sync is moving, so the list is read
-// again soon: one inbok cannot use waits for its member.
+// again soon: one amplop cannot use waits for its member.
 function syncBusy(account: ListedAccount): boolean {
   if (account.status !== "usable") return false;
   const { kind } = syncView(account.sync);

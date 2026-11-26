@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Collection } from "react-aria-components";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/amplop";
 import type { ListedAccount } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import { useTopBarSlot } from "@/components/frame";
@@ -98,7 +98,7 @@ export function OutboxPage({
   );
 }
 
-// OutboxList lists the member's messages from inbok in two sections, those
+// OutboxList lists the member's messages from amplop in two sections, those
 // not sent yet (the API's outstanding) and those done, in the order the API
 // lists them, each opening in the reading pane (DESIGN.md "Outbox"). An
 // empty section is left out. openId is the message the pane shows.

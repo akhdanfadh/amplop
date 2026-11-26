@@ -6,10 +6,10 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
-	"inbok/internal/randomsecret"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
+	"amplop/internal/randomsecret"
 )
 
 var (

@@ -3,7 +3,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import {
   getListConnectedAccountsQueryKey,
   getListOutgoingMessagesQueryKey,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { repeatableWriteRetry } from "@/api/retry";
 import { ApiError } from "@/api/transport";

@@ -12,7 +12,7 @@ import (
 )
 
 // testShell has two inline scripts, like the real shell, and a script file.
-const testShell = `<!DOCTYPE html><title>inbok</title><script>self.a=1</script>` +
+const testShell = `<!DOCTYPE html><title>amplop</title><script>self.a=1</script>` +
 	`<script type="module" async src="/assets/index-BrBO-kCw.js"></script>` +
 	`<script>document.currentScript.remove()</script>`
 
@@ -21,12 +21,12 @@ const testShell = `<!DOCTYPE html><title>inbok</title><script>self.a=1</script>`
 // the embed folder keeps.
 func testFiles() fstest.MapFS {
 	return fstest.MapFS{
-		"_shell.html":                    {Data: []byte(testShell)},
-		"assets/index-BrBO-kCw.js":       {Data: []byte("console.log(1)")},
-		"assets/styles-BRqUNFMl.css":     {Data: []byte("body{}")},
-		"assets/data-Dx91kQ2a.inbokdata": {Data: []byte{0, 1}},
-		"robots.txt":                     {Data: []byte("User-agent: *")},
-		".gitkeep":                       {Data: []byte{}},
+		"_shell.html":                     {Data: []byte(testShell)},
+		"assets/index-BrBO-kCw.js":        {Data: []byte("console.log(1)")},
+		"assets/styles-BRqUNFMl.css":      {Data: []byte("body{}")},
+		"assets/data-Dx91kQ2a.amplopdata": {Data: []byte{0, 1}},
+		"robots.txt":                      {Data: []byte("User-agent: *")},
+		".gitkeep":                        {Data: []byte{}},
 	}
 }
 
@@ -71,7 +71,7 @@ func TestBuildFiles(t *testing.T) {
 	}{
 		{"/assets/index-BrBO-kCw.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable", "console.log(1)"},
 		{"/assets/styles-BRqUNFMl.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable", "body{}"},
-		{"/assets/data-Dx91kQ2a.inbokdata", "application/octet-stream", "public, max-age=31536000, immutable", "\x00\x01"},
+		{"/assets/data-Dx91kQ2a.amplopdata", "application/octet-stream", "public, max-age=31536000, immutable", "\x00\x01"},
 		{"/robots.txt", "text/plain; charset=utf-8", "no-cache", "User-agent: *"},
 		{"/_shell.html", "text/html; charset=utf-8", "no-cache", testShell},
 	}

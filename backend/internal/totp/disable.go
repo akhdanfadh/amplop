@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"inbok/internal/account"
+	"amplop/internal/account"
 )
 
 // ErrDisableForbidden keeps TOTP mandatory for administrators and unknown roles.

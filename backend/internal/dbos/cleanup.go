@@ -13,8 +13,8 @@ import (
 const (
 	// cleanupWorkflow and [cleanupSchedule] name the cleanup in DBOS's
 	// tables, where runs and the schedule outlive the code that made them.
-	cleanupWorkflow = "inbok.cleanup"
-	cleanupSchedule = "inbok.cleanup.hourly"
+	cleanupWorkflow = "amplop.cleanup"
+	cleanupSchedule = "amplop.cleanup.hourly"
 
 	// cleanupCron fires every hour on the hour, read in UTC: in a zone
 	// with a half-hour offset, local hours fall elsewhere. DBOS's cron has

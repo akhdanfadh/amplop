@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
-	"inbok/internal/search/searchtest"
+	"amplop/internal/search"
+	"amplop/internal/search/searchtest"
 )
 
 // rebuildStack is a rebuild with its fakes, and the indexer it writes

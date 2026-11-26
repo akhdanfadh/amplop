@@ -78,7 +78,7 @@ describe("the top bar, where the sidebar is a drawer", () => {
     // The list's bold rows show what is unread; the drawer has the counts.
     expect(bar.getByText(/unread/).elements()).toHaveLength(0);
     // The wordmark gives way to the place's own bar.
-    expect(bar.getByRole("link", { name: "inbok" }).elements()).toHaveLength(0);
+    expect(bar.getByRole("link", { name: "amplop" }).elements()).toHaveLength(0);
   });
 
   it("centres the heading between the buttons, at the drawer header's height", async () => {
@@ -129,7 +129,7 @@ describe("the top bar, where the sidebar is a drawer", () => {
     await open(390, { pane: "reader" });
 
     const bar = page.getByRole("banner");
-    await expect.element(bar.getByRole("link", { name: "inbok" })).toBeVisible();
+    await expect.element(bar.getByRole("link", { name: "amplop" })).toBeVisible();
     expect(bar.getByRole("heading", { level: 1, name: "Inbox" }).elements()).toHaveLength(0);
   });
 });

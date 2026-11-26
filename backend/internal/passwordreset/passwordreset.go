@@ -1,5 +1,5 @@
 // Package passwordreset lets a user who forgot their password choose a new
-// one by following a link inbok sends to their verified email.
+// one by following a link amplop sends to their verified email.
 package passwordreset
 
 import (
@@ -8,7 +8,7 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 const linkLifetime = time.Hour

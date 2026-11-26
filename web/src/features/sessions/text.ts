@@ -15,7 +15,7 @@ export function browserName(session: Pick<ListedSession, "browser" | "os">): str
   return os ? `${browser} on ${os}` : browser;
 }
 
-// formatTime shows a timestamp as inbok writes one, in the reader's time
+// formatTime shows a timestamp as amplop writes one, in the reader's time
 // zone.
 export function formatTime(iso: string): string {
   return dayAndTime.format(new Date(iso));

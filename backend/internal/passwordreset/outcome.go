@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/systememail"
+	"amplop/internal/emailaddress"
+	"amplop/internal/systememail"
 )
 
 // Outcome is how a password reset email job ended without an error worth

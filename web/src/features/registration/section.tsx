@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import {
   getGetRegistrationSettingsQueryKey,
   useSaveRegistrationSettings,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { RegistrationSettings } from "@/api/generated/model";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { StatusBadge } from "@/components/status-badge";

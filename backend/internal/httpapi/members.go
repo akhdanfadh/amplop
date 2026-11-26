@@ -9,8 +9,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/session"
 )
 
 const membersPath = "/members"

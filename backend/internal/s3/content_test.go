@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"uuid"
 
-	"inbok/internal/messagecontent"
-	"inbok/internal/messagecontent/messagecontenttest"
+	"amplop/internal/messagecontent"
+	"amplop/internal/messagecontent/messagecontenttest"
 )
 
 func TestContentContract(t *testing.T) {
@@ -41,7 +41,7 @@ func TestPutKey(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// A body changed between inbok and the store, keeping its length, is
+// A body changed between amplop and the store, keeping its length, is
 // refused, since the request signs the body's SHA-256; plain HTTP leaves
 // the body readable, but not changeable unnoticed.
 func TestPutTampered(t *testing.T) {
@@ -90,9 +90,9 @@ func TestDeleteAccountForeignListing(t *testing.T) {
 	_ = body.Close()
 }
 
-// An object under accounts/ that inbok did not write, e.g. one copied in
+// An object under accounts/ that amplop did not write, e.g. one copied in
 // by hand, is left out of the listing rather than stopping it.
-// [TestParseContentKey] lists the keys inbok does not write.
+// [TestParseContentKey] lists the keys amplop does not write.
 func TestListOlderForeignKeys(t *testing.T) {
 	store := openStore(t)
 	ref := messagecontent.Ref{Account: 1, ID: uuid.New()}
@@ -196,7 +196,7 @@ func listAll(t *testing.T, store *Store) []messagecontent.Ref {
 }
 
 // tamperingTransport flips the first byte of every upload's body, as
-// someone between inbok and the store could.
+// someone between amplop and the store could.
 type tamperingTransport struct{}
 
 func (tamperingTransport) RoundTrip(r *http.Request) (*http.Response, error) {

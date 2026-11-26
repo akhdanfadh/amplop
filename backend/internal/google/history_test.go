@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
 )
 
 // Label changes after a position come back as updates with each

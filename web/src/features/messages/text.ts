@@ -16,12 +16,12 @@ export const bodyFailed = "Could not show this part of the message.";
 
 // The images notice, before and after the member shows the images.
 export const imagesHidden =
-  "inbok hides images from the web. Showing them tells the sender you opened this message.";
+  "amplop hides images from the web. Showing them tells the sender you opened this message.";
 export const showImages = "Show images";
 export const imagesShown = "Showing images from the web for this message.";
 
 // A plain-text body the server sent only the start of.
-export const textClipped = "This message is long, so inbok shows only its start.";
+export const textClipped = "This message is long, so amplop shows only its start.";
 export const downloadText = "Download the whole text";
 // The name a downloaded text body takes.
 export const textFilename = "message.txt";
@@ -123,13 +123,13 @@ function shown(value: number): number {
 }
 
 // How many characters before a name's extension stay with it when the
-// name is cut, inbok's choice: enough for a version or a date with its
+// name is cut, amplop's choice: enough for a version or a date with its
 // separator, e.g. "-final-v12" in "Q3-report-final-v12.xlsx", which tells
 // similar files apart.
 const keptBeforeExtension = 10;
 // How much of a name without an extension stays when it is cut.
 const keptWithoutExtension = 10;
-// The longest extension, its dot included, a chip keeps whole, inbok's
+// The longest extension, its dot included, a chip keeps whole, amplop's
 // choice: common ones are 3 to 5 characters, ".numbers" 8.
 const maxExtension = 10;
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });

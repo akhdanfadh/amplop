@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"inbok/internal/passwordhash"
+	"amplop/internal/passwordhash"
 )
 
 const (

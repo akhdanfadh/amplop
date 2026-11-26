@@ -11,8 +11,8 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
 )
 
 // runFullSync runs every step of accountID's full sync in order, as the
@@ -205,7 +205,7 @@ func TestSyncFlowPollDuringCopy(t *testing.T) {
 
 	// When the member archives the message, and the run polls before its
 	// sweep and finish. (The emulator deletes a message only with the full
-	// mail scope inbok does not ask for, so deletions are covered in
+	// mail scope amplop does not ask for, so deletions are covered in
 	// mailsync's TestFullSyncPollDeletes.)
 	_, err = f.gmailAt(t, account.ID).Users.Messages.Modify("me", "inbox", &gmail.ModifyMessageRequest{RemoveLabelIds: []string{"INBOX"}}).Do()
 	require.NoError(t, err)

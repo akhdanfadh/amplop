@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { labelGoneBody, labelGoneTitle, openInbox } from "./text";
 
 // LabelGone replaces a label's page when the member has no such label
-// (DESIGN.md "States"): deleted, in inbok or in Gmail, its account
+// (DESIGN.md "States"): deleted, in amplop or in Gmail, its account
 // disconnected, or an old link. Open Inbox leads on to every account's
 // Inbox.
 export function LabelGone(): ReactElement {

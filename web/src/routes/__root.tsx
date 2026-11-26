@@ -66,7 +66,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "inbok" },
+      { title: "amplop" },
     ],
     // A <link> in the prerendered shell, so the page never shows unstyled.
     links: [
@@ -141,7 +141,7 @@ function Root(): ReactElement {
   return (
     // React Aria would otherwise take the browser's language: its own
     // words, e.g. a toast's Close, and its direction, which reverses arrow
-    // keys, would not match inbok's English.
+    // keys, would not match amplop's English.
     <I18nProvider locale="en-US">
       <RouterProvider navigate={navigate} useHref={toHref}>
         {/* A column the height of the window, so a page or the pending

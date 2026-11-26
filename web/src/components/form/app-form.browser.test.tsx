@@ -554,7 +554,7 @@ describe("the text, choice, and password kinds", () => {
   it("move focus to a refused choice's checked radio, which names the error", async () => {
     await render(<ServerTestForm send={async () => {}} />);
     await userEvent.type(host(), "smtp.example.com");
-    await userEvent.type(page.getByRole("textbox", { name: "Username" }), "inbok");
+    await userEvent.type(page.getByRole("textbox", { name: "Username" }), "amplop");
 
     await userEvent.click(page.getByText("None", { exact: true }));
     await userEvent.click(saveOnly());

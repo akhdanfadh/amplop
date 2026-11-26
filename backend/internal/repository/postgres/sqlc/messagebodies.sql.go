@@ -96,7 +96,7 @@ type ListMessagesNeedingBodiesRow struct {
 // The account's messages whose bodies the background fetch takes next,
 // newest first: without parts, received at or after @since, in no mailbox
 // with one of @excluded_roles, and with no failed fetch at or after
-// @failed_since. inbok's Go code chooses all three.
+// @failed_since. amplop's Go code chooses all three.
 // ListAccountsWithDueBodies repeats these conditions.
 func (q *Queries) ListMessagesNeedingBodies(ctx context.Context, arg ListMessagesNeedingBodiesParams) ([]ListMessagesNeedingBodiesRow, error) {
 	rows, err := q.db.Query(ctx, listMessagesNeedingBodies,

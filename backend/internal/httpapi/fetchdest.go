@@ -13,7 +13,7 @@ import (
 // [defaultFetchDests].
 const fetchDestKey = "fetchDest"
 
-// The Sec-Fetch-Dest values inbok's operations answer (Fetch Metadata
+// The Sec-Fetch-Dest values amplop's operations answer (Fetch Metadata
 // Request Headers, 2.2): what the browser loads the response as.
 const (
 	// A fetch() call, as the web app's client makes.
@@ -39,7 +39,7 @@ var (
 // operation does not answer, before its access check. A request without
 // the header, e.g. from curl, passes.
 //
-// DESIGN: the message view frames a body on inbok's origin, so an <img>
+// DESIGN: the message view frames a body on amplop's origin, so an <img>
 // in it that names an API address goes with the member's session cookie
 // and Sec-Fetch-Site same-origin, which the cross-origin check accepts.
 // The sanitizer keeps such an address only as an absolute URL once the

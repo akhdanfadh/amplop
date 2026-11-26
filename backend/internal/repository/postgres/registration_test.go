@@ -18,10 +18,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/passwordhash"
-	"inbok/internal/randomsecret"
-	"inbok/internal/registration"
+	"amplop/internal/account"
+	"amplop/internal/passwordhash"
+	"amplop/internal/randomsecret"
+	"amplop/internal/registration"
 )
 
 // systemEmailTest is whether saved system email settings passed a test.
@@ -37,7 +37,7 @@ func saveSystemEmail(t *testing.T, conn *pgx.Conn, test systemEmailTest) {
 	t.Helper()
 
 	_, err := conn.Exec(t.Context(), `INSERT INTO system_email (host, port, security, from_address, from_name, tested_at)
-		VALUES ('localhost', 1025, 'none', 'inbok@localhost', 'inbok', CASE WHEN $1 THEN now() END)
+		VALUES ('localhost', 1025, 'none', 'amplop@localhost', 'amplop', CASE WHEN $1 THEN now() END)
 		ON CONFLICT (id) DO UPDATE SET tested_at = EXCLUDED.tested_at`, test == tested)
 	require.NoError(t, err)
 }

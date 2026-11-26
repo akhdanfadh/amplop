@@ -67,7 +67,7 @@ func clientClosedProblem() *problem {
 
 // clientClosed reports whether ctx, a request's, was cancelled, which in
 // net/http means its client left, and errs, the handler's, are that
-// cancellation and nothing else, so a failure of inbok's own while the
+// cancellation and nothing else, so a failure of amplop's own while the
 // client leaves still counts as one, even joined with the cancellation.
 func clientClosed(ctx context.Context, errs []error) bool {
 	if !errors.Is(ctx.Err(), context.Canceled) || len(errs) == 0 {

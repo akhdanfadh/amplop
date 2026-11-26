@@ -13,7 +13,7 @@ import (
 // e.g. synchronization deleted it while its content was fetched.
 var ErrMessageNotFound = errors.New("messagecontent: message not found")
 
-// saveLimit bounds [Contents.Save], inbok's choice: well inside the day
+// saveLimit bounds [Contents.Save], amplop's choice: well inside the day
 // that content no part names waits before [Cleanup] deletes it, so a save
 // whose rows are slow to commit, e.g. behind a lock, does not name a blob
 // the sweep deleted meanwhile.

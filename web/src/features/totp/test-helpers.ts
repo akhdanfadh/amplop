@@ -10,7 +10,7 @@ import type {
 import { data, fakeServer, memberSession, problem, type Server } from "@/test/server";
 
 // What the tests of two-factor authentication's pages share: a fake server
-// that keeps a two-factor status as inbok's does, and the setup's steps.
+// that keeps a two-factor status as amplop's does, and the setup's steps.
 
 const created = 201;
 const noContent = 204;
@@ -43,7 +43,7 @@ const onStatus: TotpStatus = { status: "on", backupCodesLeft: 10, backupCodesWai
 
 const enrollment: TotpEnrollment = {
   secret,
-  uri: `otpauth://totp/inbok:ana%40example.com?secret=${secret}&issuer=inbok`,
+  uri: `otpauth://totp/amplop:ana%40example.com?secret=${secret}&issuer=amplop`,
 };
 
 const thisBrowser: ListedSessions["sessions"][number] = {
@@ -72,7 +72,7 @@ function waiting(token: string): WaitingBackupCodes {
   return { backupCodes: codes, token };
 }
 
-// TotpApi is a fake inbok whose member, ana@example.com, has the
+// TotpApi is a fake amplop whose member, ana@example.com, has the
 // two-factor status totp, which its writes change, and role, which the
 // session read answers: a test sets either to change it. server answers
 // the requests; a test adds a route of its own there, e.g. a refusal.

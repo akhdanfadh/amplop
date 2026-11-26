@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 // sendNow is the clock of every send test.
@@ -99,8 +99,8 @@ func (f *fakeProvider) Send(ctx context.Context, _ connectedaccount.AccessToken,
 	return f.sent, f.sendErr
 }
 
-func (f *fakeProvider) FindSent(_ context.Context, _ connectedaccount.AccessToken, historyID, inbokMessageID string) (Sent, error) {
-	f.finds = append(f.finds, historyID+" "+inbokMessageID)
+func (f *fakeProvider) FindSent(_ context.Context, _ connectedaccount.AccessToken, historyID, amplopMessageID string) (Sent, error) {
+	f.finds = append(f.finds, historyID+" "+amplopMessageID)
 	return f.found, f.findErr
 }
 
@@ -234,7 +234,7 @@ func TestSend(t *testing.T) {
 	require.NotNil(t, saved.SentAt)
 	assert.Equal(t, sendNow, *saved.SentAt)
 	require.Len(t, s.provider.sends, 1)
-	assert.Contains(t, s.provider.sends[0], "X-Inbok-Message-Id: "+s.message.InbokMessageID)
+	assert.Contains(t, s.provider.sends[0], "X-Amplop-Message-Id: "+s.message.AmplopMessageID)
 }
 
 // Gmail's answers that say the message was not sent end it failed.
@@ -415,7 +415,7 @@ func TestCheckFound(t *testing.T) {
 	assert.Equal(t, "gm-2", message.ProviderMessageID)
 	require.NotNil(t, message.SentAt)
 	assert.Equal(t, gmailTime, *message.SentAt)
-	assert.Equal(t, []string{"1200 " + s.message.InbokMessageID}, s.provider.finds)
+	assert.Equal(t, []string{"1200 " + s.message.AmplopMessageID}, s.provider.finds)
 }
 
 // Not finding the message, or not being able to tell, ends it unknown:

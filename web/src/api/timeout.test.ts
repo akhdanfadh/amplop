@@ -4,7 +4,7 @@ import {
   getRequestPasswordResetLinkMutationOptions,
   getGetHealthQueryOptions,
   getHealth,
-} from "./generated/inbok";
+} from "./generated/amplop";
 import { userMessage } from "./problem";
 import { retryOptions } from "./retry";
 

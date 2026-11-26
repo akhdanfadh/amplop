@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/passwordhash"
-	"inbok/internal/passwordreset"
-	"inbok/internal/randomsecret"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/passwordhash"
+	"amplop/internal/passwordreset"
+	"amplop/internal/randomsecret"
+	"amplop/internal/systememail"
 )
 
 const resetPassword = "a new reset password"

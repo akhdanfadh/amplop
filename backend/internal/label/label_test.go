@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // The member's account 1 has Work, Work/Projects, and Home; account 2 is
@@ -61,7 +61,7 @@ func newWorld() (*fakeStorage, *fakeProvider) {
 }
 
 // A created label is made under its parent's mailbox, then returned as the
-// provider lists it after, with the ID inbok saved it under.
+// provider lists it after, with the ID amplop saved it under.
 func TestCreate(t *testing.T) {
 	storage, provider := newWorld()
 
@@ -117,7 +117,7 @@ func TestCreateRefused(t *testing.T) {
 }
 
 // A provider's refusal is returned as it is, after saving what the
-// provider lists, so a label inbok had not synced shows.
+// provider lists, so a label amplop had not synced shows.
 func TestCreateProviderRefused(t *testing.T) {
 	storage, provider := newWorld()
 	provider.createErr = ErrNameTaken
@@ -173,7 +173,7 @@ func TestEditRefused(t *testing.T) {
 }
 
 // Deleting returns the IDs of the label and every label inside it that
-// inbok no longer has after.
+// amplop no longer has after.
 func TestDelete(t *testing.T) {
 	storage, provider := newWorld()
 
@@ -186,7 +186,7 @@ func TestDelete(t *testing.T) {
 }
 
 // A delete that stopped part way returns its error, after saving what the
-// provider kept, so the deleted labels leave inbok and asking again
+// provider kept, so the deleted labels leave amplop and asking again
 // finishes it.
 func TestDeletePartly(t *testing.T) {
 	storage, provider := newWorld()
@@ -257,7 +257,7 @@ func TestWriteChangeErrorWins(t *testing.T) {
 }
 
 // A change the provider made, but whose list or save after fails, returns
-// that failure rather than a label inbok did not save.
+// that failure rather than a label amplop did not save.
 func TestWriteSaveFails(t *testing.T) {
 	databaseDown := errors.New("database down")
 	for name, c := range map[string]struct {

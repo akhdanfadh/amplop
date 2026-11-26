@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/passwordhash"
-	"inbok/internal/randomsecret"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/passwordhash"
+	"amplop/internal/randomsecret"
+	"amplop/internal/totp"
 )
 
 // RFC 6238's SHA-1 test secret; code 287082 matches step 1 at Unix second 59.

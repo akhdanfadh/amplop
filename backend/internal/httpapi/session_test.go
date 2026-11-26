@@ -21,9 +21,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/session"
 )
 
 // ========================
@@ -181,8 +181,8 @@ func postSession(api *API, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/sessions", strings.NewReader(body))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", jsonContentType)
-	request.Header.Set("User-Agent", "inbok-test/1.0")
-	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "old-browser-secret"})
+	request.Header.Set("User-Agent", "amplop-test/1.0")
+	request.AddCookie(&http.Cookie{Name: "__Host-amplop-session", Value: "old-browser-secret"})
 	response := httptest.NewRecorder()
 	api.Handler().ServeHTTP(response, request)
 	return response
@@ -204,13 +204,13 @@ func TestCreateSession(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"step":"complete"}}`, response.Body.String())
 	assert.Equal(t, "Admin@Example.COM", service.email)
 	assert.Equal(t, "a long sign-in password", service.password)
-	assert.Equal(t, session.Device{UserAgent: "inbok-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
+	assert.Equal(t, session.Device{UserAgent: "amplop-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 	cookies := response.Result().Cookies()
 	require.Len(t, cookies, 2)
 	assert.Equal(t, challengeCookieName, cookies[1].Name)
 	assert.Negative(t, cookies[1].MaxAge)
 	cookie := cookies[0]
-	assert.Equal(t, "__Host-inbok-session", cookie.Name)
+	assert.Equal(t, "__Host-amplop-session", cookie.Name)
 	assert.Equal(t, service.issued.Secret, cookie.Value)
 	assert.True(t, cookie.Secure)
 	assert.True(t, cookie.HttpOnly)

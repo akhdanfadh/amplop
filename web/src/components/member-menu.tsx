@@ -13,7 +13,7 @@ import {
   SunMoonIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useDeleteCurrentSession } from "@/api/generated/inbok";
+import { useDeleteCurrentSession } from "@/api/generated/amplop";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";

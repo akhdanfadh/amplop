@@ -6,11 +6,11 @@ import (
 
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
-// Gmail's system labels inbok reads by ID (Gmail's labels guide).
+// Gmail's system labels amplop reads by ID (Gmail's labels guide).
 //
 // NOTE: Google's Go client exports none of these as constants; only Gmail's
 // guides list them, as text. A name Google changed would not fail the
@@ -141,7 +141,7 @@ func maker(labelType string) mailsync.Maker {
 	return mailsync.MadeByMember
 }
 
-// isFlag reports whether labelID is a label inbok keeps as a flag on the
+// isFlag reports whether labelID is a label amplop keeps as a flag on the
 // message rather than as a mailbox.
 func isFlag(labelID string) bool {
 	return labelID == labelUnread || labelID == labelStarred

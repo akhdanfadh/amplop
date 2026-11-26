@@ -49,10 +49,10 @@ install: ## Install web dependencies (Go downloads its own)
 
 # Container image, built from the Dockerfile on this machine; nothing is
 # pushed. Another name keeps a second image beside this one, e.g.
-# make image IMAGE=inbok:trial
-IMAGE ?= inbok:local
+# make image IMAGE=amplop:trial
+IMAGE ?= amplop:local
 
-image: ## Build the inbok container image, tagged IMAGE (inbok:local)
+image: ## Build the amplop container image, tagged IMAGE (amplop:local)
 	docker build --tag $(IMAGE) .
 
 # Development servers
@@ -66,9 +66,9 @@ dev-backend: $(ENV_FILE) ## Run Go, restarting on change (Air)
 	$(WITH_ENV) go -C backend tool -modfile=tools.mod air
 
 # The worker answers health checks on its own address beside serve's. A
-# .env from before the worker lacks INBOK_WORKER_HTTP_ADDR; the default
+# .env from before the worker lacks AMPLOP_WORKER_HTTP_ADDR; the default
 # covers it.
-WORKER_ENV = INBOK_HTTP_ADDR="$${INBOK_WORKER_HTTP_ADDR:-127.0.0.1:8081}"
+WORKER_ENV = AMPLOP_HTTP_ADDR="$${AMPLOP_WORKER_HTTP_ADDR:-127.0.0.1:8081}"
 
 dev-worker: $(ENV_FILE) ## Run the worker, restarting on change (Air)
 	$(WITH_ENV) $(WORKER_ENV) go -C backend tool -modfile=tools.mod air -c .air.worker.toml
@@ -77,18 +77,18 @@ dev-web: $(ENV_FILE) ## Run Vite on http://localhost:5173
 	$(WITH_ENV) pnpm -C web dev
 
 backend-serve: $(ENV_FILE) ## Run Go once, without restarts
-	$(WITH_ENV) go -C backend run ./cmd/inbok serve
+	$(WITH_ENV) go -C backend run ./cmd/amplop serve
 
 backend-worker: $(ENV_FILE) ## Run the worker once, without restarts
-	$(WITH_ENV) $(WORKER_ENV) go -C backend run ./cmd/inbok worker
+	$(WITH_ENV) $(WORKER_ENV) go -C backend run ./cmd/amplop worker
 
 # The binary embeds what backend/internal/webapp/dist holds when it is
 # built, so replace that copy first; a file left from an older build would
 # be served too.
-backend-build: web-build ## Build backend/bin/inbok with the web app built in
+backend-build: web-build ## Build backend/bin/amplop with the web app built in
 	find backend/internal/webapp/dist -mindepth 1 ! -path backend/internal/webapp/dist/.gitkeep -delete
 	cp -R web/dist/client/. backend/internal/webapp/dist/
-	go -C backend build -o bin/inbok ./cmd/inbok
+	go -C backend build -o bin/amplop ./cmd/amplop
 
 web-build: ## Build the browser files into web/dist
 	pnpm -C web build
@@ -117,7 +117,7 @@ services-wipe: $(ENV_FILE) ## Stop the Docker services, deleting their data
 # Database
 
 db-migrate: $(ENV_FILE) ## Apply pending migrations
-	$(WITH_ENV) go -C backend run ./cmd/inbok migrate
+	$(WITH_ENV) go -C backend run ./cmd/amplop migrate
 
 db-status: $(ENV_FILE) ## List applied and pending migrations
 	$(WITH_ENV) $(GOOSE) status
@@ -125,9 +125,9 @@ db-status: $(ENV_FILE) ## List applied and pending migrations
 db-rollback: $(ENV_FILE) ## Undo the last applied migration
 	$(WITH_ENV) $(GOOSE) down
 
-db-reset: $(ENV_FILE) ## Undo inbok's migrations (not dbos), then apply all again
+db-reset: $(ENV_FILE) ## Undo amplop's migrations (not dbos), then apply all again
 	$(WITH_ENV) $(GOOSE) reset
-	$(WITH_ENV) go -C backend run ./cmd/inbok migrate
+	$(WITH_ENV) go -C backend run ./cmd/amplop migrate
 
 db-migration: $(ENV_FILE) ## Add the next migration file, e.g. NAME=add_x
 	$(if $(NAME),,$(error set NAME, e.g. make db-migration NAME=add_x))
@@ -142,7 +142,7 @@ generate-sqlc: ## Go methods from SQL queries
 	go -C backend tool -modfile=tools.mod sqlc generate
 
 generate-api: ## OpenAPI document from Go
-	go -C backend run ./cmd/inbok export ../$(OPENAPI)
+	go -C backend run ./cmd/amplop export ../$(OPENAPI)
 
 generate-web: ## Web client from the OpenAPI document, and cn's tables from the theme
 	pnpm -C web generate

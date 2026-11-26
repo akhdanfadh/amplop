@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/session"
 )
 
 type fakeConnectedAccounts struct {

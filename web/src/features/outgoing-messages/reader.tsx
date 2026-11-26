@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { AccountMark, accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
@@ -99,7 +99,7 @@ export function OutgoingReader({ id, valid }: { id: string; valid: boolean }): R
 
   return (
     <>
-      <title>{`${subjectText(message.subject)} - inbok`}</title>
+      <title>{`${subjectText(message.subject)} - amplop`}</title>
       <ReadingPane
         // A new message starts afresh: focus, and an earlier Send again's
         // result.

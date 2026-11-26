@@ -66,7 +66,7 @@ function DialogOverlay({
 // isDismissable, so a stray press keeps what the member typed. On close,
 // focus returns to where it was before.
 //
-// DESIGN: inbok's copy differs from shadcn's: the scrim, shadow, radius,
+// DESIGN: amplop's copy differs from shadcn's: the scrim, shadow, radius,
 // padding, easing, and duration are the alert dialog's (alert-dialog.tsx),
 // so both read as one kind of surface; it centres in a scrolling overlay
 // rather than by a transform, so a tall one scrolls; no close button by

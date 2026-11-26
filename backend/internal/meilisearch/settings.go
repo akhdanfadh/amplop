@@ -6,7 +6,7 @@ import (
 
 	meili "github.com/meilisearch/meilisearch-go"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // indexSettings returns the settings every member's index gets. An update

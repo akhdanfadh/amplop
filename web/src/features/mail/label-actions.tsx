@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { EllipsisVerticalIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import { getListPlacesQueryKey, listPlaces, useDeleteLabel } from "@/api/generated/inbok";
+import { getListPlacesQueryKey, listPlaces, useDeleteLabel } from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { ConfirmDialog, type Failure } from "@/components/confirm-dialog";

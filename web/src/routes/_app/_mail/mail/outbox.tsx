@@ -3,12 +3,12 @@ import { Outlet, createFileRoute, useMatch } from "@tanstack/react-router";
 import { OutboxPage } from "@/features/outgoing-messages/outbox-page";
 import { outboxName } from "@/features/outgoing-messages/text";
 
-// The Outbox, /mail/outbox: the member's messages from inbok beside the
+// The Outbox, /mail/outbox: the member's messages from amplop beside the
 // reading pane, which holds the open message, /mail/outbox/<message id>,
 // or nothing.
 export const Route = createFileRoute("/_app/_mail/mail/outbox")({
   component: Outbox,
-  head: () => ({ meta: [{ title: `${outboxName} - inbok` }] }),
+  head: () => ({ meta: [{ title: `${outboxName} - amplop` }] }),
 });
 
 function Outbox(): ReactElement {

@@ -1,12 +1,12 @@
-# Air rebuilds and restarts `inbok serve` when a Go file changes.
+# Air rebuilds and restarts `amplop serve` when a Go file changes.
 # Run from backend: go tool -modfile=tools.mod air
 # Settings not listed here use Air's defaults.
 
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/inbok ./cmd/inbok"
-entrypoint = ["./tmp/inbok", "serve"]
+cmd = "go build -o ./tmp/amplop ./cmd/amplop"
+entrypoint = ["./tmp/amplop", "serve"]
 include_ext = ["go"]
 exclude_dir = ["tmp"]
 exclude_regex = ["_test\\.go$"]

@@ -12,8 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/mailsync"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // errStateRange means a sync state's generation, or a change's number of

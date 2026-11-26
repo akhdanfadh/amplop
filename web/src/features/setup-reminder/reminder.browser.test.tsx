@@ -12,7 +12,7 @@ import {
   getGetCurrentSessionQueryKey,
   getGetSystemEmailQueryKey,
   getGetSystemEmailQueryOptions,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { CurrentSession, SystemEmailSettings } from "@/api/generated/model";
 import { Frame } from "@/components/frame";
 import { appRouter } from "@/test/app-router";
@@ -26,10 +26,10 @@ const settings: SystemEmailSettings = {
   host: "smtp.example.com",
   port: 587,
   security: "starttls",
-  username: "inbok",
+  username: "amplop",
   hasPassword: true,
-  fromAddress: "inbok@example.com",
-  fromName: "inbok",
+  fromAddress: "amplop@example.com",
+  fromName: "amplop",
   testedAt: null,
 };
 
@@ -269,7 +269,7 @@ describe("SetupReminder", () => {
     await expect
       .element(offline)
       .toHaveTextContent(
-        "You're offline. inbok shows what it already loaded and catches up when the connection returns.",
+        "You're offline. amplop shows what it already loaded and catches up when the connection returns.",
       );
     await expect.element(reminders()).toBeVisible();
     // Found again as a landmark of its own while it shows.

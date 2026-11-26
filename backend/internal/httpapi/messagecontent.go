@@ -15,10 +15,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
-	"inbok/internal/session"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
+	"amplop/internal/session"
 )
 
 const (
@@ -31,11 +31,11 @@ const (
 )
 
 // providerBusyRetry is the Retry-After of a request the mail provider
-// refused for now, inbok's choice: Gmail's backoff reaches its 32 seconds
+// refused for now, amplop's choice: Gmail's backoff reaches its 32 seconds
 // within about a minute, while a member waits for the message.
 const providerBusyRetry = 30 * time.Second
 
-// partSendTime is how long sending one part may take, inbok's choice: it
+// partSendTime is how long sending one part may take, amplop's choice: it
 // replaces the server's 30-second write limit, so 25 MB, Gmail's largest
 // attachment, reaches a client at about 0.7 Mbit/s, while a client that
 // stalls holds its connection for at most this long.
@@ -298,7 +298,7 @@ func registerMessageBodyRead(api huma.API, handler messageContentHandler) {
 		Path:        messagesPath + "/{id}/bodies/{part}",
 		Summary:     "Get Message Body",
 		Tags:        []string{tagMessages},
-		Description: "Returns an HTML body of one of the signed-in account's messages as a document for a frame on inbok's own pages; its url in the message's content names it. " +
+		Description: "Returns an HTML body of one of the signed-in account's messages as a document for a frame on amplop's own pages; its url in the message's content names it. " +
 			"Only a frame loads it.",
 		Metadata: map[string]any{
 			accessKey:    session.AccessMember,

@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import {
   getListConnectedAccountsQueryKey,
   getListOutgoingMessagesQueryKey,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { repeatableWriteRetry } from "@/api/retry";
 import type { ApiError } from "@/api/transport";
 import { withFieldGroup } from "@/components/form/app-form";

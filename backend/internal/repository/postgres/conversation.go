@@ -9,11 +9,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // newest is the cursor a first page starts from: after every ID of a date

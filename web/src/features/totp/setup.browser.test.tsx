@@ -174,7 +174,7 @@ describe("two-factor setup", () => {
     await expect
       .element(
         page.getByText(
-          "Setup canceled. Remove the inbok entry from your authenticator app if you added it.",
+          "Setup canceled. Remove the amplop entry from your authenticator app if you added it.",
         ),
       )
       .toBeVisible();
@@ -338,6 +338,6 @@ describe("two-factor setup", () => {
       .toBeVisible();
     // Still in the app, not at sign-in.
     expect(router.state.location.pathname).toBe("/settings/security");
-    expect(page.getByRole("heading", { name: "Sign in to inbok" }).query()).toBeNull();
+    expect(page.getByRole("heading", { name: "Sign in to amplop" }).query()).toBeNull();
   });
 });

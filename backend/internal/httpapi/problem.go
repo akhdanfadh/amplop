@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/gin-gonic/gin"
 
-	"inbok/internal/account"
+	"amplop/internal/account"
 )
 
 const (
@@ -39,7 +39,7 @@ type problem struct {
 	timedOut bool
 	// clientGone marks a problem built from a request whose client left,
 	// which a client rarely receives and which is logged as no failure of
-	// inbok's.
+	// amplop's.
 	clientGone bool
 	// mapped marks the entire public response as explicitly selected as safe.
 	mapped bool

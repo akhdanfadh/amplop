@@ -1,6 +1,6 @@
 import { createLiveQueryCollection } from "@tanstack/react-db";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { getListPlacesQueryKey } from "@/api/generated/inbok";
+import { getListPlacesQueryKey } from "@/api/generated/amplop";
 import type { PlaceCount } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";

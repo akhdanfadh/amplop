@@ -6,9 +6,9 @@ import (
 	"slices"
 	"uuid"
 
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // ListThreads returns userID's conversations of ids with their threads and

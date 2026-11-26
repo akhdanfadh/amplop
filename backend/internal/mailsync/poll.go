@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 // Kind is which sync a run for an account does.

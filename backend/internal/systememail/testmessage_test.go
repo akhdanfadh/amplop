@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/emailaddress"
+	"amplop/internal/emailaddress"
 )
 
 // fakeSender records each send and answers with err. During, if set, runs
@@ -57,10 +57,10 @@ func TestSendTestMessageAccepted(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, TestMessageResult{Accepted: true}, result)
-	assert.Equal(t, Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "inbok@example.com"}, sender.server)
+	assert.Equal(t, Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "amplop@example.com"}, sender.server)
 	assert.Equal(t, "app password", sender.password)
 	assert.Equal(t, Message{
-		FromAddress: "inbok@example.com", FromName: "inbok", To: "admin@example.org",
+		FromAddress: "amplop@example.com", FromName: "amplop", To: "admin@example.org",
 		Subject: testMessageSubject, Body: testMessageBody,
 	}, sender.message)
 	require.NotNil(t, storage.record.TestedAt)
@@ -93,7 +93,7 @@ func TestSendTestMessageFailed(t *testing.T) {
 
 	assert.Equal(t, TestMessageResult{Reason: ReasonRecipient}, result)
 	assert.Nil(t, storage.record.TestedAt)
-	assert.Contains(t, logs.String(), `purpose="test message" reason=recipient host=smtp.example.com port=587 security=starttls username=inbok@example.com`)
+	assert.Contains(t, logs.String(), `purpose="test message" reason=recipient host=smtp.example.com port=587 security=starttls username=amplop@example.com`)
 	assert.Contains(t, logs.String(), "550 5.1.1")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
 }

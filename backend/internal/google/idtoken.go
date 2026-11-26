@@ -20,7 +20,7 @@ var (
 	errIDTokenIdentity = errors.New("id_token has no subject or email")
 )
 
-// idClaims are the ID token claims inbok reads.
+// idClaims are the ID token claims amplop reads.
 type idClaims struct {
 	Issuer        string       `json:"iss"`
 	Audience      audience     `json:"aud"`
@@ -62,7 +62,7 @@ func (c *Client) parseIDToken(value any) (idClaims, error) {
 	if !slices.Contains(c.issuers, issuer) {
 		return idClaims{}, errIDTokenIssuer
 	}
-	// OpenID Connect allows other audiences beside the client; inbok's choice
+	// OpenID Connect allows other audiences beside the client; amplop's choice
 	// refuses them, since they would make the token someone else's too.
 	if !slices.Equal(claims.Audience, []string{c.oauth.ClientID}) {
 		return idClaims{}, errIDTokenAudience
@@ -71,7 +71,7 @@ func (c *Client) parseIDToken(value any) (idClaims, error) {
 	if !c.now().Before(time.Unix(claims.Expiry, 0)) {
 		return idClaims{}, errIDTokenExpired
 	}
-	// inbok saves an account under its sub and shows it by its email.
+	// amplop saves an account under its sub and shows it by its email.
 	if claims.Subject == "" || claims.Email == "" {
 		return idClaims{}, errIDTokenIdentity
 	}

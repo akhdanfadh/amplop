@@ -2,7 +2,7 @@
 import "./zod-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type Router, type RouterHistory } from "@tanstack/react-router";
-import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
+import { getGetCurrentSessionQueryKey } from "@/api/generated/amplop";
 import { retryOptions } from "@/api/retry";
 import { NotFound, RouteError, RoutePending, pendingAfterMs } from "@/components/route-states";
 import { sessionFreshMs } from "@/features/auth/session";

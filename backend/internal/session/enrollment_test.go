@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/randomsecret"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/randomsecret"
+	"amplop/internal/totp"
 )
 
 type enrollmentStorage struct {

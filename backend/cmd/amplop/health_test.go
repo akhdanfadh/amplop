@@ -31,9 +31,9 @@ func healthServer(t *testing.T, status int) string {
 // noSecrets clears every setting serve needs but health does not.
 func noSecrets(t *testing.T) {
 	t.Helper()
-	t.Setenv("INBOK_DATABASE_URL", "")
-	t.Setenv("INBOK_ENCRYPTION_KEYS", "")
-	t.Setenv("INBOK_SETUP_TOKEN", "")
+	t.Setenv("AMPLOP_DATABASE_URL", "")
+	t.Setenv("AMPLOP_ENCRYPTION_KEYS", "")
+	t.Setenv("AMPLOP_SETUP_TOKEN", "")
 }
 
 // A server answering 200 on the configured address is healthy. An
@@ -48,7 +48,7 @@ func TestHealth(t *testing.T) {
 	for name, host := range hosts {
 		t.Run(name, func(t *testing.T) {
 			noSecrets(t)
-			t.Setenv("INBOK_HTTP_ADDR", net.JoinHostPort(host, healthServer(t, http.StatusOK)))
+			t.Setenv("AMPLOP_HTTP_ADDR", net.JoinHostPort(host, healthServer(t, http.StatusOK)))
 
 			err := run(context.Background(), []string{"health"}, discard)
 
@@ -62,7 +62,7 @@ func TestHealthStatus(t *testing.T) {
 	for _, status := range []int{http.StatusMovedPermanently, http.StatusNotFound, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			noSecrets(t)
-			t.Setenv("INBOK_HTTP_ADDR", net.JoinHostPort("127.0.0.1", healthServer(t, status)))
+			t.Setenv("AMPLOP_HTTP_ADDR", net.JoinHostPort("127.0.0.1", healthServer(t, status)))
 
 			err := run(context.Background(), []string{"health"}, discard)
 
@@ -74,7 +74,7 @@ func TestHealthStatus(t *testing.T) {
 // Nothing listening is unhealthy.
 func TestHealthDown(t *testing.T) {
 	noSecrets(t)
-	t.Setenv("INBOK_HTTP_ADDR", freeAddr(t))
+	t.Setenv("AMPLOP_HTTP_ADDR", freeAddr(t))
 
 	err := run(context.Background(), []string{"health"}, discard)
 
@@ -90,7 +90,7 @@ func TestHealthHung(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Cleanup(func() { close(release) })
 	noSecrets(t)
-	t.Setenv("INBOK_HTTP_ADDR", server.Listener.Addr().String())
+	t.Setenv("AMPLOP_HTTP_ADDR", server.Listener.Addr().String())
 
 	// When the check runs with a short limit.
 	start := time.Now()
@@ -109,20 +109,20 @@ func TestHealthTimeout(t *testing.T) {
 // An invalid address names its setting.
 func TestHealthBadAddr(t *testing.T) {
 	noSecrets(t)
-	t.Setenv("INBOK_HTTP_ADDR", "localhost")
+	t.Setenv("AMPLOP_HTTP_ADDR", "localhost")
 
 	err := run(context.Background(), []string{"health"}, discard)
 
-	require.ErrorContains(t, err, "INBOK_HTTP_ADDR")
+	require.ErrorContains(t, err, "AMPLOP_HTTP_ADDR")
 }
 
-// The worker's health handler answers what inbok health asks, so the
+// The worker's health handler answers what amplop health asks, so the
 // image's health check works for the worker too.
 func TestWorkerHealth(t *testing.T) {
 	server := httptest.NewServer(workerHealth())
 	t.Cleanup(server.Close)
 	noSecrets(t)
-	t.Setenv("INBOK_HTTP_ADDR", server.Listener.Addr().String())
+	t.Setenv("AMPLOP_HTTP_ADDR", server.Listener.Addr().String())
 
 	err := run(context.Background(), []string{"health"}, discard)
 

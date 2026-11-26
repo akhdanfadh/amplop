@@ -7,14 +7,14 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // The content deletions' names in DBOS's tables, where enqueued runs
 // outlive the code that made them. Their runs use [contentQueue].
 const (
-	contentDeletionWorkflow        = "inbok.content-deletion"
-	accountContentDeletionWorkflow = "inbok.account-content-deletion"
+	contentDeletionWorkflow        = "amplop.content-deletion"
+	accountContentDeletionWorkflow = "amplop.account-content-deletion"
 )
 
 // ContentDeletionInput is the content deletion workflow's input: the

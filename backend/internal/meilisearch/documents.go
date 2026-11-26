@@ -6,7 +6,7 @@ import (
 
 	meili "github.com/meilisearch/meilisearch-go"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // document is a [search.Document] as Meilisearch stores it.

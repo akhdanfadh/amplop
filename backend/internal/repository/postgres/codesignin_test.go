@@ -19,12 +19,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/encryption"
-	"inbok/internal/httpapi"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/encryption"
+	"amplop/internal/httpapi"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 const codeSignInPassword = "a long sign-in password"
@@ -101,7 +101,7 @@ func TestCodeSignInHTTP(t *testing.T) {
 	cookies := password.Result().Cookies()
 	require.Len(t, cookies, 2)
 	challenge := cookies[0]
-	assert.Equal(t, "__Host-inbok-challenge", challenge.Name)
+	assert.Equal(t, "__Host-amplop-challenge", challenge.Name)
 	assert.Positive(t, challenge.MaxAge)
 	assert.True(t, challenge.Secure)
 	assert.True(t, challenge.HttpOnly)
@@ -119,7 +119,7 @@ func TestCodeSignInHTTP(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"step":"complete"}}`, completed.Body.String())
 	cookies = completed.Result().Cookies()
 	require.Len(t, cookies, 2)
-	assert.Equal(t, "__Host-inbok-session", cookies[0].Name)
+	assert.Equal(t, "__Host-amplop-session", cookies[0].Name)
 	assert.Negative(t, cookies[1].MaxAge)
 	current, err := f.sessions.Current(t.Context(), cookies[0].Value)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestCodeSignInHTTP(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, reused.Code, reused.Body.String())
 	cookies = reused.Result().Cookies()
 	require.Len(t, cookies, 1)
-	assert.Equal(t, "__Host-inbok-challenge", cookies[0].Name)
+	assert.Equal(t, "__Host-amplop-challenge", cookies[0].Name)
 	assert.Negative(t, cookies[0].MaxAge)
 	var attempts int
 	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM totp_attempts WHERE user_id=$1", f.userID).Scan(&attempts))

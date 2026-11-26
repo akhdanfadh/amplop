@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // InsertConnectedAccount saves account with the credential seal returns for

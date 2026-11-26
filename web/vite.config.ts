@@ -12,7 +12,7 @@ const generated = ["src/routeTree.gen.ts"];
 // Go server address for the dev proxy; override when it runs elsewhere.
 // Unset or empty uses the default, as in the Go config.
 const defaultProxyTarget = "http://127.0.0.1:8080";
-const proxyTarget = process.env.INBOK_PROXY_TARGET || defaultProxyTarget;
+const proxyTarget = process.env.AMPLOP_PROXY_TARGET || defaultProxyTarget;
 
 export default defineConfig({
   // lazyPlugins skips loading the plugins when a command only reads

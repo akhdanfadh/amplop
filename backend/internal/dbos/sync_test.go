@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // syncedAccount is the account the tests' syncs copy.

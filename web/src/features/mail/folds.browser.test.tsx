@@ -5,8 +5,8 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 
 // This tab's folds, in sessionStorage, and the member's last choice in any
 // tab, in localStorage.
-const tabKey = "inbok-sidebar-folds";
-const lastKey = "inbok-sidebar-last-folds";
+const tabKey = "amplop-sidebar-folds";
+const lastKey = "amplop-sidebar-last-folds";
 
 let loads = 0;
 

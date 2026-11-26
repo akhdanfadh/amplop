@@ -58,7 +58,7 @@ var attacks = []sanitizeCase{
 	{"javascript link with spaces", `<a href=" javascript:alert(1)">x</a>`, `<a>x</a>`},
 	{"data link", `<a href="data:text/html,<script>alert(1)</script>">x</a>`, `<a>x</a>`},
 	{"data image", `<img src="data:image/png;base64,iVBORw0KGgo=">`, `<img>`},
-	{"relative link, which would reach inbok", `<a href="/api/v0/session">x</a>`, `<a>x</a>`},
+	{"relative link, which would reach amplop", `<a href="/api/v0/session">x</a>`, `<a>x</a>`},
 	{"scheme-relative image", `<img src="//tracker.example/p.gif">`, `<img>`},
 	{"link with a space", `<a href="mailto:a b@example.com">x</a><a href="https://example.com/a b">y</a>`, `<a>x</a><a>y</a>`},
 	{"http link without a host", `<a href="http:x">x</a>`, `<a>x</a>`},

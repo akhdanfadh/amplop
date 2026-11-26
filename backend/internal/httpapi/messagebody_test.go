@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/messagecontent"
-	"inbok/internal/session"
+	"amplop/internal/messagecontent"
+	"amplop/internal/session"
 )
 
 // bodyAPI adds a test operation that answers with [messageBody] of body

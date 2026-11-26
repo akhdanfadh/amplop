@@ -1,13 +1,13 @@
-// Package msgid holds inbok's rules for the msg-ids that thread mail: the
+// Package msgid holds amplop's rules for the msg-ids that thread mail: the
 // Message-ID, In-Reply-To, and References headers (RFC 5322 section 3.6.4).
-// Sync shares the References trim; whatever inbok writes, a reply's
+// Sync shares the References trim; whatever amplop writes, a reply's
 // threading and its own Message-IDs, passes [Writable] first. Sync's parser
 // stays more lenient, since matching received mail is another job.
 package msgid
 
 import "strings"
 
-// MaxReferences bounds a References list, inbok's choice. Netnews trims
+// MaxReferences bounds a References list, amplop's choice. Netnews trims
 // References the same way, keeping the first msg-id and the last two
 // (RFC 5537 section 3.4.4).
 const MaxReferences = 50
@@ -20,12 +20,12 @@ const MaxReferences = 50
 // it, which turns one msg-id into two.
 const maxLength = 250
 
-// Writable reports whether id is a msg-id inbok may write: RFC 5322's
+// Writable reports whether id is a msg-id amplop may write: RFC 5322's
 // current syntax, "<", dot-atom-text, "@", dot-atom-text or a domain literal
 // of dtext, ">" (section 3.6.4), at most 250 octets in all. A received ID
 // without "@" is invalid in every syntax; one with a quoted local part is
 // the obsolete syntax, which readers still accept but section 4 forbids
-// generating, so inbok leaves both out. Each writable ID is one header
+// generating, so amplop leaves both out. Each writable ID is one header
 // value, as it holds no space, control character, or bracket outside the
 // literal.
 func Writable(id string) bool {

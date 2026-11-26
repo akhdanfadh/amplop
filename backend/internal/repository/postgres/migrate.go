@@ -1,4 +1,4 @@
-// Package postgres stores inbok's data in PostgreSQL.
+// Package postgres stores amplop's data in PostgreSQL.
 package postgres
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
 
-	"inbok/internal/logging"
+	"amplop/internal/logging"
 )
 
 // migrations holds the SQL files Goose applies, ordered by their number
@@ -27,7 +27,7 @@ var migrations embed.FS
 
 const (
 	// A waiting [Migrate] checks the lock every second for up to 5 minutes:
-	// longer than the workflow tables may take, plus inbok's files.
+	// longer than the workflow tables may take, plus amplop's files.
 	lockRetrySeconds = 1
 	lockRetries      = 300
 
@@ -37,7 +37,7 @@ const (
 	workflowTablesTimeout = 2 * time.Minute
 )
 
-// Migrate applies every pending migration to the database at url: inbok's
+// Migrate applies every pending migration to the database at url: amplop's
 // own files, then the workflow tables DBOS keeps in the "dbos" schema. It
 // logs what it applied to logger and returns the first error, joined with
 // any error releasing the lock.
@@ -63,7 +63,7 @@ func Migrate(ctx context.Context, url string, logger *slog.Logger) (err error) {
 	}
 	defer func() { err = errors.Join(err, unlock()) }()
 
-	// 3. Apply inbok's files, then the workflow tables.
+	// 3. Apply amplop's files, then the workflow tables.
 	if err := migrateFiles(ctx, db, logger); err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func lockMigrations(ctx context.Context, db *sql.DB) (func() error, error) {
 	}, nil
 }
 
-// migrateFiles applies inbok's pending migration files on db and logs each
+// migrateFiles applies amplop's pending migration files on db and logs each
 // to logger.
 func migrateFiles(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 	provider, err := newProvider(db)
@@ -126,7 +126,7 @@ func migrateFiles(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 //
 // DESIGN: DBOS versions its own tables and ships their migrations inside the
 // SDK, so they are not Goose files. Each SDK upgrade can bring new ones;
-// [Migrate] applies them in the release migration like inbok's own.
+// [Migrate] applies them in the release migration like amplop's own.
 func migrateWorkflowTables(ctx context.Context, url string, logger *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, workflowTablesTimeout)
 	defer cancel()

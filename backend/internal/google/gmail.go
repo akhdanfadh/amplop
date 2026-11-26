@@ -16,8 +16,8 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // reasonFailedPrecondition is the reason Gmail gives, with a 400, for a
@@ -91,7 +91,7 @@ func (c *Client) authorized(accessToken connectedaccount.AccessToken, limit int6
 
 // refusalTransport sends requests over base and calls refused when an
 // answer is 401: Gmail no longer accepts the access token, e.g. once the
-// member revoked inbok's access (Gmail's "Resolve errors" guide).
+// member revoked amplop's access (Gmail's "Resolve errors" guide).
 type refusalTransport struct {
 	base    http.RoundTripper
 	refused func()
@@ -126,7 +126,7 @@ var errGmailAnswer = errors.New("gmail api: unreadable answer")
 // answer, for the same reason as [redactToken]: an error answer as only its
 // HTTP status, and an answer that could not be decoded as
 // [errGmailAnswer], since a decoding error can quote it. A transport error
-// keeps its operation and inbok's own request URL, and its cause only when
+// keeps its operation and amplop's own request URL, and its cause only when
 // that cannot hold the answer: the context ending, a timeout, or a network
 // failure. The context's own error, which callers compare, is returned as
 // it is, and so is [retry]'s [mailsync.ErrProviderBusy], already redacted.
@@ -155,7 +155,7 @@ func transportCause(cause error) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
-	// inbok's own cap, which quotes nothing; a caller compares it.
+	// amplop's own cap, which quotes nothing; a caller compares it.
 	if errors.Is(cause, errResponseTooLarge) {
 		return errResponseTooLarge
 	}
@@ -168,7 +168,7 @@ func transportCause(cause error) error {
 	return errGmailAnswer
 }
 
-// maxResponseBytes bounds one Gmail answer but a message's content, inbok's
+// maxResponseBytes bounds one Gmail answer but a message's content, amplop's
 // choice: far past a page of IDs or history, or a message's metadata,
 // while a sender's oversized headers stop here rather than in memory.
 const maxResponseBytes = 4 << 20

@@ -69,10 +69,10 @@ export const testedSystemEmail: SystemEmailSettings = {
   host: "smtp.example.com",
   port: 465,
   security: "tls",
-  username: "inbok@example.com",
+  username: "amplop@example.com",
   hasPassword: true,
-  fromAddress: "inbok@example.com",
-  fromName: "inbok",
+  fromAddress: "amplop@example.com",
+  fromName: "amplop",
   testedAt: "2026-11-12T09:38:00Z",
 };
 
@@ -104,7 +104,7 @@ export type Handler = (
   earlier: () => Promise<Response>,
 ) => Response | Promise<Response>;
 
-// Server is a fake inbok API behind fetch. on answers method at path
+// Server is a fake amplop API behind fetch. on answers method at path
 // with handler from then on, and once only the next such request; path is
 // the contract's, and its {parameters} match one segment each. Of two
 // routes that match a request, the one with fewer parameters answers, and
@@ -130,7 +130,7 @@ type Route = { method: string; pattern: RegExp; names: string[]; handler: Handle
 // The servers installed since the last expectAllAnswered.
 let installed: Server[] = [];
 
-// fakeServer returns a Server that answers as a quiet inbok does, one
+// fakeServer returns a Server that answers as a quiet amplop does, one
 // with nothing to report: setup is done, the session read answers
 // session, or a 401 without one, the member has no connected account and
 // syncing runs, system email is saved and tested, and registration is
@@ -159,7 +159,7 @@ export function fakeServer(session?: CurrentSession): Server {
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       // The app asks by path alone, e.g. "/api/v0/places". Node has no
       // page whose address would complete it, so any origin does there.
-      const url = new URL(href, globalThis.location?.href ?? "http://inbok.test");
+      const url = new URL(href, globalThis.location?.href ?? "http://amplop.test");
       const text = typeof init?.body === "string" ? init.body : await request?.clone().text();
       const asked: Asked = {
         method: (init?.method ?? request?.method ?? "GET").toUpperCase(),
@@ -205,7 +205,7 @@ export function fakeServer(session?: CurrentSession): Server {
       return server;
     },
   };
-  // The root asks whether inbok still needs its first administrator.
+  // The root asks whether amplop still needs its first administrator.
   server.on("GET", "/api/v0/setup", () => data({ status: "done" }));
   server.on("GET", "/api/v0/sessions/current", () => data(server.session));
   // The signed-in frame's sync banner.

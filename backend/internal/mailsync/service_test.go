@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/connectedaccount"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/connectedaccount"
 )
 
 // syncMember owns syncAccount in the service's tests.

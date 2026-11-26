@@ -63,7 +63,7 @@ function SheetOverlay({
 // sidebar's drawer. Its width on the left or right comes from
 // --sheet-width, else 75% of the window up to 24rem.
 //
-// DESIGN: inbok's copy differs from shadcn's: the scrim, shadow, easing,
+// DESIGN: amplop's copy differs from shadcn's: the scrim, shadow, easing,
 // and duration are DESIGN.md's dialog ones; it slides only where motion is
 // welcome; the title is a dialog title (18/24, 600). It stays on React
 // Aria's ModalOverlay: React Aria's own Sheet (react-aria-components 1.22)

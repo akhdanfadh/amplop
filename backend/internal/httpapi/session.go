@@ -11,10 +11,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 const (
@@ -22,8 +22,8 @@ const (
 	currentSessionPath          = sessionsPath + "/current"
 	otherSessionsPath           = sessionsPath + "/others"
 	sessionSecuritySchemeName   = "sessionCookie"
-	sessionCookieName           = "__Host-inbok-session"
-	challengeCookieName         = "__Host-inbok-challenge"
+	sessionCookieName           = "__Host-amplop-session"
+	challengeCookieName         = "__Host-amplop-challenge"
 	challengeSecuritySchemeName = "challengeCookie"
 	accountDeactivatedType      = problemPrefix + "account-deactivated"
 )

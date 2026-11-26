@@ -1,7 +1,7 @@
 -- name: LockAttemptClient :exec
 -- LockAttemptClient takes a transaction-scoped advisory lock for one client.
 -- It also covers the first attempt, when there is no row to lock yet.
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.sign-in:' || @client_prefix::text, 0));
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.sign-in:' || @client_prefix::text, 0));
 
 -- name: DeleteOldSignInAttempts :exec
 DELETE FROM sign_in_attempts WHERE created_at <= @cutoff;

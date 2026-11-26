@@ -15,15 +15,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/outgoingmessage"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/outgoingmessage"
 )
 
-// rawMessage returns a message from alex@example.com carrying inbokID as
-// its X-Inbok-Message-Id and Message-ID.
-func rawMessage(inbokID string) []byte {
+// rawMessage returns a message from alex@example.com carrying amplopID as
+// its X-Amplop-Message-Id and Message-ID.
+func rawMessage(amplopID string) []byte {
 	return []byte("From: alex@example.com\r\nTo: blair@example.com\r\nSubject: Lunch\r\n" +
-		"Message-Id: " + inbokID + "\r\nX-Inbok-Message-Id: " + inbokID + "\r\n" +
+		"Message-Id: " + amplopID + "\r\nX-Amplop-Message-Id: " + amplopID + "\r\n" +
 		"Content-Type: text/plain; charset=utf-8\r\n\r\nFriday?\r\n")
 }
 
@@ -52,7 +52,7 @@ func writeJSON(w http.ResponseWriter, value any) {
 }
 
 // The emulator sends the message into Sent, and the check finds it there
-// by its X-Inbok-Message-Id from the position read before.
+// by its X-Amplop-Message-Id from the position read before.
 func TestSendAndFind(t *testing.T) {
 	e, client := startEmulator(t)
 	code, verifier := consent(t, e, client, "alex@example.com")
@@ -261,7 +261,7 @@ func TestMailboxMalformedAnswer(t *testing.T) {
 	assert.NotContains(t, err.Error(), "secret-page-body")
 }
 
-// Google's client logs each request's body at its debug level; inbok's
+// Google's client logs each request's body at its debug level; amplop's
 // Gmail client logs nothing, so no message reaches stderr.
 func TestSendNoSDKLog(t *testing.T) {
 	t.Setenv("GOOGLE_SDK_GO_LOGGING_LEVEL", "debug")
@@ -298,7 +298,7 @@ func TestSendUnreachable(t *testing.T) {
 }
 
 // sentStub answers history.list with pages, each a list of message IDs
-// added to Sent, and messages.get with each message's X-Inbok-Message-Id as
+// added to Sent, and messages.get with each message's X-Amplop-Message-Id as
 // headers names it; a message missing from headers answers 404.
 func sentStub(t *testing.T, pages [][]string, headers map[string][2]string) *Client {
 	t.Helper()
@@ -345,8 +345,8 @@ func sentStub(t *testing.T, pages [][]string, headers map[string][2]string) *Cli
 // the message.
 func TestFindSent(t *testing.T) {
 	client := sentStub(t, [][]string{{"gm-1"}, {"gm-2"}}, map[string][2]string{
-		"gm-1": {"X-Inbok-Message-Id", "<other@example.com>"},
-		"gm-2": {"x-inbok-message-id", "<mine@example.com>"},
+		"gm-1": {"X-Amplop-Message-Id", "<other@example.com>"},
+		"gm-2": {"x-amplop-message-id", "<mine@example.com>"},
 	})
 
 	found, err := client.FindSent(t.Context(), connectedaccount.NewAccessToken("access-1"), "1200", "<mine@example.com>")
@@ -363,7 +363,7 @@ func TestFindSent(t *testing.T) {
 // check cannot say it was not sent, unless another one matches.
 func TestFindSentDeleted(t *testing.T) {
 	client := sentStub(t, [][]string{{"gm-gone", "gm-1"}}, map[string][2]string{
-		"gm-1": {"X-Inbok-Message-Id", "<other@example.com>"},
+		"gm-1": {"X-Amplop-Message-Id", "<other@example.com>"},
 	})
 	token := connectedaccount.NewAccessToken("access-1")
 
@@ -393,7 +393,7 @@ func TestFindSentTooMany(t *testing.T) {
 	for i := range pages {
 		id := fmt.Sprintf("gm-%d", i)
 		pages[i] = []string{id}
-		headers[id] = [2]string{"X-Inbok-Message-Id", "<other@example.com>"}
+		headers[id] = [2]string{"X-Amplop-Message-Id", "<other@example.com>"}
 	}
 	client := sentStub(t, pages, headers)
 

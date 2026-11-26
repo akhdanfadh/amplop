@@ -1,6 +1,6 @@
 import { useRef, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
-import { useRedeemRegistrationLink } from "@/api/generated/inbok";
+import { useRedeemRegistrationLink } from "@/api/generated/amplop";
 import {
   redeemRegistrationLinkBodyPasswordMax,
   redeemRegistrationLinkBodyPasswordMin,

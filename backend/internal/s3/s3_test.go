@@ -59,7 +59,7 @@ func TestOpenDefaultBucket(t *testing.T) {
 	store, err := Open(t.Context(), testSettings())
 	require.NoError(t, err)
 
-	assert.Equal(t, "inbok", store.bucket)
+	assert.Equal(t, "amplop", store.bucket)
 }
 
 // [New] asks the store nothing, so serve starts while the store is down,

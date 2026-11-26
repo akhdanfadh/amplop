@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	// errNoSignIn means the server offers neither sign-in method inbok supports.
+	// errNoSignIn means the server offers neither sign-in method amplop supports.
 	errNoSignIn = errors.New("server offers no PLAIN or LOGIN sign-in")
 	// errCleartext means a sign-in was attempted without TLS.
 	errCleartext = errors.New("refusing to sign in without TLS")
-	// errUnexpectedReply stands for a reply to the sign-in that inbok cannot
+	// errUnexpectedReply stands for a reply to the sign-in that amplop cannot
 	// use, whose text it does not keep.
 	errUnexpectedReply = errors.New("unexpected reply to the sign-in")
 )
@@ -46,12 +46,12 @@ func signIn(client *gosmtp.Client, username, password string) ([]string, error) 
 
 // signInError returns err, from a failed sign-in, without any text the
 // server wrote: a refusal keeps only its code and an enhanced code within RFC
-// 3463's ranges, a known error of inbok's, go-sasl's, or Go's is returned
+// 3463's ranges, a known error of amplop's, go-sasl's, or Go's is returned
 // alone, without what wraps it, and anything else becomes [errUnexpectedReply].
 //
-// DESIGN: a reply to AUTH can quote what inbok sent, the Base64 credentials
+// DESIGN: a reply to AUTH can quote what amplop sent, the Base64 credentials
 // with the SMTP password, and the mailer logs a reply. What leaves this step
-// is a value inbok formats from integers, a fixed error, or Go's network
+// is a value amplop formats from integers, a fixed error, or Go's network
 // error, so no parsing detail of go-smtp's, and no wrapper, decides what is
 // kept. A server that accepts the sign-in and quotes it at a later step is
 // handled by [redaction], which keeps the rest of that reply.

@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/outgoingmessage"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/outgoingmessage"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // storedRecipient is one address of an outgoing message's list as the
@@ -263,7 +263,7 @@ func (db *DB) saveOutgoingMessage(ctx context.Context, tx pgx.Tx, attempt outgoi
 		BccAddresses:       bcc,
 		Subject:            next.Subject,
 		Body:               next.Body,
-		InbokMessageID:     next.InbokMessageID,
+		AmplopMessageID:    next.AmplopMessageID,
 		InReplyTo:          nullable(next.InReplyTo),
 		// The column holds an empty list, never NULL.
 		InternetReferences: nonNil(next.References),
@@ -294,7 +294,7 @@ func (db *DB) saveOutgoingMessage(ctx context.Context, tx pgx.Tx, attempt outgoi
 		ConnectedAccountID: accountID,
 		From:               next.From,
 		Content:            next.Content,
-		InbokMessageID:     next.InbokMessageID,
+		AmplopMessageID:    next.AmplopMessageID,
 		Threading:          outgoingmessage.Threading{InReplyTo: next.InReplyTo, References: nonNil(next.References)},
 		Status:             outgoingmessage.Status(row.Status),
 		ProviderThreadID:   next.ProviderThreadID,
@@ -530,13 +530,13 @@ func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, 
 			Subject: row.Subject,
 			Body:    row.Body,
 		},
-		InbokMessageID: row.InbokMessageID,
-		Threading:      outgoingmessage.Threading{References: nonNil(row.InternetReferences)},
-		Status:         outgoingmessage.Status(row.Status),
-		CreatedAt:      row.CreatedAt,
-		SentAt:         row.SentAt,
-		SentAgainAs:    row.SentAgainAs,
-		DismissedAt:    row.DismissedAt,
+		AmplopMessageID: row.AmplopMessageID,
+		Threading:       outgoingmessage.Threading{References: nonNil(row.InternetReferences)},
+		Status:          outgoingmessage.Status(row.Status),
+		CreatedAt:       row.CreatedAt,
+		SentAt:          row.SentAt,
+		SentAgainAs:     row.SentAgainAs,
+		DismissedAt:     row.DismissedAt,
 	}
 	if row.InReplyTo != nil {
 		message.InReplyTo = *row.InReplyTo

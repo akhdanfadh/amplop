@@ -36,7 +36,7 @@ func TestEmailAddressMigration(t *testing.T) {
 		VALUES ('Admin@Example.COM', '192.0.2.1', now()), (NULL, '192.0.2.1', now())`)
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), `INSERT INTO system_email (host, port, security, from_address, from_name)
-		VALUES ('localhost', 1025, 'none', 'Inbok@Example.COM', 'inbok')`)
+		VALUES ('localhost', 1025, 'none', 'Amplop@Example.COM', 'amplop')`)
 	require.NoError(t, err)
 
 	// When the migration runs.
@@ -47,7 +47,7 @@ func TestEmailAddressMigration(t *testing.T) {
 	assert.Equal(t, []string{"admin@example.com", "Élise@example.fr"}, queryStrings[string](t, conn, "SELECT email FROM users ORDER BY id"))
 	assert.Equal(t, []string{"admin@example.com"}, queryStrings[string](t, conn, "SELECT email FROM email_verification_links"))
 	assert.Equal(t, []*string{new("admin@example.com"), nil}, queryStrings[*string](t, conn, "SELECT email FROM sign_in_attempts ORDER BY id"))
-	assert.Equal(t, []string{"inbok@example.com"}, queryStrings[string](t, conn, "SELECT from_address FROM system_email"))
+	assert.Equal(t, []string{"amplop@example.com"}, queryStrings[string](t, conn, "SELECT from_address FROM system_email"))
 }
 
 // Down restores uniqueness that ignores case and allows uppercase again;

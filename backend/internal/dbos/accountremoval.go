@@ -7,13 +7,13 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 // accountRemovalWorkflow names the account removal in DBOS's tables, where
 // enqueued runs outlive the code that made them. Its runs use
 // [googleQueue].
-const accountRemovalWorkflow = "inbok.account-removal"
+const accountRemovalWorkflow = "amplop.account-removal"
 
 // AccountRemovalInput is the account removal workflow's input: the
 // removal a disconnect saved. The step reads the token when it runs, so

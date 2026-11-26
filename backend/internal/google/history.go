@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 const (

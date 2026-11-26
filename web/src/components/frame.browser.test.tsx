@@ -113,7 +113,7 @@ describe("Frame", () => {
 
   it("names the member in a tooltip on the rail, whose button opens the member menu", async () => {
     serve();
-    localStorage.setItem("inbok-sidebar-open", "false");
+    localStorage.setItem("amplop-sidebar-open", "false");
     await show();
     const member = page.getByRole("button", { name: "Member menu, ada@example.org" });
     // React Aria shows tooltips on hover once the pointer is in use.

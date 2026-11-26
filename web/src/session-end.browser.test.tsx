@@ -79,7 +79,7 @@ describe("an ended session", () => {
     await expect.element(banner()).toBeVisible();
     await expect.element(typed).toHaveValue("See you at nine.");
     expect(router.state.location.pathname).toBe(`/mail/inbox/${row.id}`);
-    // The list's refresh failed on the same 401: inbok answered, so the
+    // The list's refresh failed on the same 401: amplop answered, so the
     // list doesn't say it isn't answering. It would say so as it draws the
     // failed refresh, which a second of the clock is well past.
     await clock.advance(1000);
@@ -197,7 +197,7 @@ describe("an ended session", () => {
     await userEvent.click(page.getByRole("button", { name: "Sign out" }));
 
     await expect.poll(() => router.state.location.pathname).toBe("/sign-in");
-    await expect.element(page.getByRole("heading", { name: "Sign in to inbok" })).toBeVisible();
+    await expect.element(page.getByRole("heading", { name: "Sign in to amplop" })).toBeVisible();
     expect(page.getByText("Your session ended. Sign in to continue.").query()).toBeNull();
   });
 });

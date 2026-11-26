@@ -66,8 +66,8 @@ export const cardSignOut = {
 // What Security reports after the two-factor page changed something.
 export const changeNotice = {
   on: "Two-factor authentication is on. Your other browsers are signed out.",
-  off: "Two-factor authentication is off. Remove the inbok entry from your authenticator app.",
-  canceled: "Setup canceled. Remove the inbok entry from your authenticator app if you added it.",
+  off: "Two-factor authentication is off. Remove the amplop entry from your authenticator app.",
+  canceled: "Setup canceled. Remove the amplop entry from your authenticator app if you added it.",
 } as const;
 
 // The password step's words before a setup starts or continues. Naming apps
@@ -81,7 +81,7 @@ export const waitingLead = "Enter your password to see the backup codes you have
 
 // What an expired setup says before the password step that starts again.
 export const expiredNotice =
-  "This setup expired after 15 minutes. Remove the inbok entry from your authenticator app, then start again.";
+  "This setup expired after 15 minutes. Remove the amplop entry from your authenticator app, then start again.";
 
 // Leaving the backup codes step loses nothing for 15 minutes, but someone
 // may leave thinking two-factor authentication is already on.
@@ -113,7 +113,7 @@ export const passwordLabel = "Password";
 
 // The two-factor page while it is off: its lead during the setup, and the
 // password step's form names, before a setup and before waiting codes.
-export const setupLead = "Add inbok to an authenticator app, then save your backup codes.";
+export const setupLead = "Add amplop to an authenticator app, then save your backup codes.";
 export const startForm = "Start setup";
 export const showCodesForm = "Show your backup codes";
 
@@ -123,7 +123,8 @@ export const cancelText = {
   label: "Cancel setup",
   working: "Canceling setup...",
   title: "Cancel setup?",
-  description: "You'll need to remove the inbok entry from your authenticator app and start again.",
+  description:
+    "You'll need to remove the amplop entry from your authenticator app and start again.",
   keep: "Keep setting up",
 } as const;
 
@@ -132,7 +133,7 @@ export const cancelText = {
 export const qrText = {
   scan: "1. Scan this QR code with your authenticator app",
   enter: "2. Enter the six-digit code the app shows",
-  image: "QR code that adds inbok to an authenticator app",
+  image: "QR code that adds amplop to an authenticator app",
   // A phone cannot scan its own screen: its authenticator app opens the
   // code's address instead.
   addToApp: "Add to authenticator app",
@@ -157,7 +158,7 @@ export const codesText = {
   copied: "Backup codes copied.",
   copyFailed: "Could not copy. Download the codes or select and copy them yourself.",
   download: "Download codes",
-  fileHeader: "inbok backup codes\nEach code signs you in once. Keep them private.\n\n",
+  fileHeader: "amplop backup codes\nEach code signs you in once. Keep them private.\n\n",
   saved: "I've saved these codes",
   turningOn: "Turning on...",
   replacing: "Replacing...",

@@ -10,10 +10,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/label"
-	"inbok/internal/mailsync"
-	"inbok/internal/session"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/label"
+	"amplop/internal/mailsync"
+	"amplop/internal/session"
 )
 
 const labelsPath = "/labels"
@@ -132,7 +132,7 @@ func labelResponses(api huma.API, notFound string, notFoundExample error, invali
 	missing.Content[problemContentType].Example = notFoundExample
 
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. " +
+	conflict.Description = "The account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. " +
 		"Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
 	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
 		"needsReconnect":     {Value: labelProblem(connectedaccount.ErrNeedsReconnect)},
@@ -145,7 +145,7 @@ func labelResponses(api huma.API, notFound string, notFoundExample error, invali
 
 	if invalid != nil {
 		unprocessable := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
-		unprocessable.Description = "The name or parent is refused, by inbok or by the provider; errors[].location names the field."
+		unprocessable.Description = "The name or parent is refused, by amplop or by the provider; errors[].location names the field."
 		unprocessable.Content[problemContentType].Examples = invalid
 	}
 	return responses
@@ -184,7 +184,7 @@ func registerLabelCreate(api huma.API, handler labelHandler) {
 		Summary:     "Create Label",
 		Tags:        []string{tagLabels},
 		Description: "Makes a label in one of the signed-in account's connected accounts, at its provider, and returns it as the provider saved it. " +
-			"inbok then lists the account's labels at the provider and saves them, as a sync does.",
+			"amplop then lists the account's labels at the provider and saves them, as a sync does.",
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
 		DefaultStatus: http.StatusCreated,
@@ -256,7 +256,7 @@ func (h labelHandler) handleEditLabel(ctx context.Context, in *labelEditInput) (
 // ========================
 
 type deletedLabels struct {
-	Deleted []uuid.UUID `json:"deleted" nullable:"false" format:"uuid" doc:"The ids of the labels deleted: the label and each label inside it that inbok had."`
+	Deleted []uuid.UUID `json:"deleted" nullable:"false" format:"uuid" doc:"The ids of the labels deleted: the label and each label inside it that amplop had."`
 }
 
 func registerLabelDelete(api huma.API, handler labelHandler) {

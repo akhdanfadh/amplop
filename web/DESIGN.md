@@ -1,6 +1,6 @@
-# inbok web design
+# amplop web design
 
-The rules for how inbok's web app looks, is laid out, and talks. Read this
+The rules for how amplop's web app looks, is laid out, and talks. Read this
 before changing any screen, component, or interface text. This file is
 what to do; the reasons sit beside the rules that need one.
 
@@ -103,7 +103,7 @@ surface changes.
 
 IBM Plex Sans Variable (`@fontsource-variable/ibm-plex-sans`), one family,
 bundled with the app (the Content-Security-Policy allows fonts from
-inbok's own origin only). It tells `I`, `l`, `1`, `O`, and `0` apart,
+amplop's own origin only). It tells `I`, `l`, `1`, `O`, and `0` apart,
 which sender addresses and codes need.
 
 | Use                                                                    | Size / line height | Weight                                          |
@@ -123,7 +123,7 @@ letter spacing below 16 px; `tabular-nums` on every number that lines up;
 lines under about 75 characters (the message sheet caps near 640 px of
 text).
 
-Dates and times are inbok's British English on the browser's 12 or 24 hour
+Dates and times are amplop's British English on the browser's 12 or 24 hour
 clock and in its time zone, everywhere: "2:32 pm" or "14:32", "14 Nov
 2026", "14 Nov 2026, 2:32 pm" (`src/lib/datetime.ts`). The browser's
 language never changes the words or the digits.
@@ -247,7 +247,7 @@ text colour of their role.
 | A short form over the page               | `dialog`, e.g. New label: the alert dialog's surface; Escape closes it, a press outside not |
 
 **Toasts** use React Aria's own
-[Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
+[Toast](https://react-aria.adobe.com/Toast), wrapped in amplop's
 `src/components/ui/toast.tsx`: it pauses its timer while hovered or
 focused, and F6 reaches it. It is a dark surface in both themes, so it
 stands apart from the page. React Aria labels it alpha (`UNSTABLE_`
@@ -261,7 +261,7 @@ newest first, a scrolling box keeping what it shows above them
 a toast: a floating, timed toast covered rows and raced keyboard and
 screen-reader users.
 
-**The message list** is inbok's own `src/components/ui/grid-list.tsx` on
+**The message list** is amplop's own `src/components/ui/grid-list.tsx` on
 React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
 [Virtualizer](https://react-aria.adobe.com/Virtualizer), with
 `selectionMode="multiple"`, `selectionBehavior="toggle"`, and
@@ -322,7 +322,7 @@ last two redirect into settings, so settings can move without the server.
   always, with how many of its messages are not sent yet (waiting,
   sending, or failed or unknown and not sent again): the sidebar stays
   still, and the count, above the accounts' labels however many are
-  unfolded, is what tells the member a send needs them. It is inbok's
+  unfolded, is what tells the member a send needs them. It is amplop's
   record of what it sent, not Gmail's mail, so the account filter doesn't
   reach it: it lists every account's messages and marks no account.
 - Accounts: All accounts, then each account (its mark, its member-chosen
@@ -553,12 +553,12 @@ last two redirect into settings, so settings can move without the server.
   popover shadow, which shows them on top and moves focus to the newest.
   Rows changing above the screen, e.g. a reply moving one to the top,
   leave the rows on screen where they are. The end says
-  "That's everything inbok has copied. Older mail stays in Gmail.", 12 px
+  "That's everything amplop has copied. Older mail stays in Gmail.", 12 px
   under the last row; the loading spinner before it is centred in a row's
   height.
 - **Check for new mail:** an icon button at the end of the list's header
   (the phone's top bar), named by a tooltip, that asks each account in the
-  filter that inbok can use to check for mail now; its icon turns while
+  filter that amplop can use to check for mail now; its icon turns while
   the requests run, whole turns, and dims instead with reduced motion.
   Lists, counts, and account status are then read every 2 s for 30 s, so
   new mail shows within seconds. A check started moments ago counts as
@@ -687,7 +687,7 @@ last two redirect into settings, so settings can move without the server.
   under them until the messages come, and the view takes focus, so a
   screen reader starts at the subject. The newest message
   and every unread one start open; the others fold to one row: avatar,
-  sender, preview, a paperclip when inbok knows it has attachments (only
+  sender, preview, a paperclip when amplop knows it has attachments (only
   once its content was fetched: the last 90 days' in the background,
   older ones when opened, so an older unopened message shows none), date
   (as the message list dates rows), one line from a 512 px pane, two
@@ -705,7 +705,7 @@ last two redirect into settings, so settings can move without the server.
   say nothing (the list rings rows only where accounts mix); the sender's name and full address (every sender's, when there are
   several) on one line while both fit,
   the address moving to the next line whole, never cut, since its domain
-  tells real mail from fake; the date ("14 Nov 2026, 6:18 pm": inbok's
+  tells real mail from fake; the date ("14 Nov 2026, 6:18 pm": amplop's
   words, the browser's clock, the day and time in full on hover), which
   moves to the "to" line in a
   pane under 512 px. "to ..." (recipient names, "me" for the account, "to
@@ -762,7 +762,7 @@ last two redirect into settings, so settings can move without the server.
   and keyboard focus; screen readers read it whole. A file the sender
   left unnamed reads "Unnamed file".
 - A plain-text body longer than about 100 KB shows its start, then "This
-  message is long, so inbok shows only its start." with a "Download the
+  message is long, so amplop shows only its start." with a "Download the
   whole text" link, as secondary text. A message with no text says "This
   message has no text." Content loads behind "Loading message..." after
   300 ms; a failed load is a `ReadError` with Try again.
@@ -794,7 +794,7 @@ last two redirect into settings, so settings can move without the server.
   it says when the chosen account didn't receive the message (the reply
   then starts a new conversation in that account's Gmail), or, when none
   could be chosen, which account needs reconnecting, or, while Gmail isn't
-  set up on the inbok, that the accounts can't send yet, pointing to
+  set up on the amplop, that the accounts can't send yet, pointing to
   Connected accounts, which says why for whoever reads it. Only accounts
   the server lists as able to send (`allowedActions`) can be chosen.
 - **Recipients are chips**, one pill per address (`secondary`, 14 px, 28
@@ -891,7 +891,7 @@ last two redirect into settings, so settings can move without the server.
 
 ### Outbox
 
-The member's messages from inbok, as a mail place: the list beside the
+The member's messages from amplop, as a mail place: the list beside the
 reading pane, one shown at a time on a phone ("Panes and widths"). Its
 heading, Outbox, heads the list, or sits in the top bar on a phone. No
 search box, no picking, and no row actions: search finds mail, which
@@ -909,7 +909,7 @@ sending (web/README.md, "Routes").
   and go; the open one stays open, and keyboard focus stays on its row.
   The API keeps at most 50, outstanding ones first, so newer done
   messages never push out one that needs the member; the list's end says
-  "inbok keeps up to 50 messages here, dropping the oldest done ones
+  "amplop keeps up to 50 messages here, dropping the oldest done ones
   first. What you send from Gmail itself is in Sent, not here."
 - **Section heading** (`GridListSectionHeader`): a 32 px band (2 rem, so
   it grows with the text) in `muted`, the sidebar's surface, a step off
@@ -937,7 +937,7 @@ sending (web/README.md, "Routes").
 - **States:** placeholder rows while the list loads; a `ReadError` with
   Try again when it can't; a failed reread keeps the rows under a
   `ReadError` saying they may be out of date; an empty Outbox says
-  "Nothing sent from inbok yet", what will show, and to write one with
+  "Nothing sent from amplop yet", what will show, and to write one with
   Compose.
 - **Reading pane:** a conversation's frame ("Reading pane"): the pinned
   toolbar, with Back on a phone and later the message's own actions; the
@@ -989,7 +989,7 @@ sending (web/README.md, "Routes").
 - **Dates:** a popover with the choices relative to today (Any time,
   Past 7 days, Past 30 days, Past year, Older than a year), which apply
   at once, beside a range: Since and Before as typed days (14/11/2026,
-  inbok's British order) over one calendar with month and year menus, so
+  amplop's British order) over one calendar with month and year menus, so
   mail from years back is two choices away. The field last focused takes
   a day picked; filling one moves to the other while it is empty;
   typing a day moves the calendar to it. Since is filled, the days
@@ -1063,7 +1063,7 @@ pull-to-refresh, which would reload the app, never starts.
 
 - `/settings/<page>` in the same frame with its own sidebar: Back to mail
   (to the exact mail URL), Security, Connected accounts, then
-  for administrators a "This inbok" heading with Members, Registration,
+  for administrators a "This amplop" heading with Members, Registration,
   System email. An administrator without two-factor authentication never
   sees settings: the server lets their session only set it up, on the
   signed-out card at `/two-factor-setup`.
@@ -1124,7 +1124,7 @@ pull-to-refresh, which would reload the app, never starts.
   only while the rest scroll sideways. A long address wraps at its seams
   (before "@" and before dots) and breaks anywhere only when a part cannot
   fit. A row's action is a button until a row has more than one; then a
-  menu. The member list is not paged: an inbok is a household or a team.
+  menu. The member list is not paged: an amplop is a household or a team.
 - A QR code for a phone app also links its address (e.g. "Add to
   authenticator app", `otpauth://`) on a narrow page or a touch pointer: a
   phone cannot scan its own screen.
@@ -1165,7 +1165,7 @@ pull-to-refresh, which would reload the app, never starts.
   since its arrow keys and wheel change the value.
 - Another service's username and password, e.g. a mail server's, keep
   password managers out (`passwordManagers="ignore"`), so they neither
-  fill in the member's inbok sign-in nor save these as one. Browsers' own
+  fill in the member's amplop sign-in nor save these as one. Browsers' own
   managers have no such switch and may still offer to save them.
 - Errors appear after the first submit, then update live. Focus moves to
   the first invalid field. A server refusal stays while its field holds
@@ -1323,7 +1323,7 @@ outcome.
   sign in.", its link to sign-in, which returns to the page; under the
   compose window's title bar instead while the window covers the page, so
   it is never hidden), then offline (`warning`), syncing stopped on this
-  inbok (`warning`: "inbok has stopped
+  amplop (`warning`: "amplop has stopped
   getting new mail for every account.", then "Ask your administrator.", or
   for an administrator "Check that its worker is running."), then each
   setup step the member owes (`info`): system email
@@ -1376,14 +1376,14 @@ outcome.
   syncing. Its mail appears here as it is copied."; "No spam"; "Trash is
   empty".
 - **A label gone:** a label's address that names none of the member's
-  labels, an old link or one deleted in inbok or in Gmail, says "This
-  label doesn't exist", "It may have been deleted, in inbok or in Gmail,
+  labels, an old link or one deleted in amplop or in Gmail, says "This
+  label doesn't exist", "It may have been deleted, in amplop or in Gmail,
   or its account disconnected.", and Open Inbox; an open label that a
   sync finds gone turns to it. An address that is no place stays Page
   not found.
 - **Failure:** what failed, that nothing was lost, Try again, a reference
   for faults. A failed refresh keeps the list and adds a banner ("Couldn't
-  refresh. inbok isn't answering; showing mail from 10:42."). A failed
+  refresh. amplop isn't answering; showing mail from 10:42."). A failed
   older page keeps the rows shown and stops loading, with "Couldn't load
   older conversations." and Try again under the list. A real "Page
   not found" and a crash screen with Reload live in the shell, and so does
@@ -1416,7 +1416,7 @@ marks only what differs from an ordinary member, You, Admin, Not
 verified, Deactivated, and writes Active as plain grey text in its Status
 column. Two-factor on shows on Security and the two-factor page. Tested,
 Not confirmed, and Not set up show beside System email's title: whether
-inbok can send its own email, which sign-in codes, password resets, and
+amplop can send its own email, which sign-in codes, password resets, and
 Registration need. The sidebar shows an account's Syncing, Reconnect, or
 Sync failed as the icon alone, in its tone, the words read to screen
 readers and shown on hover, and with the icon on a line under the name
@@ -1439,7 +1439,7 @@ the real API:
 - Sort by the date as a number (`dateMs`), then the ID
   (`stringSort: "lexical"`); dates are never null; one fixed order. The
   API's date text does not sort by time.
-- Refresh with inbok's own timer that re-reads only each open list's
+- Refresh with amplop's own timer that re-reads only each open list's
   newest page; the built-in `refetchInterval` re-reads every loaded page.
 - Apply the "N new conversations" cut-off when drawing, never in the query.
 - One live query per view, each with an explicit key; no joins in paged
@@ -1476,7 +1476,7 @@ the real API:
 
 ## Wording
 
-- Plain and exact, in the second person. "inbok" is lowercase, even at the
+- Plain and exact, in the second person. "amplop" is lowercase, even at the
   start of a sentence.
 - Sentence case. Buttons are a verb and what it acts on, and the verb
   carries into the result ("Archive", "Conversation archived"). Gmail's
@@ -1495,9 +1495,9 @@ the real API:
 
 | Use                       | Means                                          | Not              |
 | ------------------------- | ---------------------------------------------- | ---------------- |
-| member                    | A person who signs in to inbok                 | user, customer   |
+| member                    | A person who signs in to amplop                | user, customer   |
 | account                   | A connected mailbox (one Gmail address)        | mailbox, inbox   |
-| this inbok                | The installation, in admin text                | instance, server |
+| this amplop               | The installation, in admin text                | instance, server |
 | conversation              | One list row, a thread                         | thread           |
 | message                   | One email in a conversation                    | mail item        |
 | label                     | A Gmail label (IMAP folders later shown alike) | tag              |

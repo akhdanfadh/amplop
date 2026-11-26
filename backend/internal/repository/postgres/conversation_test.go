@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
 )
 
 // conversationReadTest is a [syncedMailTest] whose two accounts have

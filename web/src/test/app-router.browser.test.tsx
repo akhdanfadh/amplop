@@ -18,7 +18,7 @@ function fiberKeys(element: Element): string[] {
 it("leaves the page's <html> and <body> to the page", async () => {
   const router = await appRouter("/sign-in");
   await render(<RouterProvider router={router} />);
-  const heading = page.getByRole("heading", { level: 1, name: "Sign in to inbok" });
+  const heading = page.getByRole("heading", { level: 1, name: "Sign in to amplop" });
   await expect.element(heading).toBeVisible();
 
   // The page's own heading carries the key, so a renamed key fails here

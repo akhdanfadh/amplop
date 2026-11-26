@@ -6,15 +6,15 @@ import (
 	"net/url"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/randomsecret"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/randomsecret"
+	"amplop/internal/systememail"
 )
 
 const (
 	linkPurpose = "password reset link"
-	linkSubject = "Reset your inbok password"
+	linkSubject = "Reset your amplop password"
 )
 
 // ErrLinkNotSent means a reset link's send failed in a way worth retrying.
@@ -132,7 +132,7 @@ func (l *Links) linkBody(secret string) string {
 	// The secret goes in the fragment, which browsers never send to a
 	// server, so it stays out of request logs, proxies, and Referer headers.
 	link.Fragment = secret
-	return "Someone asked to reset the password of your inbok account at " + l.publicURL.String() + ".\n\n" +
+	return "Someone asked to reset the password of your amplop account at " + l.publicURL.String() + ".\n\n" +
 		"To choose a new password, open this link:\n\n" +
 		link.String() + "\n\n" +
 		"The link expires in 1 hour. If you didn't ask for this, you can ignore this email. Your password stays the same unless the link is used.\n"

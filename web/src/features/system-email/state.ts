@@ -1,6 +1,6 @@
 import type { SystemEmailSettings } from "@/api/generated/model";
 
-// SystemEmailState is whether inbok can send its own email, as far as the
+// SystemEmailState is whether amplop can send its own email, as far as the
 // saved settings tell: "tested" when they passed a test message, "untested"
 // when saved without one (or after a failed one, which clears the time),
 // "none" when nothing is saved.

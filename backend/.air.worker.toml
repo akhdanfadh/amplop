@@ -1,5 +1,5 @@
-# Air rebuilds and restarts `inbok worker` when a Go file changes, beside
-# .air.toml's `inbok serve`. Run from backend:
+# Air rebuilds and restarts `amplop worker` when a Go file changes, beside
+# .air.toml's `amplop serve`. Run from backend:
 # go tool -modfile=tools.mod air -c .air.worker.toml
 # Settings not listed here use Air's defaults.
 
@@ -7,8 +7,8 @@
 tmp_dir = "tmp/worker"
 
 [build]
-cmd = "go build -o ./tmp/worker/inbok ./cmd/inbok"
-entrypoint = ["./tmp/worker/inbok", "worker"]
+cmd = "go build -o ./tmp/worker/amplop ./cmd/amplop"
+entrypoint = ["./tmp/worker/amplop", "worker"]
 include_ext = ["go"]
 exclude_dir = ["tmp"]
 exclude_regex = ["_test\\.go$"]

@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/label"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/label"
+	"amplop/internal/mailsync"
 )
 
 // nestedMailboxes are [threadMailboxes] with 2026 under Receipts.

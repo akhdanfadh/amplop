@@ -87,7 +87,7 @@ func (q *Queries) ListRegistrationAttempts(ctx context.Context) ([]ListRegistrat
 }
 
 const lockRegistrationAttempts = `-- name: LockRegistrationAttempts :exec
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.registration-attempt', 0))
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.registration-attempt', 0))
 `
 
 // Serialize every registration request: the instance limit counts them all.

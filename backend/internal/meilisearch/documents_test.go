@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // Documents are stored under the index's field names, IDs as decimal strings,
@@ -67,7 +67,7 @@ func TestUpsertFields(t *testing.T) {
 // An upsert replaces a stored document whole, so a field the new one lacks
 // is gone, rather than merging into it.
 func TestUpsertReplaces(t *testing.T) {
-	// Given a stored document with a field inbok's documents never have.
+	// Given a stored document with a field amplop's documents never have.
 	index := newIndex(t)
 	d := message("Invoice")
 	seed(t, index, owner, map[string]any{"id": d.ID.String(), "owner_user_id": "1", "stale": "left over"})

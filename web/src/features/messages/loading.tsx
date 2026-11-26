@@ -6,7 +6,7 @@ import { loadingMessage } from "./text";
 // after 300 ms (DESIGN.md "States").
 export function MessageLoading(): ReactElement {
   return (
-    // Delayed, so content from inbok's own store, which usually comes
+    // Delayed, so content from amplop's own store, which usually comes
     // sooner, appears without a flash.
     <output className="flex pending-delay items-center gap-2 text-muted-foreground">
       <Spinner />

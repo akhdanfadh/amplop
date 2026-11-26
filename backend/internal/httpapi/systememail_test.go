@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/session"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/session"
+	"amplop/internal/systememail"
 )
 
 type fakeSystemEmail struct {
@@ -54,16 +54,16 @@ func (f *fakeTestMessages) Send(_ context.Context, recipient string) (systememai
 	return f.result, f.err
 }
 
-const systemEmailBody = `{"host":"smtp.example.com","port":587,"security":"starttls","username":"inbok@example.com",` +
-	`"password":"app password 7f3c","fromAddress":"inbok@example.com","fromName":"inbok"}`
+const systemEmailBody = `{"host":"smtp.example.com","port":587,"security":"starttls","username":"amplop@example.com",` +
+	`"password":"app password 7f3c","fromAddress":"amplop@example.com","fromName":"amplop"}`
 
 var systemEmailTested = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
 func systemEmailSettingsFixture() systememail.Settings {
 	return systememail.Settings{
-		Server:      systememail.Server{Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS, Username: "inbok@example.com"},
+		Server:      systememail.Server{Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS, Username: "amplop@example.com"},
 		HasPassword: true,
-		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &systemEmailTested,
+		FromAddress: "amplop@example.com", FromName: "amplop", TestedAt: &systemEmailTested,
 	}
 }
 
@@ -82,11 +82,11 @@ func TestGetSystemEmail(t *testing.T) {
 		want     string
 	}{
 		{"not configured", nil, `{"data":{}}`},
-		{"without sign-in or test", &systememail.Settings{Server: systememail.Server{Host: "localhost", Port: 1025, Security: systememail.SecurityNone}, FromAddress: "inbok@localhost", FromName: "inbok"},
+		{"without sign-in or test", &systememail.Settings{Server: systememail.Server{Host: "localhost", Port: 1025, Security: systememail.SecurityNone}, FromAddress: "amplop@localhost", FromName: "amplop"},
 			`{"data":{"settings":{"host":"localhost","port":1025,"security":"none","username":"","hasPassword":false,` +
-				`"fromAddress":"inbok@localhost","fromName":"inbok","testedAt":null}}}`},
+				`"fromAddress":"amplop@localhost","fromName":"amplop","testedAt":null}}}`},
 		{"configured", &settings, `{"data":{"settings":{"host":"smtp.example.com","port":587,"security":"starttls",` +
-			`"username":"inbok@example.com","hasPassword":true,"fromAddress":"inbok@example.com","fromName":"inbok",` +
+			`"username":"amplop@example.com","hasPassword":true,"fromAddress":"amplop@example.com","fromName":"amplop",` +
 			`"testedAt":"2026-10-30T12:00:00Z"}}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -114,12 +114,12 @@ func TestSaveSystemEmail(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, int64(42), service.actorID, "the actor is the signed-in administrator")
 	assert.Equal(t, systememail.Input{
-		Server:      systememail.Server{Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS, Username: "inbok@example.com"},
+		Server:      systememail.Server{Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS, Username: "amplop@example.com"},
 		Password:    "app password 7f3c",
-		FromAddress: "inbok@example.com", FromName: "inbok",
+		FromAddress: "amplop@example.com", FromName: "amplop",
 	}, service.input)
 	assert.JSONEq(t, `{"data":{"settings":{"host":"smtp.example.com","port":587,"security":"starttls",`+
-		`"username":"inbok@example.com","hasPassword":true,"fromAddress":"inbok@example.com","fromName":"inbok",`+
+		`"username":"amplop@example.com","hasPassword":true,"fromAddress":"amplop@example.com","fromName":"amplop",`+
 		`"testedAt":null}}}`, response.Body.String())
 	assert.NotContains(t, logs.String(), "app password")
 }
@@ -130,7 +130,7 @@ func TestSaveSystemEmailWithoutSignIn(t *testing.T) {
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 
 	response := requestAuthenticated(api, http.MethodPut, "/system-email",
-		`{"host":"localhost","port":1025,"security":"none","fromAddress":"inbok@localhost","fromName":"inbok"}`)
+		`{"host":"localhost","port":1025,"security":"none","fromAddress":"amplop@localhost","fromName":"amplop"}`)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Empty(t, service.input.Username)
@@ -157,7 +157,7 @@ func TestSaveSystemEmailKeepsPassword(t *testing.T) {
 			response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.Equal(t, "inbok@example.com", service.input.Username)
+			assert.Equal(t, "amplop@example.com", service.input.Username)
 			assert.Empty(t, service.input.Password)
 		})
 	}
@@ -169,20 +169,20 @@ func TestSaveSystemEmailTrims(t *testing.T) {
 	service := &fakeSystemEmail{}
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 	body := strings.NewReplacer(`"host":"smtp.example.com"`, `"host":" smtp.example.com\r\n"`,
-		`"username":"inbok@example.com"`, `"username":" inbok@example.com\t"`).Replace(systemEmailBody)
+		`"username":"amplop@example.com"`, `"username":" amplop@example.com\t"`).Replace(systemEmailBody)
 
 	response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, "smtp.example.com", service.input.Host)
-	assert.Equal(t, "inbok@example.com", service.input.Username)
+	assert.Equal(t, "amplop@example.com", service.input.Username)
 }
 
 // A username of only spaces means no sign-in.
 func TestSaveSystemEmailBlankUsername(t *testing.T) {
 	service := &fakeSystemEmail{}
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
-	body := strings.Replace(systemEmailBody, `"username":"inbok@example.com"`, `"username":"   "`, 1)
+	body := strings.Replace(systemEmailBody, `"username":"amplop@example.com"`, `"username":"   "`, 1)
 
 	response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
@@ -199,8 +199,8 @@ func TestSaveSystemEmailInvalid(t *testing.T) {
 		{"long host", `"host":"smtp.example.com"`, `"host":"` + strings.Repeat("a", 254) + `"`, "body.host", "Use at most 253 characters."},
 		{"port zero", `"port":587`, `"port":0`, "body.port", "Enter a whole number from 1 to 65535."},
 		{"unknown security", `"security":"starttls"`, `"security":"ssl"`, "body.security", "Enter a valid value."},
-		{"from address", `"fromAddress":"inbok@example.com"`, `"fromAddress":"inbok <inbok@example.com>"`, "body.fromAddress", "Enter an email address, like name@example.com."},
-		{"blank from name", `"fromName":"inbok"`, `"fromName":""`, "body.fromName", "Enter a valid value."},
+		{"from address", `"fromAddress":"amplop@example.com"`, `"fromAddress":"amplop <amplop@example.com>"`, "body.fromAddress", "Enter an email address, like name@example.com."},
+		{"blank from name", `"fromName":"amplop"`, `"fromName":""`, "body.fromName", "Enter a valid value."},
 		{"long password", `"password":"app password 7f3c"`, `"password":"` + strings.Repeat("p", 256) + `"`, "body.password", "Use at most 255 characters."},
 	} {
 		t.Run(c.name, func(t *testing.T) {

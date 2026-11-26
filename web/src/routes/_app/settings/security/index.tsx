@@ -5,7 +5,7 @@ import {
   useDeleteCurrentSession,
   useGetCurrentSession,
   useGetTOTPStatus,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ const unauthorized = 401;
 
 export const Route = createFileRoute("/_app/settings/security/")({
   component: Security,
-  head: () => ({ meta: [{ title: "Security - inbok" }] }),
+  head: () => ({ meta: [{ title: "Security - amplop" }] }),
 });
 
 // Security is the account's security settings: the email address and its

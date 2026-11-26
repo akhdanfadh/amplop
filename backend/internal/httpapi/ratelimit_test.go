@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/clientprefix"
+	"amplop/internal/clientprefix"
 )
 
 // testClock is a clock tests move by hand.

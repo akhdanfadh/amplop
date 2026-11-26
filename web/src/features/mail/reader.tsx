@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactElement } f
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { ArrowLeftIcon } from "lucide-react";
-import { getGetConversationQueryOptions, useListConnectedAccounts } from "@/api/generated/inbok";
+import { getGetConversationQueryOptions, useListConnectedAccounts } from "@/api/generated/amplop";
 import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
 import { NotFound } from "@/components/route-states";
@@ -58,7 +58,7 @@ export function Reader({
   const client = useQueryClient();
   const accounts = useListConnectedAccounts();
   const phone = useLayout() === "phone";
-  // Read again with the lists, by inbok's timer, the tab showing again, or
+  // Read again with the lists, by amplop's timer, the tab showing again, or
   // the connection coming back (refreshNewest), not on focus too.
   const read = useQuery({
     ...getGetConversationQueryOptions(conversationId),
@@ -127,7 +127,7 @@ export function Reader({
 
   return (
     <>
-      <title>{`${subjectText(conversation.subject)} - inbok`}</title>
+      <title>{`${subjectText(conversation.subject)} - amplop`}</title>
       <ConversationView
         // A new conversation starts afresh: folds, the reply editor, focus.
         key={conversationId}

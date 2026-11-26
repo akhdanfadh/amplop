@@ -32,7 +32,7 @@ func TestCrossOriginRejectsWrite(t *testing.T) {
 	assert.NotEmpty(t, response.Header().Get(requestIDHeader))
 	assert.Contains(t, response.Header().Get("Vary"), "Sec-Fetch-Site")
 	assert.Contains(t, response.Header().Get("Vary"), "Origin")
-	assert.JSONEq(t, `{"type":"/api/v0/problems/cross-origin-request","status":403,"title":"Cross-origin request blocked","detail":"Send this request from the inbok site."}`, response.Body.String())
+	assert.JSONEq(t, `{"type":"/api/v0/problems/cross-origin-request","status":403,"title":"Cross-origin request blocked","detail":"Send this request from the amplop site."}`, response.Body.String())
 	assert.Contains(t, logs.String(), "status=403")
 	for _, secret := range []string{"private-note", "private-origin.example"} {
 		assert.NotContains(t, response.Body.String(), secret)
@@ -45,16 +45,16 @@ func TestCrossOrigin(t *testing.T) {
 		name, site, origin string
 		status             int
 	}{
-		{"same origin", "same-origin", "http://inbok.example", http.StatusCreated},
+		{"same origin", "same-origin", "http://amplop.example", http.StatusCreated},
 		{"same origin metadata only", "same-origin", "", http.StatusCreated},
-		{"same site", "same-site", "http://sibling.inbok.example", http.StatusForbidden},
+		{"same site", "same-site", "http://sibling.amplop.example", http.StatusForbidden},
 		{"cross site", "cross-site", "http://outside.example", http.StatusForbidden},
-		{"metadata takes priority", "cross-site", "http://inbok.example", http.StatusForbidden},
+		{"metadata takes priority", "cross-site", "http://amplop.example", http.StatusForbidden},
 		{"direct navigation", "none", "", http.StatusCreated},
-		{"unknown metadata", "unknown", "http://inbok.example", http.StatusForbidden},
-		{"matching origin fallback", "", "http://inbok.example", http.StatusCreated},
+		{"unknown metadata", "unknown", "http://amplop.example", http.StatusForbidden},
+		{"matching origin fallback", "", "http://amplop.example", http.StatusCreated},
 		{"foreign origin fallback", "", "http://outside.example", http.StatusForbidden},
-		{"different port", "", "http://inbok.example:8080", http.StatusForbidden},
+		{"different port", "", "http://amplop.example:8080", http.StatusForbidden},
 		{"null origin", "", "null", http.StatusForbidden},
 		{"invalid origin", "", "://invalid", http.StatusForbidden},
 		{"missing source headers", "", "", http.StatusForbidden},
@@ -62,7 +62,7 @@ func TestCrossOrigin(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			writes := &testWrites{}
-			request := httptest.NewRequest(http.MethodPost, "http://inbok.example"+apiPrefix+testWritePath, strings.NewReader(`{"note":"hello","amount":3,"highlighted":false}`))
+			request := httptest.NewRequest(http.MethodPost, "http://amplop.example"+apiPrefix+testWritePath, strings.NewReader(`{"note":"hello","amount":3,"highlighted":false}`))
 			request.Header.Set("Content-Type", jsonContentType)
 			request.Header.Set("Sec-Fetch-Site", c.site)
 			request.Header.Set("Origin", c.origin)

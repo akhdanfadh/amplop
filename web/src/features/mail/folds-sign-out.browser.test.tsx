@@ -7,8 +7,8 @@ import { accountFold, setUnfolded, useUnfolded } from "./folds";
 // This file loads the folds module once, as a page does: in a file with
 // other loads, an earlier load's clearing would clear the rows too.
 
-const tabKey = "inbok-sidebar-folds";
-const lastKey = "inbok-sidebar-last-folds";
+const tabKey = "amplop-sidebar-folds";
+const lastKey = "amplop-sidebar-last-folds";
 
 it("ends the folds with the member's session, in this tab and for new ones", async () => {
   const { result } = await renderHook(() => useUnfolded());

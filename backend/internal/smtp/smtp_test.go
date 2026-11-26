@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 func TestSendAccepted(t *testing.T) {
@@ -48,13 +48,13 @@ func TestSendAccepted(t *testing.T) {
 			require.Len(t, got, 1)
 			assert.Equal(t, testHello, got[0].hello)
 			assert.Equal(t, server.Username, got[0].signedIn)
-			assert.Equal(t, "inbok@example.com", got[0].from)
+			assert.Equal(t, "amplop@example.com", got[0].from)
 			assert.Equal(t, "admin@example.org", got[0].to)
 		})
 	}
 }
 
-// The greeting names inbok's public host; an IP address becomes an address
+// The greeting names amplop's public host; an IP address becomes an address
 // literal (RFC 5321 section 4.1.3).
 func TestNewSenderHello(t *testing.T) {
 	for _, c := range []struct {
@@ -88,7 +88,7 @@ func TestSendMessage(t *testing.T) {
 	fake := &fakeServer{security: systememail.SecuritySTARTTLS}
 	server := fake.start(t, certificate)
 	message := testMessage()
-	message.FromName = "inbok, Mail Ünit"
+	message.FromName = "amplop, Mail Ünit"
 
 	err := (&Sender{roots: roots, timeout: testTimeout, hello: testHello}).Send(t.Context(), server, testPassword, message)
 	require.NoError(t, err)
@@ -99,13 +99,13 @@ func TestSendMessage(t *testing.T) {
 	require.NoError(t, err)
 	from, err := reader.Header.AddressList("From")
 	require.NoError(t, err)
-	assert.Equal(t, []*mail.Address{{Name: "inbok, Mail Ünit", Address: "inbok@example.com"}}, from)
+	assert.Equal(t, []*mail.Address{{Name: "amplop, Mail Ünit", Address: "amplop@example.com"}}, from)
 	to, err := reader.Header.AddressList("To")
 	require.NoError(t, err)
 	assert.Equal(t, []*mail.Address{{Address: "admin@example.org"}}, to)
 	subject, err := reader.Header.Subject()
 	require.NoError(t, err)
-	assert.Equal(t, "Test message from inbok", subject)
+	assert.Equal(t, "Test message from amplop", subject)
 	date, err := reader.Header.Date()
 	require.NoError(t, err)
 	assert.WithinDuration(t, time.Now(), date, time.Minute)
@@ -120,7 +120,7 @@ func TestSendMessage(t *testing.T) {
 	require.NoError(t, err)
 	body, err := io.ReadAll(part.Body)
 	require.NoError(t, err)
-	assert.Equal(t, "This is a test message from inbok.\r\nIt needs no reply.\r\n", string(body))
+	assert.Equal(t, "This is a test message from amplop.\r\nIt needs no reply.\r\n", string(body))
 }
 
 func TestSendFailure(t *testing.T) {
@@ -399,7 +399,7 @@ func TestSendPermanentTimeout(t *testing.T) {
 }
 
 // failingWrites wraps a connection so writes fail once the message's final
-// dot is among them, as when the connection breaks while inbok flushes the
+// dot is among them, as when the connection breaks while amplop flushes the
 // message's end.
 type failingWrites struct {
 	net.Conn
@@ -413,7 +413,7 @@ func (c failingWrites) Write(b []byte) (int, error) {
 }
 
 // A failure while flushing the message's end means the final dot never left
-// inbok, so the server cannot have accepted the message: not unconfirmed.
+// amplop, so the server cannot have accepted the message: not unconfirmed.
 func TestSendFinalWriteFailed(t *testing.T) {
 	server := scriptedServer(t, func(conn *textproto.Conn) {
 		reply(conn, "220 localhost")
@@ -439,7 +439,7 @@ func TestSendFinalWriteFailed(t *testing.T) {
 	assert.False(t, failed.Unconfirmed)
 }
 
-// A caller giving up while inbok waits for the answer to a complete message
+// A caller giving up while amplop waits for the answer to a complete message
 // still learns the send is unconfirmed; one giving up earlier does not.
 func TestSendCanceledUnconfirmed(t *testing.T) {
 	// Given a server that has the whole message and never answers, and a
@@ -521,7 +521,7 @@ func TestSendQuitUnanswered(t *testing.T) {
 func TestSenderWithTimeout(t *testing.T) {
 	port := silentServer(t)
 	server := systememail.Server{Host: "127.0.0.1", Port: port, Security: systememail.SecurityNone}
-	original := NewSender("inbok.example.com")
+	original := NewSender("amplop.example.com")
 	start := time.Now()
 
 	err := original.WithTimeout(100*time.Millisecond).Send(t.Context(), server, testPassword, testMessage())

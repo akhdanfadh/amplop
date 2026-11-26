@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/systememail"
+	"amplop/internal/emailaddress"
+	"amplop/internal/systememail"
 )
 
 var noticeRecoveredAt = time.Date(2026, 11, 3, 11, 16, 0, 0, time.UTC)
@@ -140,7 +140,7 @@ func TestRecoveryNoticeSend(t *testing.T) {
 }
 
 // A failed send's error names the step and whether it is unconfirmed, never
-// the server's reply, which can quote what inbok sent it, e.g. the SMTP
+// the server's reply, which can quote what amplop sent it, e.g. the SMTP
 // password; DBOS keeps the error with the run.
 func TestRecoveryNoticeSendErrorText(t *testing.T) {
 	reply := errors.New("535 authentication failed for password hunter2")
@@ -203,7 +203,7 @@ func TestRecoveryNoticeOwnMessage(t *testing.T) {
 	assert.Equal(t, "admin@example.com", sent.To)
 	assert.Equal(t, "recovery notice", sent.Purpose)
 	assert.False(t, sent.Private)
-	assert.Equal(t, "Your inbok administrator account was recovered", sent.Subject)
+	assert.Equal(t, "Your amplop administrator account was recovered", sent.Subject)
 	for _, want := range []string{
 		"3 November 2026 at 11:16 UTC", "admin@example.com", "replaced your password",
 		"https://mail.example.com/sign-in", "https://mail.example.com/security",
@@ -225,7 +225,7 @@ func TestRecoveryNoticeAlertMessage(t *testing.T) {
 	sent := mailer.sent[0]
 	assert.Equal(t, "other@example.com", sent.To)
 	assert.Equal(t, "recovery alert", sent.Purpose)
-	assert.Equal(t, "An inbok administrator account was recovered", sent.Subject)
+	assert.Equal(t, "An amplop administrator account was recovered", sent.Subject)
 	for _, want := range []string{
 		"3 November 2026 at 11:16 UTC", "admin@example.com", "you are also an administrator",
 		"If you did not expect this",

@@ -13,7 +13,7 @@ const signInLink: OutcomeLink = { to: "/sign-in", label: "Sign in" };
 
 export const Route = createFileRoute("/_auth/register/complete")({
   component: CompleteRegistration,
-  head: () => ({ meta: [{ title: "Create your account - inbok" }] }),
+  head: () => ({ meta: [{ title: "Create your account - amplop" }] }),
 });
 
 function CompleteRegistration(): ReactElement {

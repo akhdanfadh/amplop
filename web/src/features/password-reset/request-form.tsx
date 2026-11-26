@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
-import { useRequestPasswordResetLink } from "@/api/generated/inbok";
+import { useRequestPasswordResetLink } from "@/api/generated/amplop";
 import { NewPasswordResetRequest } from "@/api/generated/model";
 import { emailAddress } from "@/api/validation";
 import { useAppForm } from "@/components/form/app-form";

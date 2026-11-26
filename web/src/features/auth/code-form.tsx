@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCreateSessionWithCode, useGetCurrentSession } from "@/api/generated/inbok";
+import { useCreateSessionWithCode, useGetCurrentSession } from "@/api/generated/amplop";
 import { uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { cn } from "@/lib/cn";

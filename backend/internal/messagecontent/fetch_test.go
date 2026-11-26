@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
-	"inbok/internal/messagecontent/messagecontenttest"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
+	"amplop/internal/messagecontent/messagecontenttest"
 )
 
 // fetchNow is the fetcher's clock in these tests.

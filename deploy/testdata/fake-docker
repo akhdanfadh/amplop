@@ -1,15 +1,15 @@
 #!/bin/sh
 # A fake docker for upgrade.bats. It logs every call to $WORK/all, and each
-# call that changes something to $WORK/calls, with the image inbok:local
+# call that changes something to $WORK/calls, with the image amplop:local
 # points to at that moment. It answers only the questions upgrade.sh should
 # ask, exactly as it should ask them, and exits 99 on any other.
 #
 # A test sets:
 # - FAIL, an extended regular expression: a call that matches it fails
-#   before it answers or changes anything, but only while inbok:local is
+#   before it answers or changes anything, but only while amplop:local is
 #   FAIL_IMAGE when that is set;
 # - VOLUMES, the project's volumes as name=key, one per line;
-# - PREVIOUS, the image inbok:local names before the upgrade, empty for a
+# - PREVIOUS, the image amplop:local names before the upgrade, empty for a
 #   first deploy with none; "previous" when unset;
 # - CONFIG, what docker compose config prints; a project named probe when
 #   unset.
@@ -38,7 +38,7 @@ case $args in
 "image inspect"* | "volume ls"* | "volume inspect"* | *" config" | *" config --"*) question=1 ;;
 *)
 	question=
-	echo "${INBOK_IMAGE:+INBOK_IMAGE=$INBOK_IMAGE }[$image] docker $args" >> "$WORK/calls"
+	echo "${AMPLOP_IMAGE:+AMPLOP_IMAGE=$AMPLOP_IMAGE }[$image] docker $args" >> "$WORK/calls"
 	;;
 esac
 
@@ -51,7 +51,7 @@ fi
 if [ -n "$question" ]; then
 	case $args in
 	"compose -p probe config --services")
-		printf 'postgres\nmeilisearch\nseaweedfs\nmigrate\ninbok\nworker\ncaddy\n'
+		printf 'postgres\nmeilisearch\nseaweedfs\nmigrate\namplop\nworker\ncaddy\n'
 		;;
 	"compose -p probe config --volumes")
 		printf 'db\ncontent\nmeilisearch-1.56.1\n'
@@ -73,7 +73,7 @@ if [ -n "$question" ]; then
 			fi
 		done
 		;;
-	"image inspect --format {{.Id}} inbok:local")
+	"image inspect --format {{.Id}} amplop:local")
 		if [ -z "${PREVIOUS-previous}" ]; then
 			exit 1
 		fi

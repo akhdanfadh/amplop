@@ -31,7 +31,7 @@ const tryLater = "Try again later.";
 const millisecondsPerMinute = 60_000;
 // A weekday names one day only within the next six.
 const longestNamedWait = 6 * 24 * 60 * millisecondsPerMinute;
-// English, as all of inbok's words; the time is the shared clock's.
+// English, as all of amplop's words; the time is the shared clock's.
 const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long" });
 
 // uncertainOutcome reports whether err leaves it unknown whether its write

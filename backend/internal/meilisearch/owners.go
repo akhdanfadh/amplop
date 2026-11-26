@@ -9,7 +9,7 @@ import (
 
 	meili "github.com/meilisearch/meilisearch-go"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // Owners returns the owner of each member's index, page by page of
@@ -24,7 +24,7 @@ func (i *Index) Owners(ctx context.Context) ([]int64, error) {
 	owners := make([]int64, 0, len(uids))
 	for _, uid := range uids {
 		owner, err := strconv.ParseInt(strings.TrimPrefix(uid, i.prefix), 10, 64)
-		// Only the name inbok gives the owner's index, e.g. not
+		// Only the name amplop gives the owner's index, e.g. not
 		// messages_042, which a rebuild of owner 42 would never delete.
 		if err != nil || search.ValidateOwner(owner) != nil || uid != i.uid(owner) {
 			return nil, fmt.Errorf("list search index owners: index %q names no user ID", uid)

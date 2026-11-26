@@ -147,7 +147,7 @@ describe("watch", () => {
   });
 
   it("loads an inline image with the session cookie", async () => {
-    // Strict, as inbok's session cookie is: a frame of another origin would
+    // Strict, as amplop's session cookie is: a frame of another origin would
     // not send it.
     document.cookie = `${sessionCookie}; path=/; SameSite=Strict`;
     const root = await shown(show("image"));

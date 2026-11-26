@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 // errUnsafeInput means the input would change the SMTP session or cannot be dialed.

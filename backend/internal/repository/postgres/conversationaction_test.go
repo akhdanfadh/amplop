@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
 )
 
 // [DB.ListThreads] finds the member's conversations' threads, each with
@@ -69,7 +69,7 @@ func TestUpdateMessages(t *testing.T) {
 	assert.Equal(t, state, kept)
 }
 
-// A label Gmail answered with that inbok has not listed yet is left out
+// A label Gmail answered with that amplop has not listed yet is left out
 // and the rest of the change written; a poll at the same version, which
 // lists the label first, then adds it back.
 func TestUpdateMessagesNewMailbox(t *testing.T) {

@@ -13,11 +13,11 @@ import (
 
 	"golang.org/x/term"
 
-	"inbok/internal/account"
-	"inbok/internal/config"
-	"inbok/internal/dbos"
-	"inbok/internal/emailaddress"
-	"inbok/internal/repository/postgres"
+	"amplop/internal/account"
+	"amplop/internal/config"
+	"amplop/internal/dbos"
+	"amplop/internal/emailaddress"
+	"amplop/internal/repository/postgres"
 )
 
 type adminRecovery interface {
@@ -74,7 +74,7 @@ func runRecovery(ctx context.Context, email string, service adminRecovery, conso
 	if _, err = fmt.Fprintf(console.output,
 		"Password replaced. %d TOTP factors and %d backup codes removed. %d sessions ended.\n"+
 			"%d sign-in challenges, %d TOTP attempts, %d sign-in attempts, and %d password reset links cleared.\n"+
-			"Sign in, then set up TOTP, which inbok asks for at once, to restore administrator access.\n",
+			"Sign in, then set up TOTP, which amplop asks for at once, to restore administrator access.\n",
 		result.Factors, result.BackupCodes, result.Sessions,
 		result.Challenges, result.TOTPAttempts, result.SignInAttempts, result.ResetLinks); err != nil {
 		return errors.New("recovery completed, but could not write the summary")
@@ -130,7 +130,7 @@ func recoverAdmin(ctx context.Context, email string) error {
 	// command's output.
 	client, err := dbos.NewClient(ctx, url, slog.New(slog.DiscardHandler))
 	if err != nil {
-		return errors.New("cannot open background work for recovery; run inbok migrate first")
+		return errors.New("cannot open background work for recovery; run amplop migrate first")
 	}
 	defer client.Close()
 

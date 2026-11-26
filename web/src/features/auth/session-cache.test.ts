@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { testQueryClient } from "@/test/query-client";
 import { linkOptions } from "@tanstack/react-router";
 import { expect, it } from "vite-plus/test";
-import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
+import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/amplop";
 import { mailHref, rememberMailHref } from "@/features/mail/places";
 import {
   clearAccountCache,
@@ -71,7 +71,7 @@ it("clears what else holds a member's data, until it stops", () => {
 
 it("tells this browser's other tabs, and hears theirs", async () => {
   // Another tab's end of the channel.
-  const otherTab = new BroadcastChannel("inbok-account");
+  const otherTab = new BroadcastChannel("amplop-account");
   try {
     const told = new Promise((resolve) => {
       otherTab.addEventListener("message", (event) => resolve(event.data), { once: true });
@@ -94,9 +94,9 @@ it("tells this browser's other tabs, and hears theirs", async () => {
 });
 
 it("clears this tab alone for another tab's end, telling no tab back", async () => {
-  const otherTab = new BroadcastChannel("inbok-account");
+  const otherTab = new BroadcastChannel("amplop-account");
   // A third tab, which sends the marker below.
-  const thirdTab = new BroadcastChannel("inbok-account");
+  const thirdTab = new BroadcastChannel("amplop-account");
   try {
     const told: unknown[] = [];
     otherTab.addEventListener("message", (event) => told.push(event.data));

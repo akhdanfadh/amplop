@@ -299,7 +299,7 @@ describe("picking", () => {
     const rows = [conversation(5), conversation(4), conversation(3)];
     await open(rows);
     api.refuse[rows[0].id] = "needs-reconnect";
-    // Gone at Gmail, and from inbok's lists once its poll noticed.
+    // Gone at Gmail, and from amplop's lists once its poll noticed.
     api.refuse[rows[1].id] = "not-found";
     api.conversations = [rows[0], rows[2]];
     await pickBox("Subject 5");
@@ -401,7 +401,7 @@ describe("picking", () => {
     const rows = Array.from({ length: 120 }, (_, n) => conversation(n));
     await open(rows);
     // Each move to the last row loads the next page, until the end.
-    const end = page.getByText("That's everything inbok has copied.", { exact: false });
+    const end = page.getByText("That's everything amplop has copied.", { exact: false });
     await vi.waitFor(
       async () => {
         const last = list()

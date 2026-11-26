@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/mailsync"
+	"amplop/internal/mailsync"
 )
 
 func TestParsePlace(t *testing.T) {
@@ -154,7 +154,7 @@ func TestGetLinksNoAnswerToADraft(t *testing.T) {
 }
 
 func TestGetLinksAnswers(t *testing.T) {
-	// Given a message, a reply to it, a reply to a message inbok lacks, a
+	// Given a message, a reply to it, a reply to a message amplop lacks, a
 	// reply naming its parents with the one answered last, two copies of
 	// one Message-ID, a reply to those, and a message naming itself.
 	ids := make([]uuid.UUID, 7)
@@ -175,7 +175,7 @@ func TestGetLinksAnswers(t *testing.T) {
 	detail, err := newTestService(storage).Get(t.Context(), 1, storage.rows[0].ID)
 
 	// Then each answers the message with the last ID it names, the first
-	// copy of two, and none for one inbok lacks or itself.
+	// copy of two, and none for one amplop lacks or itself.
 	require.NoError(t, err)
 	answers := make([]uuid.UUID, len(detail.Messages))
 	for i, m := range detail.Messages {

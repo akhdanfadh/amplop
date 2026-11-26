@@ -1,5 +1,5 @@
 // Package s3 keeps message content in an S3-compatible object store,
-// SeaweedFS in every inbok stack, through AWS's Go SDK.
+// SeaweedFS in every amplop stack, through AWS's Go SDK.
 //
 // DESIGN: No SDK type leaves this package. Features declare what they
 // store and read, and this package implements it, as smtp implements
@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	// defaultBucket holds all of inbok's content; [Open] creates it.
-	defaultBucket = "inbok"
+	// defaultBucket holds all of amplop's content; [Open] creates it.
+	defaultBucket = "amplop"
 
 	// region signs every request. SeaweedFS accepts any region, and the SDK
 	// requires one.
@@ -56,14 +56,14 @@ type Store struct {
 	bucket string
 }
 
-// Open connects to the S3 service in settings and creates inbok's bucket
+// Open connects to the S3 service in settings and creates amplop's bucket
 // if it is missing. It returns an error if the service cannot be reached,
 // refuses the keys, or cannot create the bucket.
 func Open(ctx context.Context, settings Settings) (*Store, error) {
 	return open(ctx, settings, defaultBucket)
 }
 
-// New returns the store of inbok's bucket in the S3 service in settings,
+// New returns the store of amplop's bucket in the S3 service in settings,
 // without asking the service anything: a call fails once the service
 // cannot be reached, or the bucket is missing until [Open] creates it.
 func New(settings Settings) *Store {
@@ -87,13 +87,13 @@ func clientOptions(settings Settings) s3api.Options {
 	return s3api.Options{
 		BaseEndpoint: aws.String(settings.Endpoint.String()),
 		Region:       region,
-		// SeaweedFS serves buckets as paths, e.g. /inbok/<key>, not as host names.
+		// SeaweedFS serves buckets as paths, e.g. /amplop/<key>, not as host names.
 		UsePathStyle: true,
 		Credentials:  credentials.NewStaticCredentialsProvider(settings.AccessKeyID, settings.SecretAccessKey, ""),
 		// NOTE: The SDK sets no read timeout for S3: its default (v1.47.7) is
 		// off, and S3 is exempt from it, since a timeout can fire while the
-		// caller's own upload is still being sent. inbok's uploads are small,
-		// on a private network, so inbok sets one itself.
+		// caller's own upload is still being sent. amplop's uploads are small,
+		// on a private network, so amplop sets one itself.
 		HTTPClient: awshttp.NewBuildableClient().WithReadTimeout(readTimeout),
 		// NOTE: Left unset, as [s3api.New] leaves them, the SDK sends no
 		// checksum with an upload and checks none a response sends;

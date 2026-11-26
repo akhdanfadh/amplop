@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 func TestFakeContract(t *testing.T) {

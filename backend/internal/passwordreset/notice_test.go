@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 // noticeMemory answers ReadPasswordChangedNotice with state, or err.
@@ -46,10 +46,10 @@ func TestNoticeSent(t *testing.T) {
 	sent := mailer.sent[0]
 	assert.Equal(t, "password changed notice", sent.Purpose)
 	assert.Equal(t, "now@example.com", sent.To)
-	assert.Equal(t, "Your inbok password was changed", sent.Subject)
+	assert.Equal(t, "Your amplop password was changed", sent.Subject)
 	assert.False(t, sent.Private, "the notice holds no secret")
-	assert.Contains(t, sent.Body, "The password of your inbok account at https://mail.example.com was changed on 3 November 2026 at 12:00 UTC")
-	assert.Contains(t, sent.Body, "Contact your inbok administrator.")
+	assert.Contains(t, sent.Body, "The password of your amplop account at https://mail.example.com was changed on 3 November 2026 at 12:00 UTC")
+	assert.Contains(t, sent.Body, "Contact your amplop administrator.")
 }
 
 // A user who is gone, or deactivated since, is not emailed.

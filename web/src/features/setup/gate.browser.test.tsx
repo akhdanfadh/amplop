@@ -96,7 +96,7 @@ describe("SetupGate", () => {
 
     const heading = page.getByRole("heading", { name: "Couldn't load this page" });
     await expect.element(heading).toHaveFocus();
-    expect(document.title).toBe("Couldn't load this page - inbok");
+    expect(document.title).toBe("Couldn't load this page - amplop");
     await userEvent.keyboard("{Tab}");
     await userEvent.keyboard("{Enter}");
     // At once, with focus, so the pressed button's going loses nothing.

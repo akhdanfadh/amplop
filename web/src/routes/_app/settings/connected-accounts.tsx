@@ -6,7 +6,7 @@ import {
   getListConnectedAccountsQueryOptions,
   useListAccountProviders,
   useListConnectedAccounts,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { cachedRead, loadedFreshMs } from "@/api/cached-read";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
@@ -54,7 +54,7 @@ export const Route = createFileRoute("/_app/settings/connected-accounts")({
   validateSearch: connectSearch,
   loader: connectedAccountsLoader,
   component: ConnectedAccounts,
-  head: () => ({ meta: [{ title: "Connected accounts - inbok" }] }),
+  head: () => ({ meta: [{ title: "Connected accounts - amplop" }] }),
 });
 
 // ConnectedAccounts lists the member's Gmail accounts, connects one through

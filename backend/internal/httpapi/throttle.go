@@ -8,9 +8,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 const retryAfterHeader = "Retry-After"

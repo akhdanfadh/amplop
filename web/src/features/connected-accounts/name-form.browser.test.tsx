@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { getListConnectedAccountsQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
+import { getListConnectedAccountsQueryKey, useListConnectedAccounts } from "@/api/generated/amplop";
 import { accountName } from "@/components/account-mark";
 import { listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { testQueryClient } from "@/test/query-client";

@@ -34,7 +34,7 @@ describe("MessageContentView", () => {
         })}
       />,
     );
-    await expect.element(page.getByText(/inbok hides images from the web/)).toBeVisible();
+    await expect.element(page.getByText(/amplop hides images from the web/)).toBeVisible();
     expect(frames().map((frame) => frame.src)).toEqual([expect.stringContaining("remote=blocked")]);
 
     await userEvent.click(page.getByRole("button", { name: "Show images" }));
@@ -91,7 +91,7 @@ describe("MessageContentView", () => {
     );
     const link = page.getByRole("link", { name: "Download the whole text" });
 
-    await expect.element(page.getByText(/inbok shows only its start/)).toBeVisible();
+    await expect.element(page.getByText(/amplop shows only its start/)).toBeVisible();
     await expect.element(link).toHaveAttribute("href", "/whole");
     await expect.element(link).toHaveAttribute("download", "message.txt");
   });

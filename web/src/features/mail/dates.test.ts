@@ -52,7 +52,7 @@ describe("fullDate", () => {
 });
 
 describe("headerDate", () => {
-  it("shows the day in inbok's words and the time on the browser's clock", () => {
+  it("shows the day in amplop's words and the time on the browser's clock", () => {
     const date = new Date(2026, 10, 12, 15, 9);
     const hourCycle = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions()
       .hourCycle;

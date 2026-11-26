@@ -1,4 +1,4 @@
-// How inbok writes a time or a day: in its own British English words, as
+// How amplop writes a time or a day: in its own British English words, as
 // mail's dates are ("14 Nov 2026, 6:18 pm"), on the browser's 12 or 24 hour
 // clock and in its time zone (DESIGN.md "Type").
 

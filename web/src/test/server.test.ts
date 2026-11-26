@@ -10,7 +10,7 @@ import {
   testedSystemEmail,
 } from "./server";
 
-const origin = "http://inbok.test";
+const origin = "http://amplop.test";
 
 describe("fakeServer", () => {
   it("answers a route's path with its parameters, the request kept in the log", async () => {
@@ -77,7 +77,7 @@ describe("fakeServer", () => {
     ]);
   });
 
-  it("answers as a quiet inbok until a test's own route replaces an answer", async () => {
+  it("answers as a quiet amplop until a test's own route replaces an answer", async () => {
     const server = fakeServer(adminSession);
     const read = async (path: string) => (await server.fetch(`${origin}${path}`)).json();
 

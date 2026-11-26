@@ -31,7 +31,7 @@ const words: Record<RegistrationAction, Words> = {
     working: "Opening...",
     title: "Open registration?",
     description:
-      "Anyone who can reach this inbok can create a member account. Each member adds storage and sync work to this server.",
+      "Anyone who can reach this amplop can create a member account. Each member adds storage and sync work to this server.",
     saved: "Registration opened.",
     done: "opened",
   },
@@ -50,7 +50,7 @@ const words: Record<RegistrationAction, Words> = {
 // What each status means for visitors.
 const statuses: Record<RegistrationSettings["status"], string> = {
   closed: "Closed. Visitors can't create accounts.",
-  open: "Open. Anyone who can reach this inbok can create a member account.",
+  open: "Open. Anyone who can reach this amplop can create a member account.",
   // A save or a failed test clears the tested time, so "changed" would be
   // wrong after a failed test.
   paused:
@@ -59,7 +59,7 @@ const statuses: Record<RegistrationSettings["status"], string> = {
 
 // The page's lead, its section, and its badge words.
 export const registrationLead =
-  "Whether visitors can create their own member account on this inbok.";
+  "Whether visitors can create their own member account on this amplop.";
 export const signUpTitle = "Sign-up";
 export const signUpAbout =
   "Visitors give an email address, then choose a password from a link emailed to them.";

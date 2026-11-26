@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/encryption"
+	"amplop/internal/emailaddress"
+	"amplop/internal/encryption"
 )
 
 // stored is one saved account with its credential, as the table keeps it.

@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/outgoingmessage"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/outgoingmessage"
 )
 
 // sendWorkflows saves each send job as a row of test_outgoing_message_jobs,
@@ -101,7 +101,7 @@ func TestOutgoingMessageStorage(t *testing.T) {
 	assert.Equal(t, o.account, created.ConnectedAccountID)
 	assert.Equal(t, "alex@example.com", created.From)
 	assert.Equal(t, o.draft().Content, created.Content)
-	assert.Regexp(t, `^<[^<>@]+@example\.com>$`, created.InbokMessageID)
+	assert.Regexp(t, `^<[^<>@]+@example\.com>$`, created.AmplopMessageID)
 	assert.Equal(t, outgoingmessage.StatusWaiting, created.Status)
 	assert.Empty(t, created.Failure)
 	assert.Empty(t, created.ProviderMessageID)
@@ -669,7 +669,7 @@ func TestOutgoingMessageKeyRace(t *testing.T) {
 	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
 	var first uuid.UUID
 	require.NoError(t, tx.QueryRow(t.Context(), `INSERT INTO outgoing_messages (connected_account_id, from_address,
-		to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)
+		to_addresses, cc_addresses, bcc_addresses, subject, body, amplop_message_id)
 		VALUES ($1, 'alex@example.com', '[{"name": "", "address": "a@example.com"}]', '[]', '[]', '', '', '<x@example.com>')
 		RETURNING id`, o.account).Scan(&first))
 	_, err = tx.Exec(t.Context(), "INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id) VALUES ($1, $2, $3)",

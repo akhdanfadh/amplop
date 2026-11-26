@@ -26,7 +26,7 @@ import {
   UploadIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/amplop";
 import type { ListedAccount } from "@/api/generated/model";
 import { accountDot, accountName } from "@/components/account-mark";
 import { NavItem, within } from "@/components/nav-item";
@@ -162,7 +162,7 @@ export function MailNav(): ReactElement {
               />
               {/* What is on its way to Sent, beside it and above the
                   accounts' labels, so its count stays in sight. It is
-                  inbok's record, not Gmail's mail: every account's, so
+                  amplop's record, not Gmail's mail: every account's, so
                   the account filter doesn't reach it. */}
               {place === "sent" && (
                 <NavItem

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/encryption"
+	"amplop/internal/encryption"
 )
 
 func (m *memoryStorage) ReadConnectedAccountAccess(_ context.Context, accountID int64) (AccessState, error) {
@@ -355,7 +355,7 @@ func TestTokenGoogleFails(t *testing.T) {
 	_, err := a.access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, unavailable)
-	require.ErrorIs(t, err, ErrRefreshFailed, "a job can tell Google's failure from inbok's")
+	require.ErrorIs(t, err, ErrRefreshFailed, "a job can tell Google's failure from amplop's")
 	require.NotErrorIs(t, err, ErrNeedsReconnect)
 	assert.Nil(t, a.needsReconnectSince(t))
 }
@@ -371,7 +371,7 @@ func TestTokenSealFails(t *testing.T) {
 	_, err := access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, sealErr)
-	require.NotErrorIs(t, err, ErrRefreshFailed, "inbok's own failure is not Google's")
+	require.NotErrorIs(t, err, ErrRefreshFailed, "amplop's own failure is not Google's")
 	assert.Equal(t, "refresh-1", storedToken(t, a.ring, a.storage, member, a.account.ID))
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/emailaddress"
+	"amplop/internal/emailaddress"
 )
 
 type memoryStorage struct {
@@ -58,7 +58,7 @@ func (m *memoryStorage) UpdateSystemEmailTestedAt(_ context.Context, revision in
 const adminID int64 = 7
 
 // signInOwner is the password owner for [inputWithSignIn]'s server and account.
-const signInOwner = `system-email:"smtp.example.com":587:"inbok@example.com"`
+const signInOwner = `system-email:"smtp.example.com":587:"amplop@example.com"`
 
 // fakeKeyring seals by prefixing "sealed:" and opens only for the sealing owner.
 type fakeKeyring struct {
@@ -87,11 +87,11 @@ func inputWithSignIn() Input {
 			Host:     "smtp.example.com",
 			Port:     587,
 			Security: SecuritySTARTTLS,
-			Username: "inbok@example.com",
+			Username: "amplop@example.com",
 		},
 		Password:    "app password",
-		FromAddress: "inbok@example.com",
-		FromName:    "inbok",
+		FromAddress: "amplop@example.com",
+		FromName:    "amplop",
 	}
 }
 
@@ -99,9 +99,9 @@ func inputWithSignIn() Input {
 func storedSignIn() *Record {
 	tested := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	return &Record{
-		Server:      Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "inbok@example.com"},
+		Server:      Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "amplop@example.com"},
 		Password:    &Password{KeyID: "1", Ciphertext: []byte("stored")},
-		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested, Revision: 3,
+		FromAddress: "amplop@example.com", FromName: "amplop", TestedAt: &tested, Revision: 3,
 	}
 }
 
@@ -122,9 +122,9 @@ func TestSystemEmailSave(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, Settings{
-		Server:      Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "inbok@example.com"},
+		Server:      Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "amplop@example.com"},
 		HasPassword: true,
-		FromAddress: "inbok@example.com", FromName: "inbok",
+		FromAddress: "amplop@example.com", FromName: "amplop",
 	}, saved)
 	assert.Equal(t, signInOwner, sealer.owner)
 	assert.Equal(t, []byte("app password"), sealer.plaintext)
@@ -139,15 +139,15 @@ func TestSystemEmailSave(t *testing.T) {
 // The From address is saved as [emailaddress.Parse] returns it.
 func TestSystemEmailSaveFromAddress(t *testing.T) {
 	input := inputWithSignIn()
-	input.FromAddress = " \tInbok@Example.COM\t"
+	input.FromAddress = " \tAmplop@Example.COM\t"
 	storage := &memoryStorage{}
 
 	saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
 	require.NoError(t, err)
 
-	assert.Equal(t, "inbok@example.com", saved.FromAddress)
+	assert.Equal(t, "amplop@example.com", saved.FromAddress)
 	require.NotNil(t, storage.record)
-	assert.Equal(t, "inbok@example.com", storage.record.FromAddress)
+	assert.Equal(t, "amplop@example.com", storage.record.FromAddress)
 }
 
 // The owner keeps its parts apart, so moving text between them changes it.
@@ -160,7 +160,7 @@ func TestSystemEmailSaveWithoutSignIn(t *testing.T) {
 	for _, security := range []Security{SecurityTLS, SecuritySTARTTLS, SecurityNone} {
 		t.Run(string(security), func(t *testing.T) {
 			storage := &memoryStorage{record: storedSignIn()}
-			input := Input{Server: Server{Host: "smtp.example.com", Port: 587, Security: security}, FromAddress: "inbok@example.com", FromName: "inbok"}
+			input := Input{Server: Server{Host: "smtp.example.com", Port: 587, Security: security}, FromAddress: "amplop@example.com", FromName: "amplop"}
 
 			saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
 			require.NoError(t, err)
@@ -237,15 +237,15 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 	host := inputWithSignIn()
 	host.Host = "smtp.example.com\r\nRCPT TO:<x@example.net>"
 	username := inputWithSignIn()
-	username.Username = "inbok\x00admin"
+	username.Username = "amplop\x00admin"
 	nulPassword := inputWithSignIn()
 	nulPassword.Password = "app\x00password"
 	longPassword := inputWithSignIn()
 	longPassword.Password = strings.Repeat("é", 128) // 128 characters, 256 bytes
 	fromName := inputWithSignIn()
-	fromName.FromName = "inbok\u0085"
+	fromName.FromName = "amplop\u0085"
 	fromAddress := inputWithSignIn()
-	fromAddress.FromAddress = "inbok <inbok@example.com>"
+	fromAddress.FromAddress = "amplop <amplop@example.com>"
 	for _, c := range []struct {
 		name  string
 		input Input

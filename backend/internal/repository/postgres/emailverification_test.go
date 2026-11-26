@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailverification"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/emailverification"
+	"amplop/internal/systememail"
 )
 
 var verificationNow = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
@@ -35,7 +35,7 @@ func verificationSystemEmail(t *testing.T, conn *pgx.Conn) {
 	t.Helper()
 
 	_, err := conn.Exec(t.Context(), `INSERT INTO system_email (host, port, security, from_address, from_name)
-		VALUES ('localhost', 1025, 'none', 'inbok@localhost', 'inbok')`)
+		VALUES ('localhost', 1025, 'none', 'amplop@localhost', 'amplop')`)
 	require.NoError(t, err)
 }
 

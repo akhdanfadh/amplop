@@ -14,7 +14,7 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 // errorInvalidGrant is the token endpoint's error for a refresh token it
@@ -29,7 +29,7 @@ const errorInvalidToken = "invalid_token"
 // its error code.
 const maxRevokeError = 4 << 10
 
-// scopes are what inbok asks for: who the account is, and Gmail without
+// scopes are what amplop asks for: who the account is, and Gmail without
 // permanent deletion.
 var scopes = []string{"openid", "email", gmail.GmailModifyScope}
 
@@ -89,7 +89,7 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (connectedacc
 }
 
 // Revoke ends refreshToken's grant at Google: the token and every other
-// token of the same Google account issued to inbok's Google project. A token
+// token of the same Google account issued to amplop's Google project. A token
 // Google no longer knows counts as revoked. It returns an error with only the
 // HTTP status and OAuth error code when Google refuses or fails.
 func (c *Client) Revoke(ctx context.Context, refreshToken string) error {

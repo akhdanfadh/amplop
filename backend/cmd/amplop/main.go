@@ -13,30 +13,30 @@ import (
 	"syscall"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/config"
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
-	"inbok/internal/dbos"
-	"inbok/internal/emailverification"
-	"inbok/internal/google"
-	"inbok/internal/httpapi"
-	"inbok/internal/label"
-	"inbok/internal/logging"
-	"inbok/internal/mailsync"
-	"inbok/internal/meilisearch"
-	"inbok/internal/messagecontent"
-	"inbok/internal/outgoingmessage"
-	"inbok/internal/passwordreset"
-	"inbok/internal/registration"
-	"inbok/internal/repository/postgres"
-	"inbok/internal/s3"
-	"inbok/internal/search"
-	"inbok/internal/session"
-	"inbok/internal/smtp"
-	"inbok/internal/systememail"
-	"inbok/internal/totp"
-	"inbok/internal/webapp"
+	"amplop/internal/account"
+	"amplop/internal/config"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
+	"amplop/internal/dbos"
+	"amplop/internal/emailverification"
+	"amplop/internal/google"
+	"amplop/internal/httpapi"
+	"amplop/internal/label"
+	"amplop/internal/logging"
+	"amplop/internal/mailsync"
+	"amplop/internal/meilisearch"
+	"amplop/internal/messagecontent"
+	"amplop/internal/outgoingmessage"
+	"amplop/internal/passwordreset"
+	"amplop/internal/registration"
+	"amplop/internal/repository/postgres"
+	"amplop/internal/s3"
+	"amplop/internal/search"
+	"amplop/internal/session"
+	"amplop/internal/smtp"
+	"amplop/internal/systememail"
+	"amplop/internal/totp"
+	"amplop/internal/webapp"
 )
 
 const (
@@ -59,7 +59,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-var errUsage = errors.New("usage: inbok serve | inbok worker | inbok migrate | inbok health | inbok export <path> | inbok recover-admin <email> | inbok search rebuild")
+var errUsage = errors.New("usage: amplop serve | amplop worker | amplop migrate | amplop health | amplop export <path> | amplop recover-admin <email> | amplop search rebuild")
 
 func main() {
 	// One root logger for every service, so their lines carry request_id.
@@ -74,12 +74,12 @@ func main() {
 	stop()
 
 	if err != nil {
-		logger.Error("inbok failed", "err", err)
+		logger.Error("amplop failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-// run executes one command. Example: inbok export openapi.json
+// run executes one command. Example: amplop export openapi.json
 func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	if len(args) == 0 {
 		return errUsage
@@ -148,7 +148,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 			return fmt.Errorf("check setup status: %w", err)
 		}
 		if status == account.SetupDone {
-			logger.Warn("setup is complete; remove INBOK_SETUP_TOKEN from configuration")
+			logger.Warn("setup is complete; remove AMPLOP_SETUP_TOKEN from configuration")
 		}
 	}
 
@@ -223,7 +223,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 }
 
 // googleClient returns the Google client for settings, sending members back
-// to the inbok served at publicURL.
+// to the amplop served at publicURL.
 func googleClient(settings *config.Google, publicURL *url.URL) *google.Client {
 	return google.New(google.Settings{
 		ClientID:     settings.ClientID,

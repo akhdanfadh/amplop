@@ -18,14 +18,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { mailHref } from "@/features/mail/places";
-import { backToMail, pageName, thisInbok } from "./text";
+import { backToMail, pageName, thisAmplop } from "./text";
 
 // A settings page, as the router names it.
 type SettingsPath = Extract<NonNullable<ToOptions["to"]>, `/settings/${string}`>;
 
 // SettingsNav is the settings sidebar's content (DESIGN.md "Settings and
 // signed-out pages"): Back to mail, the member's own pages, then, for
-// administrators, "This inbok".
+// administrators, "This amplop".
 export function SettingsNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
@@ -61,7 +61,7 @@ export function SettingsNav(): ReactElement {
       </SidebarGroup>
       {session?.role === "admin" && (
         <SidebarGroup>
-          <SidebarGroupLabel elementType="h2">{thisInbok}</SidebarGroupLabel>
+          <SidebarGroupLabel elementType="h2">{thisAmplop}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {item("/settings/members", pageName.members, UsersIcon)}

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/randomsecret"
+	"amplop/internal/randomsecret"
 )
 
 // requested returns storage holding one link requested at [testNow], the

@@ -11,24 +11,24 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/messagecontent"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/messagecontent"
 )
 
 const (
 	// fullResponseBytes bounds one messages.get answer in full format,
-	// inbok's choice: Gmail sends attachments by attachmentId, so the answer
+	// amplop's choice: Gmail sends attachments by attachmentId, so the answer
 	// holds the headers and text parts, which a message past this would
 	// not show whole anyway.
 	fullResponseBytes = 16 << 20
 	// attachmentResponseBytes bounds one messages.attachments.get answer,
-	// inbok's choice: Gmail receives messages of up to 50 MB, whose largest
+	// amplop's choice: Gmail receives messages of up to 50 MB, whose largest
 	// attachment, base64 in the message and base64url in the answer, stays
 	// under it.
 	attachmentResponseBytes = 64 << 20
 )
 
-// Gmail's own fields for the content answers inbok reads (Gmail's
+// Gmail's own fields for the content answers amplop reads (Gmail's
 // performance tips, "Partial response"): the payload holds the whole
 // part tree.
 const (

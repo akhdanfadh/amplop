@@ -19,7 +19,7 @@ function PopoverTrigger(props: DialogTriggerProps) {
 // calls so the popover closes as the page changes; close works only inside
 // a PopoverTrigger, which holds the open state.
 //
-// DESIGN: inbok's copy differs from shadcn's: the popover holds a dialog,
+// DESIGN: amplop's copy differs from shadcn's: the popover holds a dialog,
 // so it can mix links, buttons, and a toggle group, which a menu cannot;
 // it uses DESIGN.md's menu surface (popover shadow, hairline, about 10 px
 // radius), outlined in forced colours, which drop shadows, and opens in

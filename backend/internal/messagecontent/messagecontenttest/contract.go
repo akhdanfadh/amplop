@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"uuid"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // Connected accounts in the contract. One's ID is a prefix of the other's,

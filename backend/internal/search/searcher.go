@@ -11,8 +11,8 @@ import (
 
 	"uuid"
 
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
 )
 
 // ErrAccountNotFound is a search of one connected account the member does
@@ -20,7 +20,7 @@ import (
 var ErrAccountNotFound = errors.New("search: no such connected account")
 
 // leadWords is how many words an excerpt keeps before its first match,
-// inbok's choice: a result's preview is one line cut off at its end, so
+// amplop's choice: a result's preview is one line cut off at its end, so
 // a match far into the excerpt would fall off a narrow screen.
 const leadWords = 3
 

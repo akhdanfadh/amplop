@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 func TestFakeContract(t *testing.T) {

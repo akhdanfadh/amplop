@@ -9,7 +9,7 @@ import { useSetup } from "@/features/setup/gate";
 
 export const Route = createFileRoute("/_auth/setup")({
   component: Setup,
-  head: () => ({ meta: [{ title: "Set up inbok" }] }),
+  head: () => ({ meta: [{ title: "Set up amplop" }] }),
 });
 
 // Setup shows how to give the server a setup token, then the form that
@@ -30,11 +30,11 @@ function Setup(): ReactElement {
     return (
       <SignedOutPage
         title="Configure a setup token"
-        lead="The server needs one before anyone can set up inbok."
+        lead="The server needs one before anyone can set up amplop."
         step="unconfigured"
       >
         <p>
-          Set <code className="break-all">INBOK_SETUP_TOKEN</code> on the server to a random token
+          Set <code className="break-all">AMPLOP_SETUP_TOKEN</code> on the server to a random token
           of at least 32 characters, then restart the server.
         </p>
         <p>
@@ -54,7 +54,7 @@ function Setup(): ReactElement {
 
   return (
     <SignedOutPage
-      title="Set up inbok"
+      title="Set up amplop"
       lead="Create the first administrator with the server's setup token."
       step="open"
     >

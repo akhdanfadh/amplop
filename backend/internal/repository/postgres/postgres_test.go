@@ -19,8 +19,8 @@ func TestPoolConfigTimeout(t *testing.T) {
 		url  string
 		want time.Duration
 	}{
-		{"postgres://u:p@db/inbok", defaultConnectTimeout},
-		{"postgres://u:p@db/inbok?connect_timeout=2", 2 * time.Second},
+		{"postgres://u:p@db/amplop", defaultConnectTimeout},
+		{"postgres://u:p@db/amplop?connect_timeout=2", 2 * time.Second},
 	}
 
 	for _, c := range cases {
@@ -95,5 +95,5 @@ func silentServer(t *testing.T) string {
 		}
 	}()
 
-	return "postgres://inbok:secret@" + listener.Addr().String() + "/inbok?sslmode=disable"
+	return "postgres://amplop:secret@" + listener.Addr().String() + "/amplop?sslmode=disable"
 }

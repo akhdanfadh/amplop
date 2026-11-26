@@ -1,4 +1,4 @@
-module inbok
+module amplop
 
 go 1.27.3
 

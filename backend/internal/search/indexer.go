@@ -7,8 +7,8 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
 )
 
 // BatchSize is the most messages one [Indexer.Index] call should take.
@@ -28,7 +28,7 @@ type Source struct {
 	From         []mailsync.Address
 	To           []mailsync.Address
 	CC           []mailsync.Address
-	MailboxIDs   []uuid.UUID // inbok's IDs of the mailboxes it is in
+	MailboxIDs   []uuid.UUID // amplop's IDs of the mailboxes it is in
 	// ConversationMailboxIDs and ConversationFlagged are its
 	// conversation's places and star, as [Document]'s fields of those
 	// names hold them.

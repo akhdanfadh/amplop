@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 var (

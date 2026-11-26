@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/messagecontent"
-	"inbok/internal/messagecontent/messagecontenttest"
+	"amplop/internal/messagecontent"
+	"amplop/internal/messagecontent/messagecontenttest"
 )
 
 // partsMemory keeps part trees in memory, by message. A save fails with

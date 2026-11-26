@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailverification"
-	"inbok/internal/httpapi"
-	"inbok/internal/passwordhash"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/emailverification"
+	"amplop/internal/httpapi"
+	"amplop/internal/passwordhash"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 const deactivatedPassword = "a long member password"
@@ -322,7 +322,7 @@ func deactivatedAPI(t *testing.T, f deactivatedAccounts) (*http.Cookie, func(met
 		TokenHash: sha256.Sum256(make([]byte, 32)), UserID: f.admin, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour),
 	}))
 	// This cookie is the base64url encoding of 32 zero bytes.
-	admin := &http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+	admin := &http.Cookie{Name: "__Host-amplop-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 	api := httpapi.New(discard, httpapi.Services{Session: f.sessions, Members: f.members})
 	send := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, "/api/v0"+path, strings.NewReader(body))
@@ -352,7 +352,7 @@ func TestDeactivatedHTTP(t *testing.T) {
 	cookies := signedIn.Result().Cookies()
 	require.Len(t, cookies, 2)
 	member := cookies[0]
-	require.Equal(t, "__Host-inbok-session", member.Name)
+	require.Equal(t, "__Host-amplop-session", member.Name)
 	require.Equal(t, http.StatusOK, send(http.MethodGet, "/sessions/current", "", member).Code)
 	memberPath := "/members/" + strconv.FormatInt(f.member, 10)
 
@@ -379,7 +379,7 @@ func TestDeactivatedHTTP(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, current.Code, current.Body.String())
 	cleared := current.Result().Cookies()
 	require.Len(t, cleared, 1)
-	assert.Equal(t, "__Host-inbok-session", cleared[0].Name)
+	assert.Equal(t, "__Host-amplop-session", cleared[0].Name)
 	assert.Negative(t, cleared[0].MaxAge)
 	assert.Equal(t, http.StatusUnauthorized, wrong.Code, wrong.Body.String())
 	assert.Contains(t, wrong.Body.String(), `"type":"/api/v0/problems/invalid-credentials"`)

@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	testClientID = "inbok-test.apps.googleusercontent.com"
+	testClientID = "amplop-test.apps.googleusercontent.com"
 	testSecret   = "test-secret"
 	testRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 	testScopes   = "openid email https://www.googleapis.com/auth/gmail.modify"
 )
 
-// These tests check that the image behaves as inbok relies on, with the
-// libraries inbok uses, so a change of emulate version shows up here
+// These tests check that the image behaves as amplop relies on, with the
+// libraries amplop uses, so a change of emulate version shows up here
 // first.
 
 // startTestEmulator starts an emulator with one verified account, one
-// unverified account, and inbok's client. emulate adds its own
+// unverified account, and amplop's client. emulate adds its own
 // testuser@gmail.com too.
 func startTestEmulator(t *testing.T) (*Emulator, *oauth2.Config) {
 	t.Helper()
@@ -72,7 +72,7 @@ func connect(t *testing.T, e *Emulator, cfg *oauth2.Config, email string) *oauth
 }
 
 // idTokenClaims decodes the ID token in token without checking its
-// signature, as inbok does for a token straight from the token endpoint.
+// signature, as amplop does for a token straight from the token endpoint.
 func idTokenClaims(t *testing.T, token *oauth2.Token) map[string]any {
 	t.Helper()
 	raw, ok := token.Extra("id_token").(string)
@@ -138,7 +138,7 @@ func TestEmulatorWrongSecret(t *testing.T) {
 }
 
 // A code works only with its authorization request's redirect URI, from
-// inbok's patch (google-emulator/patches/).
+// amplop's patch (google-emulator/patches/).
 func TestEmulatorWrongRedirect(t *testing.T) {
 	e, cfg := startTestEmulator(t)
 	back := e.Consent(t, cfg.AuthCodeURL("state-1"), "alex@example.com")
@@ -149,7 +149,7 @@ func TestEmulatorWrongRedirect(t *testing.T) {
 	requireRefused(t, "invalid_grant", err)
 }
 
-// getProfile comes from inbok's patch (google-emulator/patches/), and so do
+// getProfile comes from amplop's patch (google-emulator/patches/), and so do
 // history IDs that fit the Go client's uint64.
 func TestEmulatorProfile(t *testing.T) {
 	e, cfg := startTestEmulator(t)
@@ -169,7 +169,7 @@ func TestEmulatorProfile(t *testing.T) {
 }
 
 // Label changes, a member's own label's too, and Trash answer as Gmail does,
-// which inbok's patch makes so (observed on Gmail, 2026-11-15): without
+// which amplop's patch makes so (observed on Gmail, 2026-11-15): without
 // history IDs, Trash takes SPAM off too, and untrash puts nothing back, INBOX
 // included.
 func TestEmulatorActions(t *testing.T) {

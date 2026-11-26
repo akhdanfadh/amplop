@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vite-plus/test";
 import { renderHook } from "vitest-browser-react";
-import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
+import { getListOutgoingMessagesQueryKey } from "@/api/generated/amplop";
 import type { OutgoingMessage, OutgoingMessageSummary } from "@/api/generated/model";
 import { fakeClock } from "@/test/clock";
 import { outgoingMessage } from "@/test/mail-api";

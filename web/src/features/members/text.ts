@@ -42,14 +42,14 @@ const words: Record<MemberAction, Words> = {
 };
 
 // The page's lead and its section.
-export const membersLead = "Everyone with an account on this inbok.";
+export const membersLead = "Everyone with an account on this amplop.";
 export const accountsTitle = "Accounts";
 export const accountsAbout =
   "Deactivating a member signs them out and stops them signing in. Administrators can't be deactivated.";
 export const listTitle = "Member list";
 export const listReadFailed = "Couldn't refresh the member list.";
 
-// formatDate shows the calendar date of iso as inbok writes one, in the
+// formatDate shows the calendar date of iso as amplop writes one, in the
 // reader's time zone.
 export function formatDate(iso: string): string {
   return dayDate.format(new Date(iso));

@@ -7,20 +7,20 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
 )
 
 // The background body fetch's names in DBOS's tables, where enqueued runs
 // and the schedule outlive the code that made them. Its runs use
 // [googleQueue]; the schedule fires as [syncCron] does.
 const (
-	messageBodiesWorkflow         = "inbok.message-bodies"
-	messageBodiesScheduleWorkflow = "inbok.message-bodies-schedule"
-	messageBodiesSchedule         = "inbok.message-bodies.minutely"
+	messageBodiesWorkflow         = "amplop.message-bodies"
+	messageBodiesScheduleWorkflow = "amplop.message-bodies-schedule"
+	messageBodiesSchedule         = "amplop.message-bodies.minutely"
 )
 
-// maxBodyBatches is the most batches one body fetch run takes, inbok's
+// maxBodyBatches is the most batches one body fetch run takes, amplop's
 // choice: about 1,000 messages, some 12 minutes at Gmail's pace when each
 // message's text comes in its first answer, longer when text comes
 // separately or calls are retried. The next minute's body schedule starts

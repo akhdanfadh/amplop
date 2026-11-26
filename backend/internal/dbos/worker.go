@@ -1,5 +1,5 @@
-// Package dbos runs inbok's background work on DBOS: the worker process
-// opens DBOS on inbok's database, launches it, and shuts it down.
+// Package dbos runs amplop's background work on DBOS: the worker process
+// opens DBOS on amplop's database, launches it, and shuts it down.
 //
 // DESIGN: Like smtp, this is a technology package named for what it wraps.
 // Feature packages never import DBOS; this package registers their
@@ -18,12 +18,12 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"inbok/internal/logging"
+	"amplop/internal/logging"
 )
 
 const (
 	// appName labels DBOS's database connections and recorded workflows.
-	appName = "inbok"
+	appName = "amplop"
 
 	// applicationVersion is the version DBOS records on each workflow. A
 	// worker resumes only workflows of its own version.
@@ -52,7 +52,7 @@ var errShutdownBudget = errors.New("DBOS did not shut down in time; unfinished w
 // application version and executor ID set in its configuration.
 var overrides = []string{"DBOS__APPVERSION", "DBOS__VMID"}
 
-// Services holds the feature operations inbok's workflows call; cmd/inbok
+// Services holds the feature operations amplop's workflows call; cmd/amplop
 // fills it, as it fills httpapi.Services. A nil field leaves its part of a
 // workflow out, e.g. in tests.
 type Services struct {
@@ -83,17 +83,17 @@ type Services struct {
 	SearchRebuild searchRebuild
 }
 
-// Worker runs inbok's workflows and schedules.
+// Worker runs amplop's workflows and schedules.
 type Worker struct {
 	ctx    dbos.Context
 	logger *slog.Logger
 }
 
 // NewWorker opens DBOS on the database at url as the executor id, without
-// migrating it, registers inbok's workflows calling services, and saves their
+// migrating it, registers amplop's workflows calling services, and saves their
 // schedules. It logs to logger. Only [Worker.Shutdown] stops it. It returns an
 // error if the workflow tables are missing or older than the SDK needs, which
-// inbok migrate fixes, if url is malformed, if DBOS__APPVERSION or DBOS__VMID
+// amplop migrate fixes, if url is malformed, if DBOS__APPVERSION or DBOS__VMID
 // is set, or if a schedule cannot be saved.
 //
 // DESIGN: DBOS resumes an executor's unfinished workflows only when an
@@ -105,7 +105,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	// than applicationVersion and id select.
 	for _, name := range overrides {
 		if os.Getenv(name) != "" {
-			return nil, fmt.Errorf("unset %s: inbok sets the application version and INBOK_WORKER_ID itself", name)
+			return nil, fmt.Errorf("unset %s: amplop sets the application version and AMPLOP_WORKER_ID itself", name)
 		}
 	}
 

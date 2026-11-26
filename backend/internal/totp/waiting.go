@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"inbok/internal/randomsecret"
+	"amplop/internal/randomsecret"
 )
 
 var errDisplayCodes = errors.New("invalid stored backup-code display copy")

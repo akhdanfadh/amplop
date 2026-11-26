@@ -42,7 +42,7 @@ export function initials(sender: Address | undefined): string {
 // repliesElsewhere reports whether replyTo sends replies to a domain none
 // of from's addresses is at. A Reply-To at the sender's own domain, e.g.
 // news@ answered at help@, is common and harmless, so only another domain
-// is worth calling out (inbok's choice).
+// is worth calling out (amplop's choice).
 export function repliesElsewhere(replyTo: readonly Address[], from: readonly Address[]): boolean {
   const fromDomains = new Set(from.map(domain));
   return replyTo.some((entry) => entry.address !== "" && !fromDomains.has(domain(entry)));

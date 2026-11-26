@@ -1,4 +1,4 @@
-module inbok/tools
+module amplop/tools
 
 go 1.27.3
 
@@ -6,7 +6,7 @@ tool (
 	github.com/Antonboom/testifylint
 	github.com/air-verse/air
 	// Keep the goose version below equal to go.mod's, so the CLI and
-	// inbok migrate track migrations the same way.
+	// amplop migrate track migrations the same way.
 	github.com/pressly/goose/v3/cmd/goose
 	github.com/sqlc-dev/sqlc/cmd/sqlc
 )

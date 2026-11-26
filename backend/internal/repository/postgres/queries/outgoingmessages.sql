@@ -48,10 +48,10 @@ DELETE FROM send_attempts WHERE user_id = @user_id AND created_at <= @since;
 
 -- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
-    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id,
+    to_addresses, cc_addresses, bcc_addresses, subject, body, amplop_message_id,
     in_reply_to, internet_references, provider_thread_id)
 VALUES (@connected_account_id, @from_address,
-    @to_addresses, @cc_addresses, @bcc_addresses, @subject, @body, @inbok_message_id,
+    @to_addresses, @cc_addresses, @bcc_addresses, @subject, @body, @amplop_message_id,
     @in_reply_to, @internet_references, @provider_thread_id)
 RETURNING id, status, created_at;
 
@@ -59,7 +59,7 @@ RETURNING id, status, created_at;
 -- A message belongs to its account's owner.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.amplop_message_id, om.in_reply_to, om.internet_references, om.status,
     om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
     om.dismissed_at
@@ -81,7 +81,7 @@ WHERE user_id = @user_id AND idempotency_key = @idempotency_key;
 -- finished ones never push one out, then the rest, each newest first.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
-    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
+    om.amplop_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
     om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
     om.sent_again_as, om.dismissed_at
 FROM outgoing_messages om
@@ -98,7 +98,7 @@ UPDATE outgoing_messages SET sent_again_as = @sent_again_as WHERE id = @id;
 
 -- name: ReadOutgoingMessageToSend :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = @id;
@@ -106,7 +106,7 @@ FROM outgoing_messages WHERE id = @id;
 -- name: LockOutgoingMessage :one
 -- No key column changes, so foreign key checks on the row need not wait.
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = @id FOR NO KEY UPDATE;
@@ -121,7 +121,7 @@ UPDATE outgoing_messages SET
     sent_at = @sent_at
 WHERE id = @id
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at;
 
@@ -155,7 +155,7 @@ FOR SHARE OF u;
 -- foreign key checks on the row need not wait.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.amplop_message_id, om.in_reply_to, om.internet_references, om.status,
     om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
     om.dismissed_at
@@ -167,6 +167,6 @@ FOR NO KEY UPDATE OF om;
 -- name: SetOutgoingMessageDismissed :one
 UPDATE outgoing_messages SET dismissed_at = @dismissed_at WHERE id = @id
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at;

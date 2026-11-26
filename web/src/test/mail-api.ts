@@ -124,7 +124,7 @@ export function outgoingMessage(changes: Partial<OutgoingMessage> = {}): Outgoin
   };
 }
 
-// MailApi is a fake inbok API for mail pages, its routes on server, where
+// MailApi is a fake amplop API for mail pages, its routes on server, where
 // a test adds its own: it pages conversations as
 // List Conversations does, counts new ones, lists accounts and places, and
 // answers a signed-in session; it applies actions and changes as the

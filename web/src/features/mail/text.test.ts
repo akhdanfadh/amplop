@@ -46,7 +46,7 @@ describe("checkRefusal", () => {
         { name: "Work", refusal: { kind: "unavailable" } },
         { name: "Home", refusal: { kind: "unavailable" } },
       ]),
-    ).toBe("inbok can't check 2 accounts until an administrator sets up Gmail: Work and Home.");
+    ).toBe("amplop can't check 2 accounts until an administrator sets up Gmail: Work and Home.");
   });
 });
 
@@ -74,7 +74,7 @@ describe("checkFailures", () => {
         { name: "Home", refusal: { kind: "uncertain" } },
       ]),
     ).toBe(
-      "Couldn't tell whether inbok checked 2 accounts: Work and Home. Their mail still arrives within a minute.",
+      "Couldn't tell whether amplop checked 2 accounts: Work and Home. Their mail still arrives within a minute.",
     );
   });
 });
@@ -100,13 +100,13 @@ describe("refusalSentences", () => {
         reconnect: ["Work", "Home"],
         gone: 2,
         failed: 1,
-        errors: ["inbok isn't answering.", "inbok isn't answering."],
+        errors: ["amplop isn't answering.", "amplop isn't answering."],
       }),
     ).toBe(
       "Reconnect 2 accounts in Connected accounts, then try again: Work and Home. " +
         "2 conversations are no longer in Gmail. " +
         "Gmail didn't answer for 1 conversation. Try again. " +
-        "inbok isn't answering.",
+        "amplop isn't answering.",
     );
   });
 

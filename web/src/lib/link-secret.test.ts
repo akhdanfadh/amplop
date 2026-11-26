@@ -5,7 +5,7 @@ const paths = ["/confirm", "/finish"];
 
 // openPage stubs window at url, with a history that records replacements.
 function openPage(url: string) {
-  const { pathname, search, hash } = new URL(url, "https://inbok.example");
+  const { pathname, search, hash } = new URL(url, "https://amplop.example");
   const history = { state: { key: "entry" }, replaceState: vi.fn<History["replaceState"]>() };
   vi.stubGlobal("window", { location: { pathname, search, hash }, history });
   return history;

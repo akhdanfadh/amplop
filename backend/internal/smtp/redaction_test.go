@@ -1,10 +1,10 @@
 package smtp
 
 import (
+	"amplop/internal/systememail"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"inbok/internal/systememail"
 	"io"
 	"net"
 	"net/textproto"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A reply after the sign-in keeps its text, except what inbok sent that it
+// A reply after the sign-in keeps its text, except what amplop sent that it
 // quotes: the sign-in's Base64 lines become [credentials] and the
 // recipient's address, in any letter case, becomes [recipient]. A refusal
 // keeps its reason and whether it is permanent.
@@ -98,7 +98,7 @@ func TestSendRedactsReplies(t *testing.T) {
 }
 
 // An error the server did not write is returned as is, even when its text
-// holds a string inbok sent, so a dropped connection still reads as one.
+// holds a string amplop sent, so a dropped connection still reads as one.
 func TestRedactionKeepsOtherErrors(t *testing.T) {
 	// LOGIN's line for the username w_4 is d180, which the server's address
 	// below holds too.

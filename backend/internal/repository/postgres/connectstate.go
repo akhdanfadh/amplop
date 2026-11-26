@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // InsertConnectState locks userID, calls create with when each of its saved

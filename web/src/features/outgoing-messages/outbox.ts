@@ -4,7 +4,7 @@ import {
   getGetOutgoingMessageQueryKey,
   useGetOutgoingMessage,
   useListOutgoingMessages,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type {
   ResponseOutgoingMessages,
   OutgoingMessage,

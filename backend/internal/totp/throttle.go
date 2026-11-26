@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"inbok/internal/attemptlimit"
+	"amplop/internal/attemptlimit"
 )
 
 // Product policy: OWASP recommends strict limits without prescribing these values.

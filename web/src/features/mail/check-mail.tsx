@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import { RefreshCwIcon } from "lucide-react";
-import { useListConnectedAccounts, useSyncConnectedAccount } from "@/api/generated/inbok";
+import { useListConnectedAccounts, useSyncConnectedAccount } from "@/api/generated/amplop";
 import { isSessionEnded } from "@/features/auth/guard";
 import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";

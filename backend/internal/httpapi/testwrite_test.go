@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/session"
+	"amplop/internal/session"
 )
 
 // testWritePath is where [newTestWriteAPI] registers the test-only write.

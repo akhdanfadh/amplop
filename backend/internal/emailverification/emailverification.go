@@ -1,5 +1,5 @@
 // Package emailverification lets a user prove control of their email
-// address by following a link inbok sends to it.
+// address by following a link amplop sends to it.
 package emailverification
 
 import (
@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 const linkLifetime = 24 * time.Hour

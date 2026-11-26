@@ -419,7 +419,7 @@ describe("Reader, opening", () => {
     await expect.poll(() => mailData(current!).conversations.has(row.id)).toBe(false);
   });
 
-  it("opens the conversation in Gmail in a new tab, with no way back to inbok", async () => {
+  it("opens the conversation in Gmail in a new tab, with no way back to amplop", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     const url = `https://mail.google.com/mail/?authuser=ana%40example.com#all/${row.id}`;

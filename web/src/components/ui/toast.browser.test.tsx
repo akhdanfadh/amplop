@@ -138,7 +138,7 @@ describe("Toaster", () => {
     showError("Couldn't archive the conversation", "Check your connection, then try again.");
     showError("Couldn't archive the conversation", "Check your connection, then try again.");
     // The same title for another cause is another error.
-    showError("Couldn't archive the conversation", "inbok isn't answering.");
+    showError("Couldn't archive the conversation", "amplop isn't answering.");
     showError("Couldn't sign out");
     await expect.element(page.getByText("Couldn't sign out")).toBeVisible();
     expect(toasts()).toBe(3);

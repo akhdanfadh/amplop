@@ -211,7 +211,7 @@ describe("disconnect messages", () => {
 describe("wording", () => {
   it("counts the messages copied", () => {
     expect(runningText(1)).toBe(
-      "Copying your last 90 days of mail into inbok: 1 message so far. New mail shows up in the meantime.",
+      "Copying your last 90 days of mail into amplop: 1 message so far. New mail shows up in the meantime.",
     );
     expect(runningText(0)).toMatch(/: 0 messages so far\./);
     // A comma for thousands whatever the reader's locale.
@@ -221,13 +221,15 @@ describe("wording", () => {
   it("words a failure by its cause and what happens next", () => {
     expect(failureWords("provider", "complete")).toEqual({
       before: "Couldn't get mail from Gmail at",
-      after: ". inbok will try again.",
+      after: ". amplop will try again.",
     });
-    expect(failureWords("provider", "failed").after).toBe(". inbok will try again within an hour.");
+    expect(failureWords("provider", "failed").after).toBe(
+      ". amplop will try again within an hour.",
+    );
     for (const failure of ["token-unreadable", "internal"] as const)
       expect(failureWords(failure, "failed")).toEqual({
         before: "Couldn't get mail at",
-        after: " because of a problem on inbok's side. Ask your administrator.",
+        after: " because of a problem on amplop's side. Ask your administrator.",
       });
   });
 
@@ -274,7 +276,7 @@ describe("syncNotice", () => {
     const lost = new ApiError("network", { method: "POST" });
     expect(syncNotice(lost, email)).toEqual({
       tone: "neutral",
-      text: `Couldn't tell whether inbok started checking ${email}. Its mail still arrives within a minute.`,
+      text: `Couldn't tell whether amplop started checking ${email}. Its mail still arrives within a minute.`,
     });
   });
 });

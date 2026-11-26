@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 
 // Empty says why a list or pane has nothing to show, with one next step.
 //
-// DESIGN: inbok's copy differs from shadcn's: words only (DESIGN.md
+// DESIGN: amplop's copy differs from shadcn's: words only (DESIGN.md
 // "States"), so no EmptyHeader or EmptyMedia; the text starts at the left edge as the
 // list's rows do; the title is a heading (18/24, 600) and the description
 // a paragraph, whose links show DESIGN.md's focus ring.

@@ -7,9 +7,9 @@ import (
 
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
 )
 
 // threadFields and messageFields are the parts of a thread, or of one
@@ -56,7 +56,7 @@ var labelChanges = map[conversation.Action]labelChange{
 // ChangeThread applies action to thread: to its newest message with
 // messages.modify when action is [conversation.Action.OnNewest], else to
 // every message with threads.modify, or threads.trash for Trash. It
-// returns each changed message's labels as Gmail answers, as inbok keeps
+// returns each changed message's labels as Gmail answers, as amplop keeps
 // them, without a version, and an error wrapping
 // [conversation.ErrNotFound] when Gmail no longer has the thread or that
 // message.
@@ -165,7 +165,7 @@ func (c *Client) ModifyThread(ctx context.Context, token connectedaccount.Access
 }
 
 // changed makes call, retrying as [retry] does, and returns the messages
-// it answers with as inbok keeps them, without a version, or an error
+// it answers with as amplop keeps them, without a version, or an error
 // wrapping [conversation.ErrNotFound] when Gmail no longer has them.
 func (c *Client) changed(ctx context.Context, call func() ([]*gmail.Message, error)) ([]mailsync.MessageUpdate, error) {
 	// Each call sets labels rather than toggling them, so a retried one

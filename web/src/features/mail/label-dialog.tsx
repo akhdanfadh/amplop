@@ -7,7 +7,7 @@ import {
   useCreateLabel,
   useEditLabel,
   useListConnectedAccounts,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type {
   LabelCreateInputBody as LabelCreateBody,
   LabelEditInputBody,

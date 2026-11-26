@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 // A refused password is an auth failure, and the error never repeats it.
@@ -63,12 +63,12 @@ func TestSendCleartextSignIn(t *testing.T) {
 }
 
 // A failed sign-in keeps no text the server wrote, since a reply at this step
-// can quote the credentials inbok sent: a refusal keeps only its codes,
-// inbok's, go-sasl's, and Go's own errors keep their fixed text, and any
+// can quote the credentials amplop sent: a refusal keeps only its codes,
+// amplop's, go-sasl's, and Go's own errors keep their fixed text, and any
 // other reply becomes [errUnexpectedReply].
 func TestSendSignInReply(t *testing.T) {
 	certificate, roots := testCertificate(t)
-	// The credentials inbok sends with AUTH PLAIN, as a server could quote them.
+	// The credentials amplop sends with AUTH PLAIN, as a server could quote them.
 	credentials := base64.StdEncoding.EncodeToString([]byte("\x00" + testUsername + "\x00" + testPassword))
 	refuse := func(line string) func(*textproto.Conn) {
 		return func(conn *textproto.Conn) { reply(conn, line) }
@@ -149,7 +149,7 @@ func TestEnhancedCode(t *testing.T) {
 	}
 }
 
-// inbok's own sign-in errors keep their text: no server wrote it.
+// amplop's own sign-in errors keep their text: no server wrote it.
 func TestSendSignInOwnError(t *testing.T) {
 	certificate, roots := testCertificate(t)
 	server := scriptedTLSServer(t, certificate, func(conn *textproto.Conn) {

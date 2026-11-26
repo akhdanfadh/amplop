@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/encryption"
-	"inbok/internal/httpapi"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/encryption"
+	"amplop/internal/httpapi"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/totp"
 )
 
 func newTurnOff(t *testing.T) (*confirmationFixture, *totp.Disabler) {
@@ -179,7 +179,7 @@ func TestDisableHTTP(t *testing.T) {
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Origin", "http://example.com")
 			// The fixture's session secret encodes 32 zero bytes.
-			cookie := &http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+			cookie := &http.Cookie{Name: "__Host-amplop-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 			request.AddCookie(cookie)
 			response := httptest.NewRecorder()
 
@@ -209,7 +209,7 @@ func TestDisableHTTPAdmin(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/disable", strings.NewReader(`{"code":"287082"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://example.com")
-	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
+	request.AddCookie(&http.Cookie{Name: "__Host-amplop-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
 	response := httptest.NewRecorder()
 
 	api.Handler().ServeHTTP(response, request)

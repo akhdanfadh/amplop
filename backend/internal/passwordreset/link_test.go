@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/systememail"
 )
 
 // activeAccount is [testUser], verified and active.
@@ -71,9 +71,9 @@ func TestLinkSent(t *testing.T) {
 	sent := mailer.sent[0]
 	assert.Equal(t, "password reset link", sent.Purpose)
 	assert.Equal(t, testUser.Email, sent.To)
-	assert.Equal(t, "Reset your inbok password", sent.Subject)
+	assert.Equal(t, "Reset your amplop password", sent.Subject)
 	assert.True(t, sent.Private, "the body holds the secret")
-	assert.Contains(t, sent.Body, "Someone asked to reset the password of your inbok account at https://mail.example.com.")
+	assert.Contains(t, sent.Body, "Someone asked to reset the password of your amplop account at https://mail.example.com.")
 	assert.Contains(t, sent.Body, "The link expires in 1 hour.")
 	assert.Contains(t, sent.Body, "Your password stays the same unless the link is used.")
 

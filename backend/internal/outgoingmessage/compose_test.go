@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/msgid"
+	"amplop/internal/msgid"
 )
 
 // Line limits of the composed message.
@@ -34,7 +34,7 @@ func testMessage() Message {
 		ConnectedAccountID: 5,
 		From:               "me@gmail.com",
 		Content:            testContent(),
-		InbokMessageID:     "<LZ3K2.9F1Q@gmail.com>",
+		AmplopMessageID:    "<LZ3K2.9F1Q@gmail.com>",
 		Status:             StatusWaiting,
 		CreatedAt:          time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC),
 	}
@@ -88,7 +88,7 @@ func TestCompose(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "LZ3K2.9F1Q@gmail.com", id)
 	// Gmail keeps this header though it replaces the Message-ID.
-	assert.Equal(t, "<LZ3K2.9F1Q@gmail.com>", header.Get("X-Inbok-Message-Id"))
+	assert.Equal(t, "<LZ3K2.9F1Q@gmail.com>", header.Get("X-Amplop-Message-Id"))
 	mediaType, params, err := header.ContentType()
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", mediaType)
@@ -228,8 +228,8 @@ func TestComposeInjection(t *testing.T) {
 		{"subject", func(m *Message) { m.Subject = "Hi\r\nBcc: eve@example.net" }},
 		{"recipient", func(m *Message) { m.To = []string{"ann@example.com>\r\nBcc: <eve@example.net"} }},
 		{"from", func(m *Message) { m.From = "me@gmail.com\r\nBcc: eve@example.net" }},
-		{"message ID", func(m *Message) { m.InbokMessageID = "<x@gmail.com>\r\nBcc: <eve@example.net>" }},
-		{"message ID without brackets", func(m *Message) { m.InbokMessageID = "x@gmail.com" }},
+		{"message ID", func(m *Message) { m.AmplopMessageID = "<x@gmail.com>\r\nBcc: <eve@example.net>" }},
+		{"message ID without brackets", func(m *Message) { m.AmplopMessageID = "x@gmail.com" }},
 		{"in-reply-to", func(m *Message) { m.InReplyTo = "<x@example.com>\r\nBcc: <eve@example.net>" }},
 		{"in-reply-to of two", func(m *Message) { m.InReplyTo = "<x@example.com> <y@example.com>" }},
 		{"reference", func(m *Message) {
@@ -250,7 +250,7 @@ func TestComposeInjection(t *testing.T) {
 	}
 }
 
-// A message over today's limits still composes: they decided what inbok
+// A message over today's limits still composes: they decided what amplop
 // accepted, so lowering one leaves saved messages sendable.
 func TestComposeNoLimits(t *testing.T) {
 	message := testMessage()
@@ -327,7 +327,7 @@ func TestComposeLongSenderDomain(t *testing.T) {
 	require.NoError(t, err)
 	message := testMessage()
 	message.From = email
-	message.InbokMessageID = id
+	message.AmplopMessageID = id
 
 	_, err = compose(message)
 
@@ -355,7 +355,7 @@ func TestComposeThreading(t *testing.T) {
 	assert.False(t, header.Has("References"))
 }
 
-// The longest References inbok writes, 50 msg-ids of 250 octets, folds
+// The longest References amplop writes, 50 msg-ids of 250 octets, folds
 // between msg-ids, never inside one.
 func TestComposeLongReferences(t *testing.T) {
 	message := testMessage()

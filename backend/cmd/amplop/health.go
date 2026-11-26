@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"inbok/internal/config"
+	"amplop/internal/config"
 )
 
 // healthTimeout bounds one check.

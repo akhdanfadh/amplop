@@ -1,7 +1,7 @@
 import { useRef, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRedeemPasswordResetLink } from "@/api/generated/inbok";
+import { useRedeemPasswordResetLink } from "@/api/generated/amplop";
 import {
   redeemPasswordResetLinkBodyPasswordMax,
   redeemPasswordResetLinkBodyPasswordMin,

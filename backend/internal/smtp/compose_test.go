@@ -14,7 +14,7 @@ import (
 // Line breaks in a field are encoded or rejected; they never start a header.
 func TestComposeInjection(t *testing.T) {
 	message := testMessage()
-	message.FromName = "inbok\r\nBcc: victim@example.net"
+	message.FromName = "amplop\r\nBcc: victim@example.net"
 	message.Subject = "Test\r\nBcc: victim@example.net"
 
 	data, err := compose(message, time.Now())
@@ -28,7 +28,7 @@ func TestComposeInjection(t *testing.T) {
 // The Message-ID needs a domain even if the From address has none.
 func TestComposeMessageID(t *testing.T) {
 	message := testMessage()
-	message.FromAddress = "inbok"
+	message.FromAddress = "amplop"
 
 	data, err := compose(message, time.Now())
 	require.NoError(t, err)

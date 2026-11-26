@@ -99,7 +99,7 @@ describe("ConversationList", () => {
     await expect.element(rows.nth(0)).toHaveAccessibleName(/Subject 69/);
     await expect.element(rows.nth(1)).toHaveAccessibleName(/Subject 68/);
 
-    const end = page.getByText("That's everything inbok has copied.", { exact: false });
+    const end = page.getByText("That's everything amplop has copied.", { exact: false });
     // Each move to the last row loads the next page.
     await toLastRowUntil(() => expect(end.query()).not.toBeNull());
     await expect.element(end).toBeVisible();
@@ -116,7 +116,7 @@ describe("ConversationList", () => {
 
   it("ends with its words close under the last row", async () => {
     await open(mailApi([conversation(1)], one));
-    const words = page.getByText("That's everything inbok has copied.", { exact: false });
+    const words = page.getByText("That's everything amplop has copied.", { exact: false });
     await expect.element(words).toBeVisible();
 
     const row = page
@@ -387,7 +387,7 @@ describe("the row's star", () => {
     api.refuse[conversation(1).id] = "not-found";
     await open(api);
     await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
-    // Gone at Gmail, and from inbok's lists once its poll noticed.
+    // Gone at Gmail, and from amplop's lists once its poll noticed.
     api.conversations = [conversation(2)];
 
     await userEvent.click(starOf(/Subject 1,/));
@@ -965,7 +965,7 @@ describe("the list's order and refreshes", () => {
   });
 });
 
-// checkAccounts returns two accounts inbok can use and one Google stopped
+// checkAccounts returns two accounts amplop can use and one Google stopped
 // accepting.
 function checkAccounts() {
   return [
@@ -980,7 +980,7 @@ function checkAccounts() {
 }
 
 describe("Check for new mail", () => {
-  it("checks every account the list shows that inbok can use", async () => {
+  it("checks every account the list shows that amplop can use", async () => {
     const api = mailApi([conversation(1)], checkAccounts());
     await open(api);
 
@@ -1020,7 +1020,7 @@ describe("Check for new mail", () => {
       await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
 
       await expect
-        .element(page.getByText("You're offline, so inbok can't check for new mail."))
+        .element(page.getByText("You're offline, so amplop can't check for new mail."))
         .toBeVisible();
       expect(api.syncs).toEqual([]);
     } finally {

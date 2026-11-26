@@ -9,18 +9,18 @@ import (
 	"net/url"
 	"time"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/clientprefix"
-	"inbok/internal/emailaddress"
-	"inbok/internal/randomsecret"
-	"inbok/internal/systememail"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/clientprefix"
+	"amplop/internal/emailaddress"
+	"amplop/internal/randomsecret"
+	"amplop/internal/systememail"
 )
 
 const linkLifetime = 24 * time.Hour
 
 // Product policy. The email limits keep one inbox from being flooded; the
 // client limit slows one visitor; the instance limit caps how much mail
-// strangers can make inbok send, protecting its sender's reputation.
+// strangers can make amplop send, protecting its sender's reputation.
 var (
 	emailShortLimit = attemptlimit.Limit{Window: time.Hour, Max: 3}
 	emailLongLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 5}
@@ -34,9 +34,9 @@ const attemptRetention = 24 * time.Hour
 
 const (
 	linkPurpose   = "registration link"
-	linkSubject   = "Create your inbok account"
+	linkSubject   = "Create your amplop account"
 	noticePurpose = "registration notice"
-	noticeSubject = "Your email address already has an inbok account"
+	noticeSubject = "Your email address already has an amplop account"
 )
 
 var (
@@ -132,7 +132,7 @@ func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now 
 // for a client or instance over its limit, all without recording or sending
 // anything, and the error from [systememail.Mailer.Send] after recording.
 //
-// DESIGN: Two differences remain, and inbok accepts both. A skipped request
+// DESIGN: Two differences remain, and amplop accepts both. A skipped request
 // returns sooner than one that sends. While mail fails, a skipped request
 // still returns nil where the others return the send's error. Either hints
 // that an email was asked for recently, never that it has an account.
@@ -234,7 +234,7 @@ func (r *Requests) linkBody(secret string) string {
 	// The secret goes in the fragment, which browsers never send to a
 	// server, so it stays out of request logs, proxies, and Referer headers.
 	link.Fragment = secret
-	return "Someone asked to create an account on inbok at " + r.publicURL.String() + " with this email address.\n\n" +
+	return "Someone asked to create an account on amplop at " + r.publicURL.String() + " with this email address.\n\n" +
 		"To create it, open this link and choose a password:\n\n" +
 		link.String() + "\n\n" +
 		"The link expires in 24 hours. If you didn't ask for this, you can ignore this email. No account is created unless the link is used.\n"
@@ -245,7 +245,7 @@ func (r *Requests) linkBody(secret string) string {
 func (r *Requests) noticeBody() string {
 	signIn := *r.publicURL
 	signIn.Path = "/sign-in"
-	return "Someone asked to create an account on inbok at " + r.publicURL.String() + " with this email address. " +
+	return "Someone asked to create an account on amplop at " + r.publicURL.String() + " with this email address. " +
 		"You already have an account there, so no new one was created.\n\n" +
 		"To use your account, sign in here:\n\n" +
 		signIn.String() + "\n\n" +

@@ -8,10 +8,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/search"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/search"
 )
 
 // IndexSources returns member owner's messages among ids, with what their

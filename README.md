@@ -1,9 +1,9 @@
-# inbok
+# amplop
 
 A self-hosted webmail client that brings your Gmail accounts into one
 inbox, on your own server.
 
-inbok is in early development: Gmail is its only provider so far, and
+amplop is in early development: Gmail is its only provider so far, and
 there is no release yet, so expect breaking changes before 1.0.
 
 ## Features
@@ -13,7 +13,7 @@ there is no release yet, so expect breaking changes before 1.0.
 - Connect several Gmail accounts and read them in one unified inbox, or
   one account at a time.
 - Conversations grouped by thread, with Gmail's labels as mailboxes.
-- inbok cleans each message's HTML and shows it in a sandboxed frame.
+- amplop cleans each message's HTML and shows it in a sandboxed frame.
   Remote images stay blocked until you allow them; attachments download
   and inline images show without asking.
 - Archive, mark read or unread, star, report spam, trash, and add or
@@ -54,20 +54,20 @@ On a Linux server with Docker, git, and a domain that points at it (see
 [What you need](deploy/README.md#what-you-need)):
 
 ```sh
-git clone https://github.com/akhdanfadh/inbok.git
-cd inbok/deploy
+git clone https://github.com/akhdanfadh/amplop.git
+cd amplop/deploy
 cp .env.example .env && chmod 600 .env
 # fill in the empty values in .env, except the optional Gmail ones;
-# each says how to generate it. Keep a copy of INBOK_ENCRYPTION_KEYS
+# each says how to generate it. Keep a copy of AMPLOP_ENCRYPTION_KEYS
 # off the server, e.g. in a password manager.
 docker compose up -d --build
 ```
 
-Then open `https://<your domain>/setup`, enter `INBOK_SETUP_TOKEN`, and
-create the first administrator. Empty `INBOK_SETUP_TOKEN` in `.env` and
+Then open `https://<your domain>/setup`, enter `AMPLOP_SETUP_TOKEN`, and
+create the first administrator. Empty `AMPLOP_SETUP_TOKEN` in `.env` and
 run `docker compose up -d` again.
 
-inbok offers Gmail once you add a Google OAuth client of your own, which
+amplop offers Gmail once you add a Google OAuth client of your own, which
 [Connecting Gmail](deploy/README.md#connecting-gmail) walks through.
 Registration, email verification, and password reset send email: before
 you use them, set up the server's outgoing email under Settings, System
@@ -80,7 +80,7 @@ backups, and using your own proxy instead of Caddy.
 
 - Gmail is the only provider. IMAP and Outlook are not supported yet.
 - Connecting an account copies only its recent mail; older mail does not
-  appear in inbok's lists or search.
+  appear in amplop's lists or search.
   [Synchronization](backend/README.md#synchronization) says how far back.
 - Google restricts the scopes that read Gmail. Each installation uses its
   own Google OAuth client, so members see Google's "Google hasn't verified
@@ -91,9 +91,9 @@ backups, and using your own proxy instead of Caddy.
   Closing the compose window, after it asks, discards what you wrote.
 - Undo works on a whole conversation: undoing a delete (a move to Trash)
   also moves your own replies in that conversation to the inbox.
-- inbok checks accounts for new mail on a schedule instead of receiving
+- amplop checks accounts for new mail on a schedule instead of receiving
   push notifications.
-- inbok does not encrypt mail at rest. Encrypt the disk that holds
+- amplop does not encrypt mail at rest. Encrypt the disk that holds
   Docker's volumes, as the [self-hosting
   guide](deploy/README.md#message-content) says.
 
@@ -101,7 +101,7 @@ Calendar, contacts, and AI helpers that work on your mail are planned.
 
 ## How it is built
 
-inbok is a Go server and a React web app, which the server serves,
+amplop is a Go server and a React web app, which the server serves,
 backed by PostgreSQL, Meilisearch, and an S3-compatible store, and run
 with Docker Compose. The [backend](backend/README.md) and [web
 app](web/README.md) docs describe each.
@@ -114,18 +114,18 @@ Each links to the section that holds the details.
   client gets the same behaviour; the web app's client is generated from
   the server's OpenAPI document. See
   [API contract](AGENTS.md#api-contract).
-- Your provider stays the source of truth. inbok keeps a synchronized copy
+- Your provider stays the source of truth. amplop keeps a synchronized copy
   in a provider-neutral model shaped after JMAP Mail (RFC 8621), and
   changes that copy only after the provider accepts the change. See
   [Synchronized mail](backend/README.md#synchronized-mail) and
   [Conversations](backend/README.md#conversations).
-- Each installation uses its own Google OAuth client, so no inbok service
+- Each installation uses its own Google OAuth client, so no amplop service
   sits between your server and Google. See [Connecting
   Gmail](deploy/README.md#connecting-gmail).
 - Background work runs as DBOS workflows stored in the same PostgreSQL,
   so there is no message broker, and a job saved with a change commits
   with it. See [Background work](backend/README.md#background-work).
-- inbok treats every message as untrusted: it sanitizes its HTML and shows
+- amplop treats every message as untrusted: it sanitizes its HTML and shows
   it in a sandboxed frame with a strict Content-Security-Policy. See
   [Showing HTML](backend/README.md#showing-html).
 - The search index can be rebuilt from PostgreSQL and the stored message
@@ -160,7 +160,7 @@ describes, not in a public issue.
 
 ## License
 
-inbok is licensed under the [GNU Affero General Public License,
+amplop is licensed under the [GNU Affero General Public License,
 version 3](LICENSE.txt). If you run a modified version for others over a
 network, you must offer them its source.
 

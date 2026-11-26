@@ -1,10 +1,10 @@
-// Package conversation holds inbok's conversations: each account's messages
+// Package conversation holds amplop's conversations: each account's messages
 // that share the provider's thread, as one row of the unified inbox. [Derive]
 // applies the rules that make a thread's row and places, which storage keeps
 // derived for every thread a sync write touches. [Service] lists and reads
 // them for one member, across their connected accounts or one of them.
 //
-// DESIGN: The rules: a draft shows nowhere, which inbok cannot open; a
+// DESIGN: The rules: a draft shows nowhere, which amplop cannot open; a
 // message in Spam or Trash counts only there. A conversation's row is made
 // from its visible messages, the others, or when it has none, from its Spam
 // and Trash ones. One row per conversation, the same in every place, is what
@@ -19,11 +19,11 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/mailsync"
+	"amplop/internal/mailsync"
 )
 
 // maxParticipants bounds the senders a row keeps: it shows a few names, and
-// a long thread's would grow without end. inbok's choice.
+// a long thread's would grow without end. amplop's choice.
 const maxParticipants = 10
 
 // Mailbox is a mailbox a message is in.
@@ -59,7 +59,7 @@ type Message struct {
 	// fetched.
 	Attachments bool
 	// Answers is the message of the same conversation it answers, as
-	// [Service.Get] finds it; the zero UUID for none or one inbok lacks.
+	// [Service.Get] finds it; the zero UUID for none or one amplop lacks.
 	Answers uuid.UUID
 }
 

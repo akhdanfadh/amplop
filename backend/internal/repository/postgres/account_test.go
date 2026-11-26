@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
+	"amplop/internal/account"
 )
 
 // Storage matches emails exactly; the account service normalizes them first.

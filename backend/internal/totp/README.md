@@ -43,7 +43,7 @@ step atomically with its action.
   acceptance checks and records the last step in that transaction.
 - `repository/postgres` implements both storage interfaces. Feature code
   receives neither a transaction nor SQL queries.
-- `httpapi` routes each operation to its owning service. `cmd/inbok` wires
+- `httpapi` routes each operation to its owning service. `cmd/amplop` wires
   services, encryption, storage, and clocks. Both feature packages can
   share the verifier without either calling the other feature's storage.
 

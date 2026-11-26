@@ -7,8 +7,8 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/emailaddress"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/emailaddress"
 )
 
 // Errors a [Provider] returns. None includes an address or any other part
@@ -69,10 +69,10 @@ type Provider interface {
 	Send(ctx context.Context, token connectedaccount.AccessToken, raw []byte, threadID string) (Sent, error)
 
 	// FindSent returns the message Gmail added to Sent after historyID
-	// whose X-Inbok-Message-Id is inbokMessageID. It returns
+	// whose X-Amplop-Message-Id is amplopMessageID. It returns
 	// [ErrSentNotFound] when it read every such message and none matched,
 	// and [ErrCheckIncomplete] when it could not read them all.
-	FindSent(ctx context.Context, token connectedaccount.AccessToken, historyID, inbokMessageID string) (Sent, error)
+	FindSent(ctx context.Context, token connectedaccount.AccessToken, historyID, amplopMessageID string) (Sent, error)
 }
 
 // tokens hands out access tokens for connected accounts, e.g.
@@ -299,7 +299,7 @@ func (s *Sending) Check(ctx context.Context, messageID uuid.UUID, historyID stri
 	if status, stopped, err := s.stopped(ctx, messageID, err, StatusUnknown); stopped {
 		return status, err
 	}
-	sent, err := s.provider.FindSent(ctx, token, historyID, message.InbokMessageID)
+	sent, err := s.provider.FindSent(ctx, token, historyID, message.AmplopMessageID)
 	switch {
 	case err == nil:
 		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: s.sentAt(sent)})

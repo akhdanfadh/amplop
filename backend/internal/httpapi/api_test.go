@@ -52,7 +52,7 @@ func TestAPIDuplicateFields(t *testing.T) {
 		{"alias first", `{"Note":"private-first","note":"private-second","amount":3,"highlighted":false}`, http.StatusUnprocessableEntity},
 		{"two aliases", `{"Note":"private-first","NOTE":"private-second","amount":3,"highlighted":false}`, http.StatusUnprocessableEntity},
 	}
-	for _, contentType := range []string{"application/json", "application/vnd.inbok+json"} {
+	for _, contentType := range []string{"application/json", "application/vnd.amplop+json"} {
 		for _, c := range cases {
 			t.Run(contentType+"/"+c.name, func(t *testing.T) {
 				writes := &testWrites{}

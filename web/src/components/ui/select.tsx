@@ -24,7 +24,7 @@ import { ChevronDownIcon, SearchIcon, CheckIcon } from "lucide-react";
 
 // Select picks one option from a popover list, e.g. From's account.
 //
-// DESIGN: inbok's copy differs from shadcn's as its other components do: the
+// DESIGN: amplop's copy differs from shadcn's as its other components do: the
 // trigger's focus ring follows React Aria's data-focus-visible, not CSS
 // :focus-visible; the trigger takes Input's height, surface, and touch
 // height, and shows the root's invalid state; the list uses DESIGN.md's menu

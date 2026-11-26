@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // ========================
@@ -58,7 +58,7 @@ func (a Action) OnNewest() bool {
 }
 
 // MaxActionIDs is how many conversations one action or change reaches at
-// most, inbok's choice: half of what actionBudget fits at the slowest rate
+// most, amplop's choice: half of what actionBudget fits at the slowest rate
 // measured, so Gmail at twice as slow still fits. Against a Gmail account at
 // actionConcurrency (2026-11-16), Gmail changed about 9 threads a second, 7
 // at its slowest (50 in 6.9 s); 100 in one action left 42 unchanged at the
@@ -84,7 +84,7 @@ const (
 	// provider no longer has its thread; the next sync removes it.
 	ReasonNotFound Reason = "not-found"
 	// ReasonNeedsReconnect means the conversation's account must be
-	// reconnected before inbok can reach its provider.
+	// reconnected before amplop can reach its provider.
 	ReasonNeedsReconnect Reason = "needs-reconnect"
 	// ReasonFailed means the provider failed, refused, or took too long;
 	// trying again may work.
@@ -193,16 +193,16 @@ type threadCall func(ctx context.Context, token connectedaccount.AccessToken, th
 // ========================
 
 // actionBudget is how long an action waits on its provider at most,
-// inbok's choice: a thread not changed by then is refused as failed.
+// amplop's choice: a thread not changed by then is refused as failed.
 var actionBudget = 7 * time.Second
 
 // actionReserve is how much of the caller's deadline an action keeps for
-// its writes and answer after the provider, inbok's choice: with a
+// its writes and answer after the provider, amplop's choice: with a
 // request's 10 seconds, [actionBudget] fits whole when the request started
 // on time.
 var actionReserve = 3 * time.Second
 
-// actionConcurrency bounds one account's provider calls in flight, inbok's
+// actionConcurrency bounds one account's provider calls in flight, amplop's
 // choice, as package google bounds its fetches: providers limit a user's
 // concurrent requests, Gmail at a number it does not publish.
 const actionConcurrency = 4
@@ -229,7 +229,7 @@ func NewActionService(storage ActionStorage, access accountAccess, provider Thre
 // as a failure of the whole action; a conversation's own failure is a
 // [Refusal].
 //
-// DESIGN: inbok writes only what the provider answered, so it never shows
+// DESIGN: amplop writes only what the provider answered, so it never shows
 // a change the provider does not have, and copies none of the provider's
 // rules, e.g. what Trash does to a thread's other labels.
 func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, ids []uuid.UUID) (Applied, error) {
@@ -352,7 +352,7 @@ type accountOutcome struct {
 //
 // DESIGN: an update the provider answers without a version, as Gmail's
 // label changes and Trash do, is written at the account's version read
-// before the calls. Every version inbok held then was read earlier, so the
+// before the calls. Every version amplop held then was read earlier, so the
 // write passes as not late, unless a poll stores a newer one meanwhile and
 // wins; a change made after that version carries a greater one, so the
 // poll that brings it still writes over this one, and the action's own

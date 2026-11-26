@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/connectedaccount"
-	"inbok/internal/encryption"
-	"inbok/internal/passwordreset"
-	"inbok/internal/randomsecret"
-	"inbok/internal/repository/postgres"
+	"amplop/internal/account"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/encryption"
+	"amplop/internal/passwordreset"
+	"amplop/internal/randomsecret"
+	"amplop/internal/repository/postgres"
 )
 
 // clientStack returns a migrated database with an administrator,
@@ -149,7 +149,7 @@ func TestClientRecoveryCancelled(t *testing.T) {
 	assert.Zero(t, events, "the recovery rolled back")
 }
 
-// A client needs the workflow tables inbok migrate creates.
+// A client needs the workflow tables amplop migrate creates.
 func TestClientUnmigrated(t *testing.T) {
 	_, err := NewClient(t.Context(), newDatabase(t), discard)
 

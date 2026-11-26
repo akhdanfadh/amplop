@@ -23,8 +23,8 @@ var testArgs = []string{"mini", "-dir=/data", "-master.telemetry=false"}
 // The container's admin identity. SeaweedFS takes it from these variables
 // when it has no S3 configuration file.
 const (
-	testAccessKeyID     = "inbok-test"
-	testSecretAccessKey = "inbok-test-secret"
+	testAccessKeyID     = "amplop-test"
+	testSecretAccessKey = "amplop-test-secret"
 )
 
 // testEndpoint is the container's S3 address on this machine.

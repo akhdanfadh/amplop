@@ -14,7 +14,7 @@ import { useLiveInfiniteQuery } from "@tanstack/react-db";
 import type { HealthNode } from "@tanstack/db";
 import { Collection, Link } from "react-aria-components";
 import { ArrowUpIcon } from "lucide-react";
-import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
+import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/amplop";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
 import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
@@ -260,7 +260,7 @@ export function ConversationList({
   // already shown stay.
   const olderFailed = list.health?.error != null && list.data.length > 0;
   // A page kept signed out to copy from (watchSessionEnd): its banner says
-  // why nothing loads; inbok is answering, and Try again could only empty
+  // why nothing loads; amplop is answering, and Try again could only empty
   // the rows kept to copy from.
   const keptSignedOut = useKeptSignedOut();
   const refreshing = list.isSyncError && !olderFailed && !keptSignedOut;
@@ -270,7 +270,7 @@ export function ConversationList({
     onRetry();
   };
   // A list that could not read its rows in order, e.g. as TanStack DB asked
-  // for the whole place, which inbok refuses, says so, never that the place
+  // for the whole place, which amplop refuses, says so, never that the place
   // is empty; so does one whose first page met an ended session on a page
   // kept to copy from.
   const unordered = error instanceof WholePlaceRefused;
@@ -517,7 +517,7 @@ function firstError(node: HealthNode | undefined): unknown {
   return undefined;
 }
 
-// clock returns the time of day at ms, as inbok writes one.
+// clock returns the time of day at ms, as amplop writes one.
 function clock(ms: number): string {
   return clockTime.format(ms);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, type MockInstance } from "vite-plus/test";
-import { getFinishTOTPEnrollmentUrl, requestPasswordResetLink } from "./generated/inbok";
+import { getFinishTOTPEnrollmentUrl, requestPasswordResetLink } from "./generated/amplop";
 import { ResponseHealthStatus } from "./generated/model";
 import { userMessage } from "./problem";
 import { ApiError, cookieReplacingPaths, onUnauthorized, transport } from "./transport";

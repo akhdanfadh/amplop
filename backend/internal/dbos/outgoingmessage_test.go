@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/encryption"
-	"inbok/internal/outgoingmessage"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/encryption"
+	"amplop/internal/outgoingmessage"
 )
 
 // fakeSends answers each step as set and counts the calls. checkGate, when

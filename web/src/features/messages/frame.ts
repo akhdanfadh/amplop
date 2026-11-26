@@ -13,7 +13,7 @@ export type FrameState = "loading" | "shown" | "failed";
 const htmlType = "text/html";
 // The frame's first document, before the body's replaces it.
 const initialURL = "about:blank";
-// How often to look whether the body's document has been read, inbok's
+// How often to look whether the body's document has been read, amplop's
 // choice: within a tenth of a second a change reads as instant (Nielsen,
 // "Response Times: The 3 Important Limits"), and a look reads one
 // property. No event tells this page that the frame's document is read;
@@ -21,8 +21,8 @@ const initialURL = "about:blank";
 // back the whole message.
 const pollMs = 100;
 // How long a body may take to be read before the view gives up, e.g. on a
-// stream cut off midway, which leaves the document unfinished. inbok's
-// choice: the body comes from inbok's own store, normally in well under a
+// stream cut off midway, which leaves the document unfinished. amplop's
+// choice: the body comes from amplop's own store, normally in well under a
 // second, so this leaves room for a slow network.
 const timeoutMs = 15_000;
 // The smallest scale wide mail is shown at, after which it scrolls

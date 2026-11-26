@@ -11,8 +11,8 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"golang.org/x/time/rate"
 
-	"inbok/internal/clientprefix"
-	"inbok/internal/session"
+	"amplop/internal/clientprefix"
+	"amplop/internal/session"
 )
 
 const (

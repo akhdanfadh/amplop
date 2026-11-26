@@ -9,9 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // AccountsWithDueBodies returns, in ID order, the accounts whose member

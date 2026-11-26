@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/emailverification"
-	"inbok/internal/passwordreset"
-	"inbok/internal/registration"
-	"inbok/internal/repository/postgres"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/emailverification"
+	"amplop/internal/passwordreset"
+	"amplop/internal/registration"
+	"amplop/internal/repository/postgres"
 )
 
 // expiredRows answers DeleteExpired with batches, one per call, then with
@@ -373,7 +373,7 @@ func ageRuns(t *testing.T, conn *pgx.Conn, ids []string, runs []agedRun) {
 
 	for i, run := range runs {
 		_, err := conn.Exec(t.Context(), `UPDATE dbos.workflow_status SET status = $1, completed_at = $2,
-			queue_name = CASE WHEN $1 IN ('ENQUEUED', 'DELAYED') THEN 'inbok.test-unpolled' ELSE queue_name END
+			queue_name = CASE WHEN $1 IN ('ENQUEUED', 'DELAYED') THEN 'amplop.test-unpolled' ELSE queue_name END
 			WHERE workflow_uuid = $3`,
 			run.status, time.Now().Add(-run.age).UnixMilli(), ids[i])
 		require.NoError(t, err)

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# The Google emulator for inbok's tests and its development and trial
+# The Google emulator for amplop's tests and its development and trial
 # stacks: vercel-labs' emulate (https://github.com/vercel-labs/emulate),
 # a stateful fake of Google OAuth and the Gmail API. emulate publishes
 # only an npm package, so this builds the image. compose.yaml runs it, and
@@ -12,7 +12,7 @@
 ARG PNPM_IMAGE=ghcr.io/pnpm/pnpm:12.8.1@sha256:44cfd11d75b901dc7a83a16812d9134e4bf9d82f6b0eb28af6d666ebbf0fb4fb
 ARG NODE_IMAGE=node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446
 
-# emulate as pnpm-lock.yaml pins it, with inbok's patch applied (see
+# emulate as pnpm-lock.yaml pins it, with amplop's patch applied (see
 # pnpm-workspace.yaml). emulate runs no install scripts, so this needs no
 # Node.
 FROM ${PNPM_IMAGE} AS install

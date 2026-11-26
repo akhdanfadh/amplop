@@ -38,7 +38,7 @@ const twoFactorOff: TotpStatus = { status: "off", backupCodesLeft: 0, backupCode
 const browsers: ListedSessions = { sessions: [] };
 
 // Api is the fake server and what it holds: accounts as the list shows
-// them, and syncStopped, whether syncing has stopped on this inbok. A test
+// them, and syncStopped, whether syncing has stopped on this amplop. A test
 // changes either as another tab or the server would.
 type Api = { server: Server; accounts: ListedAccount[]; syncStopped: boolean };
 
@@ -158,7 +158,7 @@ describe("Connected accounts", () => {
     await open(api([unoffered], { offered: false }).server);
 
     await expect
-      .element(page.getByText(/^Your administrator hasn't set up Gmail on this inbok/))
+      .element(page.getByText(/^Your administrator hasn't set up Gmail on this amplop/))
       .toBeVisible();
     expect(page.getByRole("button", { name: "Connect Gmail" }).elements()).toHaveLength(0);
     expect(page.getByRole("button", { name: /^Check now/ }).elements()).toHaveLength(0);
@@ -171,7 +171,7 @@ describe("Connected accounts", () => {
       .element(page.getByRole("heading", { name: "Gmail can't be connected yet" }))
       .toBeVisible();
     await expect
-      .element(page.getByText(/^Add a Google client to this inbok, as the self-hosting guide/))
+      .element(page.getByText(/^Add a Google client to this amplop, as the self-hosting guide/))
       .toBeVisible();
     expect(page.getByRole("button", { name: "Connect Gmail" }).elements()).toHaveLength(0);
   });

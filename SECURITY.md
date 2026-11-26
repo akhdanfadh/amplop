@@ -14,11 +14,11 @@ Include what you can of:
 - the version or commit you tested, and anything about your setup that
   matters, e.g. your own proxy instead of Caddy.
 
-I maintain inbok on my own and answer on a best-effort basis. Give a fix
+I maintain amplop on my own and answer on a best-effort basis. Give a fix
 time to reach installations before you publish details.
 
 ## Supported versions
 
-inbok has no release yet. Fixes land on the default branch, and an
+amplop has no release yet. Fixes land on the default branch, and an
 installation gets them by upgrading to it, as the [self-hosting
 guide](deploy/README.md#upgrades) describes.

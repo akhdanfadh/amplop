@@ -77,7 +77,7 @@ describe("RouteError", () => {
     await expect.element(heading).toHaveFocus();
     await expect.element(page.getByText("Service busy. Nothing you saved is lost.")).toBeVisible();
     await expect.element(page.getByText("req-1")).toBeVisible();
-    expect(document.title).toBe("Couldn't load this page - inbok");
+    expect(document.title).toBe("Couldn't load this page - amplop");
     // The focused heading announces it; an alert would say it twice.
     expect(page.getByRole("alert").query()).toBeNull();
 
@@ -143,7 +143,7 @@ describe("RouteError", () => {
     await expect.element(page.getByRole("button", { name: "Reload" })).toBeVisible();
     // A way out when the same page fails on every load.
     await expect
-      .element(page.getByRole("link", { name: "open inbok's start page" }))
+      .element(page.getByRole("link", { name: "open amplop's start page" }))
       .toHaveAttribute("href", "/");
   });
 
@@ -179,7 +179,7 @@ describe("RouteError", () => {
     const inbox = createRoute({
       getParentRoute: () => root,
       path: "/",
-      head: () => ({ meta: [{ title: "Inbox - inbok" }] }),
+      head: () => ({ meta: [{ title: "Inbox - amplop" }] }),
       beforeLoad: () => {
         throw new ApiError("http", { method: "GET", status: 503 });
       },
@@ -194,7 +194,7 @@ describe("RouteError", () => {
     await expect
       .element(page.getByRole("heading", { name: "Couldn't load this page" }))
       .toBeVisible();
-    await expect.poll(() => document.title).toBe("Couldn't load this page - inbok");
+    await expect.poll(() => document.title).toBe("Couldn't load this page - amplop");
   });
 });
 
@@ -268,8 +268,8 @@ describe("NotFound", () => {
 
     await expect.element(page.getByRole("heading", { name: "Page not found" })).toHaveFocus();
     await expect
-      .element(page.getByRole("link", { name: "open inbok's start page" }))
+      .element(page.getByRole("link", { name: "open amplop's start page" }))
       .toHaveAttribute("href", "/");
-    expect(document.title).toBe("Page not found - inbok");
+    expect(document.title).toBe("Page not found - amplop");
   });
 });

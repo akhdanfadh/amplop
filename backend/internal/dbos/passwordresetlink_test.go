@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/passwordreset"
+	"amplop/internal/passwordreset"
 )
 
 // fakeLinks answers each Send with the next of results, repeating the last;

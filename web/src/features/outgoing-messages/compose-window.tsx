@@ -14,7 +14,7 @@ import { Link, useBlocker, useRouter, useRouterState } from "@tanstack/react-rou
 import { FocusScope } from "react-aria/FocusScope";
 import { useLandmark } from "react-aria/useLandmark";
 import { Maximize2Icon, Minimize2Icon, MinusIcon, XIcon } from "lucide-react";
-import { getGetOutgoingMessageQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
+import { getGetOutgoingMessageQueryKey, useListConnectedAccounts } from "@/api/generated/amplop";
 import type { ListedAccount } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";

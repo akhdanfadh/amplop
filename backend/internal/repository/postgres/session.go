@@ -9,9 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/account"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
 )
 
 // InsertSession saves the hash and fixed lifetime chosen by the session rules.

@@ -7,12 +7,12 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/passwordreset"
+	"amplop/internal/passwordreset"
 )
 
 // passwordResetLinkWorkflow names the reset link job in DBOS's tables, where
 // enqueued runs outlive the code that made them. Its runs use [emailQueue].
-const passwordResetLinkWorkflow = "inbok.password-reset-link"
+const passwordResetLinkWorkflow = "amplop.password-reset-link"
 
 // PasswordResetLinkInput is the reset link workflow's input: the request's
 // attempt and the ID of the account with the requested email, 0 for none.

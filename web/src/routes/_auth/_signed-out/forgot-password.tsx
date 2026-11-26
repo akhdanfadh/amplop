@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_auth/_signed-out/forgot-password")({
   component: ForgotPassword,
-  head: () => ({ meta: [{ title: "Reset your password - inbok" }] }),
+  head: () => ({ meta: [{ title: "Reset your password - amplop" }] }),
 });
 
 // What the page shows: the form, first or again, or the answer for an

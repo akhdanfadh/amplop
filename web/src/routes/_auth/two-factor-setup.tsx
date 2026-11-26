@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDeleteCurrentSession } from "@/api/generated/inbok";
+import { useDeleteCurrentSession } from "@/api/generated/amplop";
 import type { ApiError } from "@/api/transport";
 import { cn } from "@/lib/cn";
 import { smallTarget } from "@/components/link-style";
@@ -28,7 +28,7 @@ export const Route = createFileRoute("/_auth/two-factor-setup")({
     return { session };
   },
   component: TwoFactorSetup,
-  head: () => ({ meta: [{ title: `${setUpName} - inbok` }] }),
+  head: () => ({ meta: [{ title: `${setUpName} - amplop` }] }),
 });
 
 // TwoFactorSetup is the setup's steps in a card, with a way to sign out

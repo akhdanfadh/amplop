@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/randomsecret"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/randomsecret"
 )
 
 func TestAuthCodeURL(t *testing.T) {

@@ -20,7 +20,7 @@ function AuthLayout(): ReactElement {
             to="/"
             className="-mx-1.5 self-center rounded-md px-1.5 text-lg font-semibold outline-none focus-visible:focus-ring"
           >
-            inbok
+            amplop
           </Link>
           <Outlet />
         </div>

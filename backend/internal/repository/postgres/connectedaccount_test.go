@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/encryption"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/encryption"
 )
 
 // connectedAccountsTest is a migrated database with two members and the
@@ -446,7 +446,7 @@ func TestAccountColorConcurrent(t *testing.T) {
 	c := newConnectedAccountsTest(t)
 	tx, err := c.conn.Begin(t.Context())
 	require.NoError(t, err)
-	_, err = tx.Exec(t.Context(), "SELECT pg_advisory_xact_lock(hashtextextended('inbok.account-color:' || $1::bigint::text, 0))", c.member)
+	_, err = tx.Exec(t.Context(), "SELECT pg_advisory_xact_lock(hashtextextended('amplop.account-color:' || $1::bigint::text, 0))", c.member)
 	require.NoError(t, err)
 	_, err = tx.Exec(t.Context(), `INSERT INTO connected_accounts (user_id, provider, email, oauth_subject, refresh_token_key_id, refresh_token_ciphertext, color)
 		VALUES ($1, 'gmail', 'other@example.com', 'sub-other', '1', '\x01', 1)`, c.member)

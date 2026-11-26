@@ -54,11 +54,11 @@ const (
 	paramStart        = "start"
 )
 
-// maxParts is the most parts [Parse] reads in one message. inbok's own
+// maxParts is the most parts [Parse] reads in one message. amplop's own
 // limit: each part becomes a row, and real mail has tens at most.
 const maxParts = 1000
 
-// ErrTooManyParts means a message has more parts than inbok reads.
+// ErrTooManyParts means a message has more parts than amplop reads.
 var ErrTooManyParts = errors.New("messagecontent: too many parts")
 
 // Received is one part of a message as a provider returns it, with its
@@ -69,7 +69,7 @@ var ErrTooManyParts = errors.New("messagecontent: too many parts")
 // read raw message bytes, while Gmail's full format arrives already
 // parsed, so the Gmail adapter fills this directly. An adapter for raw
 // mail, e.g. IMAP, would fill it with one of them. Either way, kinds and
-// what to show are inbok's own rules, which neither library decides.
+// what to show are amplop's own rules, which neither library decides.
 type Received struct {
 	ID        string               // the provider's part ID, e.g. Gmail's partId "0.1"
 	MediaType string               // e.g. "text/html", without parameters

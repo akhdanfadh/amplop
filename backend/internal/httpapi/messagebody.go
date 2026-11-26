@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // bodyContentType is a message body's type: [messagecontent.Sanitize]
@@ -24,12 +24,12 @@ const (
 	// load with the session cookie and the view can measure its height;
 	// links open in a new tab, outside the sandbox.
 	bodySandbox = "sandbox allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-	// Nothing loads but what the policy names, and only inbok may frame
+	// Nothing loads but what the policy names, and only amplop may frame
 	// the body. The body's own CSS, in <style> and style attributes,
 	// applies; @import is a load and stays refused.
 	bodyPolicy = bodySandbox + "; default-src 'none'; style-src 'unsafe-inline'; " +
 		"form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
-	// Inline images are part URLs on inbok's own origin. 'self' also
+	// Inline images are part URLs on amplop's own origin. 'self' also
 	// matches other API paths; [withFetchDest] refuses those as images.
 	bodyImagesBlocked = "; img-src 'self'"
 	// Remote images are the http and https URLs the sanitizer kept.

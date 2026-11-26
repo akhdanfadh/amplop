@@ -6,17 +6,17 @@ type Security = SystemEmailSettings["security"];
 
 // The page's lead: what system email is.
 export const systemEmailLead =
-  "The mail server inbok sends its own messages through, like sign-in codes. Members' mailboxes are separate.";
+  "The mail server amplop sends its own messages through, like sign-in codes. Members' mailboxes are separate.";
 
 // The settings' section: its title and what it is for.
 export const mailServerTitle = "Mail server";
-export const mailServerAbout = "The SMTP server and sender inbok's own messages go out with.";
+export const mailServerAbout = "The SMTP server and sender amplop's own messages go out with.";
 
 // The test's section: its title and what it is for.
 export const testTitle = "Test message";
 export const testAbout = "Sends a message with the saved settings, to check that they work.";
 
-// The badge beside the title: whether inbok can send its own email.
+// The badge beside the title: whether amplop can send its own email.
 export const badgeText = {
   tested: "Tested",
   // True after a failed test as before any: Go clears the tested time
@@ -63,8 +63,8 @@ export function securityLabel(security: Security): string {
 // The form's groups: a title and what each holds.
 export const groupText = {
   connection: { title: "Connection", about: "From your email provider's SMTP settings." },
-  signIn: { title: "Sign-in", about: "The account inbok signs in to the mail server with." },
-  sender: { title: "Sender", about: "Who inbok's messages come from." },
+  signIn: { title: "Sign-in", about: "The account amplop signs in to the mail server with." },
+  sender: { title: "Sender", about: "Who amplop's messages come from." },
 };
 
 // The form's fields: each label and the line before its control.
@@ -84,7 +84,7 @@ export const fieldText = {
   },
   fromAddress: {
     label: "From address",
-    description: "The address inbok sends from. Your provider must allow this account to use it.",
+    description: "The address amplop sends from. Your provider must allow this account to use it.",
   },
   fromName: { label: "From name", description: "The sender name recipients see." },
 };

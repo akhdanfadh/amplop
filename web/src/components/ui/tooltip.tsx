@@ -25,7 +25,7 @@ export const restMs = 500;
 // the next shows at once. Keyboard focus shows it at once. It closes as
 // soon as the pointer or focus leaves, closeDelay 0 by default.
 //
-// DESIGN: inbok's copy differs from shadcn's: the trigger is a React Aria
+// DESIGN: amplop's copy differs from shadcn's: the trigger is a React Aria
 // button or link as is, without Focusable, since those take the trigger's
 // props themselves; React Aria's warm-up instead of shadcn's no delay, so
 // a pointer crossing the rail does not flash every icon's name; it opens

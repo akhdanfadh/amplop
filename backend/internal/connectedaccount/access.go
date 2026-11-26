@@ -10,7 +10,7 @@ import (
 )
 
 // tokenRenewBefore is how long before its expiry a kept access token is
-// traded for a new one, inbok's choice: a margin for the step that takes
+// traded for a new one, amplop's choice: a margin for the step that takes
 // it, which uses it for at most a page of calls, usually a minute or two
 // with their retries. A call Gmail refuses as expired makes the step take
 // a new one, through [AccessToken.Refused].
@@ -26,7 +26,7 @@ var (
 	// provider work runs for it.
 	ErrDeactivated = errors.New("connected account's member is deactivated")
 	// ErrTokenUnreadable means the saved refresh token cannot be decrypted,
-	// e.g. its key is no longer in INBOK_ENCRYPTION_KEYS.
+	// e.g. its key is no longer in AMPLOP_ENCRYPTION_KEYS.
 	ErrTokenUnreadable = errors.New("connected account's refresh token is unreadable")
 	// ErrCredentialChanged means the account's credential changed, or the
 	// account went, after it was read: storage returns it for a write
@@ -71,7 +71,7 @@ func (t AccessToken) Value() string {
 }
 
 // Refused tells the [Access] that handed t out that the provider refused
-// it, e.g. after the member revoked inbok's access at Google, so its next
+// it, e.g. after the member revoked amplop's access at Google, so its next
 // [Access.Token] for the account trades the refresh token again rather
 // than handing t out. It does nothing for a token from [NewAccessToken].
 //
@@ -238,7 +238,7 @@ func (a *Access) refused(accountID int64, value string) {
 // Check returns nil when provider work may still run for account
 // accountID: the account exists, needs no reconnect, its member is active,
 // and its refresh token opens. It asks Google nothing, so it suits a step
-// that only writes inbok's own data. It returns the same stop errors as
+// that only writes amplop's own data. It returns the same stop errors as
 // [Access.Token]: [ErrNotFound], [ErrDeactivated], [ErrNeedsReconnect], or
 // [ErrTokenUnreadable]; any other error is storage's.
 func (a *Access) Check(ctx context.Context, accountID int64) error {

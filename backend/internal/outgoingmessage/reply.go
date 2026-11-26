@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"inbok/internal/msgid"
+	"amplop/internal/msgid"
 )
 
 // replyPrefix starts a reply's subject (RFC 5322 section 3.6.5).
@@ -74,7 +74,7 @@ func replyTo(next NewMessage, sender Sender, answered Answered) NewMessage {
 // characters. A subject longer than 500 characters is cut to 500.
 //
 // DESIGN: the prefix gives way to the subject, so the reply keeps the
-// answered message's subject whole within inbok's limit, which a person
+// answered message's subject whole within amplop's limit, which a person
 // hardly writes past; Gmail's thread guide asks for a matching subject
 // without saying how it compares them. A "Re:" prefix, tabs, and line breaks
 // leave RFC 5256's base subject unchanged (section 2.1); another control

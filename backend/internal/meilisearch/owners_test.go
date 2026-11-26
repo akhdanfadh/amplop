@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // Every document ID is listed, page after page.
@@ -39,7 +39,7 @@ func TestDocumentIDsMalformed(t *testing.T) {
 	require.EqualError(t, err, "list search documents: a document's ID is not a message ID")
 }
 
-// An index named like a member's but not as inbok names one fails the
+// An index named like a member's but not as amplop names one fails the
 // listing rather than be left out of it.
 func TestOwnersMalformed(t *testing.T) {
 	for _, suffix := range []string{"nobody", "", "0", "-1", "042", "99999999999999999999"} {

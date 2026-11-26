@@ -14,9 +14,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/conversation"
-	"inbok/internal/search"
-	"inbok/internal/session"
+	"amplop/internal/conversation"
+	"amplop/internal/search"
+	"amplop/internal/session"
 )
 
 // searchService searches members' mail, e.g. [search.Searcher].
@@ -44,11 +44,11 @@ const (
 )
 
 // searchUnavailableRetry is the Retry-After of a search the index did not
-// answer, inbok's choice: about how long Meilisearch takes to start again.
+// answer, amplop's choice: about how long Meilisearch takes to start again.
 const searchUnavailableRetry = 15 * time.Second
 
 // maxRunningSearches is how many searches one member may have running at
-// once, inbok's choice: the web runs one per search box, but a search the
+// once, amplop's choice: the web runs one per search box, but a search the
 // member typed past still runs while the next starts, until it ends. A member past it, e.g. a
 // script, takes no more of the index's time from other members.
 const maxRunningSearches = 2
@@ -66,29 +66,29 @@ const searchRunTimeout = requestTimeout + 5*time.Second
 const hasAttachment = "attachment"
 
 type conversationSearchInput struct {
-	// 200 characters is inbok's choice: only a query's first 10 words
+	// 200 characters is amplop's choice: only a query's first 10 words
 	// count, and no 10 words of mail need more.
 	Q       string `query:"q" pattern:"\\S" maxLength:"200" doc:"The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count. Left out, every message the other parameters keep matches, newest first."`
 	Account int64  `query:"account" minimum:"1" doc:"A connected account's id, to search only its mail; every account's when left out."`
-	// 20 places is inbok's choice: every view and more labels than a
+	// 20 places is amplop's choice: every view and more labels than a
 	// member ticks, while each place adds a clause the index checks for
 	// every message.
 	Place []string `query:"place,explode" nullable:"false" maxItems:"20" doc:"Where to search: a view, inbox, starred, sent, all, spam, or trash, or the id of one of the account's labels from List Places, each as List Conversations reads it. A conversation in any of them matches. Repeat it for each, up to 20. Left out, all: every conversation but those only in Spam or Trash."`
 	// places are Place parsed, by Resolve.
 	places []conversation.Place
-	// 10 senders is inbok's choice: a person's or a company's few
-	// addresses. 254 characters is inbok's choice too, after the 254
+	// 10 senders is amplop's choice: a person's or a company's few
+	// addresses. 254 characters is amplop's choice too, after the 254
 	// octets RFC 5321 leaves a mailbox in an SMTP path.
 	From []string `query:"from,explode" nullable:"false" maxItems:"10" format:"idn-email" maxLength:"254" doc:"Senders, by email address, as a message's from lists them: a message from any of them matches, ignoring case. Repeat it for each, up to 10."`
 	// Instants with their offset, not dates: a day starts at another
 	// moment in each time zone, which the client knows.
 	Since  time.Time `query:"since" doc:"Only messages the provider received at or after this instant, e.g. the member's local midnight, as 2026-11-01T00:00:00+07:00."`
 	Before time.Time `query:"before" doc:"Only messages the provider received before this instant, which must be later than since."`
-	Has    string    `query:"has" enum:"attachment" doc:"attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened."`
+	Has    string    `query:"has" enum:"attachment" doc:"attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content amplop has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened."`
 	// A page past 1000 holds nothing: a search counts at most
 	// [search.MaxTotal] matches, which TestSearchConversationsBounds ties to it.
 	Page int `query:"page" minimum:"1" maximum:"1000" default:"1" doc:"Which page of results, from 1."`
-	// 50 is inbok's choice: the web's results page, and an index's time
+	// 50 is amplop's choice: the web's results page, and an index's time
 	// per search grows with each result's body text it cuts.
 	Limit int `query:"limit" minimum:"1" maximum:"50" default:"50" doc:"How many results a page holds, at most."`
 }

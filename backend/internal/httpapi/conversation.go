@@ -12,10 +12,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/session"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/session"
 )
 
 const (
@@ -372,7 +372,7 @@ type conversationMessage struct {
 	// Named answers, not JMAP's inReplyTo, which lists Message-IDs (RFC
 	// 8621 section 4.1.3): this is the message itself.
 	Answers     *uuid.UUID `json:"answers" nullable:"true" format:"uuid" doc:"The message of this conversation it answers, by its In-Reply-To header; null for none, or one this conversation does not hold."`
-	Attachments bool       `json:"attachments" doc:"Whether it has an attachment. inbok knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then."`
+	Attachments bool       `json:"attachments" doc:"Whether it has an attachment. amplop knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then."`
 }
 
 type conversationDetail struct {
@@ -491,7 +491,7 @@ func conversationActionProblem(err error) error {
 func registerConversationAction(api huma.API, handler conversationHandler) {
 	responses := memberResponses(api, http.StatusConflict, http.StatusUnprocessableEntity)
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "No Google client is configured, so inbok can't reach Gmail."
+	conflict.Description = "No Google client is configured, so amplop can't reach Gmail."
 	conflict.Content[problemContentType].Example = conversationActionProblem(errGmailNotConfigured)
 
 	huma.Register(api, huma.Operation{
@@ -501,7 +501,7 @@ func registerConversationAction(api huma.API, handler conversationHandler) {
 		Summary:     "Apply Conversation Action",
 		Tags:        []string{tagConversations},
 		Description: "Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. " +
-			"Nothing changes in inbok that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. " +
+			"Nothing changes in amplop that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. " +
 			"Opening a conversation does not mark it read; send read.",
 		Metadata:  map[string]any{accessKey: session.AccessMember},
 		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -711,7 +711,7 @@ func conversationChangesProblem(err error) error {
 func registerConversationChanges(api huma.API, handler conversationHandler) {
 	responses := memberResponses(api, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity)
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "No Google client is configured, so inbok can't reach Gmail."
+	conflict.Description = "No Google client is configured, so amplop can't reach Gmail."
 	conflict.Content[problemContentType].Example = conversationActionProblem(errGmailNotConfigured)
 	notFound := responses[strconv.Itoa(http.StatusNotFound)]
 	notFound.Description = "A label is not one of the member's in a conversation's account, e.g. deleted since."

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   getGetRegistrationSettingsQueryOptions,
   useGetRegistrationSettings,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { cachedLoader, loadedFreshMs } from "@/api/cached-read";
@@ -20,7 +20,7 @@ export const registrationLoader = cachedLoader(getGetRegistrationSettingsQueryOp
 export const Route = createFileRoute("/_app/settings/_admin/registration")({
   loader: registrationLoader,
   component: Registration,
-  head: () => ({ meta: [{ title: "Registration - inbok" }] }),
+  head: () => ({ meta: [{ title: "Registration - amplop" }] }),
 });
 
 // Registration is whether visitors can create their own accounts.

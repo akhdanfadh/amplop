@@ -1,6 +1,6 @@
 import { useState, type ReactElement } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useGetRegistration } from "@/api/generated/inbok";
+import { useGetRegistration } from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { RequestError } from "@/components/request-error";
 import { textLink } from "@/components/link-style";
@@ -12,7 +12,7 @@ import { requested } from "@/features/registration/visitor-text";
 
 export const Route = createFileRoute("/_auth/_signed-out/register/")({
   component: Register,
-  head: () => ({ meta: [{ title: "Create an account - inbok" }] }),
+  head: () => ({ meta: [{ title: "Create an account - amplop" }] }),
 });
 
 // What the page shows once registration is open: the form, first or
@@ -40,7 +40,7 @@ function Register(): ReactElement {
     return (
       <SignedOutPage
         title="Couldn't check registration"
-        lead="inbok couldn't tell whether registration is open."
+        lead="amplop couldn't tell whether registration is open."
         step="failed"
         after={signIn}
       >
@@ -59,7 +59,7 @@ function Register(): ReactElement {
     return (
       <SignedOutPage
         title="Registration is closed"
-        lead="This inbok isn't accepting new accounts right now."
+        lead="This amplop isn't accepting new accounts right now."
         step="closed"
         after={signIn}
       />

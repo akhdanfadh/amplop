@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/encryption"
+	"amplop/internal/encryption"
 )
 
 func key(seed byte) string {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"inbok/internal/mailsync"
+	"amplop/internal/mailsync"
 )
 
 // The mailboxes of one account, by role.

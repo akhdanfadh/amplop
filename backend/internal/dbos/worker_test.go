@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A worker needs the workflow tables inbok migrate creates; it never
+// A worker needs the workflow tables amplop migrate creates; it never
 // creates them itself.
 func TestWorkerUnmigrated(t *testing.T) {
 	url := newDatabase(t)
@@ -29,7 +29,7 @@ func TestWorkerDBOSOverrides(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(name, "other")
 
-			_, err := NewWorker("postgres://u:p@127.0.0.1:1/inbok", "worker", Services{}, discard)
+			_, err := NewWorker("postgres://u:p@127.0.0.1:1/amplop", "worker", Services{}, discard)
 
 			require.ErrorContains(t, err, name)
 		})
@@ -39,7 +39,7 @@ func TestWorkerDBOSOverrides(t *testing.T) {
 // A malformed database URL stops the worker with an error that hides the
 // password; DBOS's own error would quote the URL.
 func TestWorkerBadURL(t *testing.T) {
-	_, err := NewWorker("postgres://inbok:SYNTHETIC_SECRET@localhost:bad/inbok", "worker", Services{}, discard)
+	_, err := NewWorker("postgres://amplop:SYNTHETIC_SECRET@localhost:bad/amplop", "worker", Services{}, discard)
 
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "SYNTHETIC_SECRET")

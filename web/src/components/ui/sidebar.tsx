@@ -94,7 +94,7 @@ function useSidebar(): SidebarState {
 // show alone, starts closed and closes again when the window leaves those
 // layouts. Ctrl/Cmd+B toggles the one in use.
 //
-// DESIGN: inbok's copy differs from shadcn's in all of these. One left
+// DESIGN: amplop's copy differs from shadcn's in all of these. One left
 // sidebar that collapses to a rail: no offcanvas, floating, inset, or
 // right-hand variant, and no SidebarRail: a strip on the sidebar's edge that
 // only a mouse reaches. The window's layout (useLayout) picks sidebar, rail,
@@ -447,7 +447,7 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-// SidebarGroupLabel names a group of items, e.g. "This inbok". On the rail
+// SidebarGroupLabel names a group of items, e.g. "This amplop". On the rail
 // its words give way to a hairline of the same height, so the items below
 // keep their place; screen readers still read the words. Forced colours
 // would show the clear words, so there they take the background colour.

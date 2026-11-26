@@ -10,7 +10,7 @@ import (
 	"uuid"
 )
 
-// textClip is how much of a plain-text body a view gets, inbok's choice
+// textClip is how much of a plain-text body a view gets, amplop's choice
 // after Gmail, which clips a message past about 102 KB: a view stays quick
 // to load and show, and the whole text remains a download.
 const textClip = 102 << 10

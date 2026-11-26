@@ -1,7 +1,10 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { getListConnectedAccountsQueryKey, useRenameConnectedAccount } from "@/api/generated/inbok";
+import {
+  getListConnectedAccountsQueryKey,
+  useRenameConnectedAccount,
+} from "@/api/generated/amplop";
 import type { ListedAccount, ResponseConnectedAccounts } from "@/api/generated/model";
 import { RenameConnectedAccountBody } from "@/api/generated/model/renameConnectedAccountBody.zod";
 import { userMessage } from "@/api/problem";

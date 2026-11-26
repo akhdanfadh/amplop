@@ -5,9 +5,9 @@ const themes = ["light", "dark", "system"] as const;
 export type Theme = (typeof themes)[number];
 
 // The localStorage key that holds the choice.
-export const themeKey = "inbok-theme";
+export const themeKey = "amplop-theme";
 // The window event that tells this tab's readers the choice changed.
-const changeEvent = "inbok-theme-change";
+const changeEvent = "amplop-theme-change";
 const darkQuery = "(prefers-color-scheme: dark)";
 // A choice storage refused to keep; it holds until the page reloads.
 let unsaved: Theme | null = null;

@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/systememail"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/systememail"
 )
 
 // ReadSystemEmail returns nil when no settings are saved.

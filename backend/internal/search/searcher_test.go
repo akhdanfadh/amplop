@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/search"
-	"inbok/internal/search/searchtest"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/search"
+	"amplop/internal/search/searchtest"
 )
 
 // stored is a message storage holds: the message, the mailboxes it is in

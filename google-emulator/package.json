@@ -1,7 +1,7 @@
 {
-  "name": "inbok-google-emulator",
+  "name": "amplop-google-emulator",
   "private": true,
-  "description": "The Google emulator inbok's tests and development stack run; see Dockerfile.",
+  "description": "The Google emulator amplop's tests and development stack run; see Dockerfile.",
   "dependencies": {
     "emulate": "0.13.0"
   },

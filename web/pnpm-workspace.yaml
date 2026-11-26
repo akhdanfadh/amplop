@@ -46,7 +46,7 @@ minimumReleaseAgeExclude:
   - vite-plus@1.6.0
 # NOTE: @tanstack/db 1.0.0-rc.1.4 (and rc.1.5) answers a row that leaves a
 # list before the list's first page has answered with a read of the whole
-# place, which inbok refuses (src/features/mail/conversations.ts), so the
+# place, which amplop refuses (src/features/mail/conversations.ts), so the
 # list broke after an action, e.g. Trash right after a Delete: the open
 # upstream report https://github.com/TanStack/db/issues/2260. The patch
 # makes it read the list's first window again instead, as it already does

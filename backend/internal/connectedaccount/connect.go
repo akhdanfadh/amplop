@@ -8,9 +8,9 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/emailaddress"
-	"inbok/internal/randomsecret"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/emailaddress"
+	"amplop/internal/randomsecret"
 )
 
 // stateLifetime is how long a member has to finish at Google: long enough to
@@ -20,7 +20,7 @@ const stateLifetime = 10 * time.Minute
 
 // startLimit bounds a member's unfinished starts: a finished flow deletes
 // its state, so only abandoned ones count, and each counts until it
-// expires. inbok's choice, so one member cannot fill the table between
+// expires. amplop's choice, so one member cannot fill the table between
 // cleanups.
 var startLimit = attemptlimit.Limit{Window: stateLifetime, Max: 5}
 
@@ -54,7 +54,7 @@ var (
 	errNoCode         = errors.New("callback has no code")
 	errNoGrantToken   = errors.New("google sent no refresh token")
 	errProfileMailbox = errors.New("gmail profile is for another mailbox")
-	errGoogleEmail    = errors.New("google sent an email inbok cannot store")
+	errGoogleEmail    = errors.New("google sent an email amplop cannot store")
 )
 
 // Grant is what Google returns for an authorization code, as the adapter
@@ -220,7 +220,7 @@ func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UU
 // save; any other error is a failure the member cannot fix.
 //
 // DESIGN: a grant that is not saved is left alone at Google, not revoked.
-// Revoking any token ends the Google account's whole grant to inbok's
+// Revoking any token ends the Google account's whole grant to amplop's
 // Google project, which another connection of the same account in the
 // instance may be using.
 func (c *Connections) Finish(ctx context.Context, userID int64, sessionID uuid.UUID, callback Callback) (Account, error) {
@@ -257,7 +257,7 @@ func (c *Connections) Finish(ctx context.Context, userID int64, sessionID uuid.U
 		return Account{}, fmt.Errorf("exchange code: %w", err)
 	}
 
-	// 5. Refuse a grant inbok cannot use before spending a Gmail call on it.
+	// 5. Refuse a grant amplop cannot use before spending a Gmail call on it.
 	switch {
 	// Jobs reach Gmail later only with a refresh token, which Google sends
 	// for offline access with the consent prompt.
@@ -266,7 +266,7 @@ func (c *Connections) Finish(ctx context.Context, userID int64, sessionID uuid.U
 	// Google's granular consent lets the member untick Gmail access.
 	case !grant.GmailGranted:
 		return Account{}, ErrGmailNotGranted
-	// inbok's choice: the member never types the email, so it must be one
+	// amplop's choice: the member never types the email, so it must be one
 	// Google vouches for.
 	case !grant.EmailVerified:
 		return Account{}, ErrEmailNotVerified

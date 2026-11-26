@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // Members and accounts in the contract's documents.
@@ -23,7 +23,7 @@ const (
 	budiAccount int64 = 21
 )
 
-// Mailboxes of Asha's work account, by inbok's IDs.
+// Mailboxes of Asha's work account, by amplop's IDs.
 var (
 	inboxBox   = uuid.MustParse("019a0000-0000-7000-8000-0000000000a1")
 	spamBox    = uuid.MustParse("019a0000-0000-7000-8000-0000000000a2")

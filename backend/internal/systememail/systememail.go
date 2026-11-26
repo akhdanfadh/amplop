@@ -1,5 +1,5 @@
 // Package systememail owns the instance's own mail sender: its settings, test
-// messages, and the [Mailer] that sends inbok's messages with them. It is
+// messages, and the [Mailer] that sends amplop's messages with them. It is
 // separate from the mailboxes members connect.
 package systememail
 
@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	"inbok/internal/emailaddress"
+	"amplop/internal/emailaddress"
 )
 
 // Security selects how the connection to the mail server is protected.
@@ -192,7 +192,7 @@ func validateInput(input Input) error {
 	switch input.Security {
 	case SecurityTLS, SecuritySTARTTLS:
 	case SecurityNone:
-		// inbok never signs in without TLS, so the password never crosses the
+		// amplop never signs in without TLS, so the password never crosses the
 		// network in clear text.
 		if input.Username != "" {
 			return ErrCleartextUsername
@@ -205,7 +205,7 @@ func validateInput(input Input) error {
 	if strings.ContainsFunc(input.Host, unicode.IsControl) {
 		return ErrInvalidHost
 	}
-	// inbok's choice, following SASLprep, which forbids control characters
+	// amplop's choice, following SASLprep, which forbids control characters
 	// (RFC 4013) and which SASL PLAIN recommends but does not require (RFC 4616).
 	if strings.ContainsFunc(input.Username, unicode.IsControl) {
 		return ErrInvalidUsername
@@ -215,12 +215,12 @@ func validateInput(input Input) error {
 	if strings.ContainsFunc(input.Password, unicode.IsControl) || len(input.Password) > maxPasswordBytes {
 		return ErrInvalidPassword
 	}
-	// inbok's choice, stricter than RFC 5322, which allows tabs and folded
+	// amplop's choice, stricter than RFC 5322, which allows tabs and folded
 	// lines in a display name.
 	if strings.ContainsFunc(input.FromName, unicode.IsControl) {
 		return ErrInvalidFromName
 	}
-	// inbok sends a password only with a username, so one alone is a mistake.
+	// amplop sends a password only with a username, so one alone is a mistake.
 	if input.Username == "" && input.Password != "" {
 		return ErrPasswordWithoutUsername
 	}

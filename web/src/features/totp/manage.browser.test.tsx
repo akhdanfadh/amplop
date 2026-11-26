@@ -42,7 +42,7 @@ describe("two-factor management", () => {
     await expect
       .element(
         page.getByText(
-          "Two-factor authentication is off. Remove the inbok entry from your authenticator app.",
+          "Two-factor authentication is off. Remove the amplop entry from your authenticator app.",
         ),
       )
       .toBeVisible();
@@ -65,7 +65,7 @@ describe("two-factor management", () => {
     await expect
       .element(
         page.getByText(
-          "Two-factor authentication is off. Remove the inbok entry from your authenticator app.",
+          "Two-factor authentication is off. Remove the amplop entry from your authenticator app.",
         ),
       )
       .toBeVisible();

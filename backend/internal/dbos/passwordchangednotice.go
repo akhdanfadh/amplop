@@ -7,13 +7,13 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/passwordreset"
+	"amplop/internal/passwordreset"
 )
 
 // passwordChangedNoticeWorkflow names the password changed notice in DBOS's
 // tables, where enqueued runs outlive the code that made them. Its runs use
 // [emailQueue].
-const passwordChangedNoticeWorkflow = "inbok.password-changed-notice"
+const passwordChangedNoticeWorkflow = "amplop.password-changed-notice"
 
 // PasswordChangedNoticeInput is the password changed notice workflow's
 // input: the user whose password a reset link changed, and when. The step

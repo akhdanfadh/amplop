@@ -1,6 +1,6 @@
-# inbok backend
+# amplop backend
 
-The Go server: the `inbok` command (`serve`, `worker`, `migrate`,
+The Go server: the `amplop` command (`serve`, `worker`, `migrate`,
 `health`, `export`, `recover-admin`, `search rebuild`), its HTTP API, the built web app it
 serves, its background work, and its database code. Running `make` in the repository root lists a
 shortcut for most commands here.
@@ -15,7 +15,7 @@ development server:
 ```sh
 cd backend
 set -a; . ../.env; set +a
-go run ./cmd/inbok serve
+go run ./cmd/amplop serve
 ```
 
 Or, to rebuild and restart the server whenever a Go file changes, use
@@ -44,8 +44,8 @@ Expect HTTP 200 with:
 {"data": {"status": "ok"}}
 ```
 
-`inbok health` makes the same request to the address `serve` listens on
-(`INBOK_HTTP_ADDR`; an all-interfaces address such as `0.0.0.0:8080`
+`amplop health` makes the same request to the address `serve` listens on
+(`AMPLOP_HTTP_ADDR`; an all-interfaces address such as `0.0.0.0:8080`
 reaches this machine), with a 3-second limit and no proxy. It exits 0 if the
 answer is HTTP 200 and 1 otherwise, printing the reason. It reads no other
 setting, so it needs no secrets. The container image runs it as its health
@@ -54,7 +54,7 @@ check, since the image has no `curl`.
 ## Background work
 
 Work that outlasts a request, or must happen even if a process stops
-halfway, runs in a separate process, `inbok worker`, on
+halfway, runs in a separate process, `amplop worker`, on
 [DBOS](https://docs.dbos.dev). DBOS saves each piece of work as a
 **workflow** in PostgreSQL, in the `dbos` schema, and records each
 finished **step**, so a stopped workflow resumes where it left off.
@@ -62,7 +62,7 @@ finished **step**, so a stopped workflow resumes where it left off.
 e.g. a [password reset link](#password-reset-link) with its request,
 through a DBOS client (`dbos.Client`), so it too needs the workflow
 tables `migrate` creates. DBOS keeps its workflow state in PostgreSQL, so
-inbok runs no message broker.
+amplop runs no message broker.
 
 `make dev` runs the worker beside `serve`, restarting it when a Go file
 changes; `make dev-worker` runs only the worker, and `make backend-worker`
@@ -75,15 +75,15 @@ The worker reads these environment variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL, as for `serve`. |
-| `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
-| `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
-| `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of Gmail accounts, connected or removed. |
-| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with, the [send](#sending-a-message) job sends with, and the [syncs](#synchronization) read Gmail with. Empty: the worker runs none of them and leaves them queued. |
-| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
-| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. Serve [searches](#searching) it; the worker applies the [search index](#search-index)'s settings when it starts and keeps the index in step. |
-| `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
+| `AMPLOP_DATABASE_URL` | none, required | PostgreSQL connection URL, as for `serve`. |
+| `AMPLOP_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `AMPLOP_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
+| `AMPLOP_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
+| `AMPLOP_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names amplop to mail servers. |
+| `AMPLOP_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of Gmail accounts, connected or removed. |
+| `AMPLOP_GOOGLE_CLIENT_ID`, `AMPLOP_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with, the [send](#sending-a-message) job sends with, and the [syncs](#synchronization) read Gmail with. Empty: the worker runs none of them and leaves them queued. |
+| `AMPLOP_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
+| `AMPLOP_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. Serve [searches](#searching) it; the worker applies the [search index](#search-index)'s settings when it starts and keeps the index in step. |
+| `AMPLOP_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
@@ -96,14 +96,14 @@ hour's run twice.
 
 The worker serves HTTP only for its health check. Once DBOS has started
 and resumed the worker's unfinished workflows, it answers every request on
-`INBOK_HTTP_ADDR` with HTTP 200 and no body, including the
-`/api/v0/health` that `inbok health` asks for. That says the worker started, not that it is
+`AMPLOP_HTTP_ADDR` with HTTP 200 and no body, including the
+`/api/v0/health` that `amplop health` asks for. That says the worker started, not that it is
 still making progress: DBOS exposes no state of its queue loop to check.
-`inbok health`, run with the worker's `INBOK_HTTP_ADDR`, checks it like
+`amplop health`, run with the worker's `AMPLOP_HTTP_ADDR`, checks it like
 the server:
 
 ```sh
-INBOK_HTTP_ADDR=127.0.0.1:8081 go run ./cmd/inbok health
+AMPLOP_HTTP_ADDR=127.0.0.1:8081 go run ./cmd/amplop health
 ```
 
 Ctrl+C or SIGTERM closes the health listener, then shuts DBOS down: it
@@ -121,7 +121,7 @@ Work waiting in a queue belongs to no worker: every worker polls the same
 queue tables, and each workflow goes to exactly one of them. Scheduled
 runs are shared the same way, since each run's workflow ID comes from the
 schedule's name and time. Once a worker starts a workflow, though, the
-workflow belongs to that worker's `INBOK_WORKER_ID` until it finishes.
+workflow belongs to that worker's `AMPLOP_WORKER_ID` until it finishes.
 
 When a worker starts, it puts every pending workflow of its own ID back
 on the queue, and they resume from the first step that had not finished.
@@ -133,7 +133,7 @@ a workflow to a worker with another ID. Therefore:
 - Never run two workers with one ID: each start would rerun the other's
   running workflows, side effects and all, e.g. a second email.
 - A worker removed for good leaves its started workflows pending. Start a
-  worker once with its ID, e.g. `INBOK_WORKER_ID=worker-2`, to finish
+  worker once with its ID, e.g. `AMPLOP_WORKER_ID=worker-2`, to finish
   them; DBOS's `ResumeWorkflow` also queues one for any worker, but only
   once the old worker is surely gone.
 
@@ -151,7 +151,7 @@ keeps a queue's saved settings rather than resetting them, so a change
 to a queue's options in code needs its own update.
 
 DBOS records a version on every workflow and resumes only workflows of its
-own version. inbok fixes that version at `1` instead of DBOS's default, a
+own version. amplop fixes that version at `1` instead of DBOS's default, a
 hash of the binary, so a new release resumes what the previous one left
 unfinished. A workflow whose steps change must therefore still finish the
 runs an older release started, e.g. with
@@ -159,8 +159,8 @@ runs an older release started, e.g. with
 
 ### Scheduled cleanup
 
-Every hour on the hour (UTC), the workflow `inbok.cleanup`, scheduled as
-`inbok.cleanup.hourly`, deletes rows nobody can use any more: email
+Every hour on the hour (UTC), the workflow `amplop.cleanup`, scheduled as
+`amplop.cleanup.hourly`, deletes rows nobody can use any more: email
 verification, registration, and password reset links that expired at
 least an hour ago, password reset attempts that no limit has counted
 for at least an hour, both of their times being over 25 hours old, and
@@ -189,7 +189,7 @@ output.
 
 ### Recovery notice
 
-The workflow `inbok.recovery-notice`, run from the queue `inbok.email`,
+The workflow `amplop.recovery-notice`, run from the queue `amplop.email`,
 tells every administrator by email that host recovery replaced an
 administrator's password; see [Administrator recovery](#administrator-recovery).
 Someone with the server can run recovery, so the other administrators
@@ -238,15 +238,15 @@ with the `recovered_id`, the recipient's `user_id`, and its outcome, a
 warning unless it was sent, or `recovery notice failed` with the error.
 That error, which DBOS also keeps with the run, names only the failed
 step, e.g. `failed at auth, unconfirmed`, never the server's reply: a
-reply can quote what inbok sent, the SMTP password included. The
+reply can quote what amplop sent, the SMTP password included. The
 mailer's own warning has the reply, except a sign-in's, of which it keeps
 only the code. DBOS's tables keep only IDs and outcomes with the run, no
 address.
 
 ### Password reset link
 
-The workflow `inbok.password-reset-link`, run from the queue
-`inbok.email`, sends the link a [password reset request](#asking-for-a-link-1)
+The workflow `amplop.password-reset-link`, run from the queue
+`amplop.email`, sends the link a [password reset request](#asking-for-a-link-1)
 asked for. `serve` saves it in the request's own transaction, so a request
 that was answered always gets its job, even if `serve` stops right after.
 Its input is the request's attempt ID and the ID of the account with the
@@ -280,8 +280,8 @@ which can quote the message and its live link.
 
 ### Password changed notice
 
-The workflow `inbok.password-changed-notice`, run from the queue
-`inbok.email`, tells a user that a reset link changed their password, so a
+The workflow `amplop.password-changed-notice`, run from the queue
+`amplop.email`, tells a user that a reset link changed their password, so a
 reset they did not ask for does not go unnoticed. [Completing a
 reset](#completing-a-reset) saves it in the reset's own transaction, so a
 reset that committed always gets its notice. Its input is the user's ID
@@ -301,22 +301,22 @@ error that names only where the send failed.
 
 ### Account removal
 
-The workflow `inbok.account-removal`, run from the queue `inbok.google`,
+The workflow `amplop.account-removal`, run from the queue `amplop.google`,
 finishes what removing a Gmail account leaves to do once its row is gone:
-so far, asking Google to end inbok's permission. A
+so far, asking Google to end amplop's permission. A
 [disconnect](#disconnecting) deletes the account, moves its sealed refresh
 token to an `account_removals` row, and saves the job, in one transaction,
 so the job's input is only the removal's ID and the token never sits in
 DBOS's tables. The same transaction saves the deletion of the account's
 stored content, a job of its own (see [Content deletion](#content-deletion)),
 so a content store that fails never holds the revocation.
-Google work in the background runs on `inbok.google`;
+Google work in the background runs on `amplop.google`;
 members' sends have a queue of their own, so they never wait behind it
 (see [Sending a message](#sending-a-message)).
 
 Its step, `revoke token` (`connectedaccount.Removals.Revoke`), first
 checks whether another member has connected the same Google account: a
-revocation ends the Google account's whole grant to inbok's Google
+revocation ends the Google account's whole grant to amplop's Google
 project, theirs included, so it is then left alone (`shared`). Otherwise it
 opens the token, sends it to Google's revocation endpoint in the request
 body, and deletes the removal (`revoked`). Google answers a token it no
@@ -329,8 +329,8 @@ lapses unused. The run logs `account removal` with the `removal_id` and
 its outcome, or `account removal failed` with an error holding only
 Google's status and OAuth error code.
 
-The worker registers the workflow, and listens to `inbok.google`, only
-when `INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET` are set.
+The worker registers the workflow, and listens to `amplop.google`, only
+when `AMPLOP_GOOGLE_CLIENT_ID` and `AMPLOP_GOOGLE_CLIENT_SECRET` are set.
 DBOS would otherwise claim a removal it cannot run for that worker, and
 no other worker could take it. Removals saved while the settings were set
 wait in the queue, with their sealed tokens, until a worker that has them
@@ -338,7 +338,7 @@ runs; one that never does leaves them there.
 
 ### Content deletion
 
-The workflow `inbok.content-deletion`, run from the queue `inbok.content`,
+The workflow `amplop.content-deletion`, run from the queue `amplop.content`,
 deletes the stored content of messages synchronization deleted. A sync
 write that deletes messages with stored content saves the job in its own
 transaction (`UpdateSyncedMail`), with the account's ID and the blob IDs
@@ -351,7 +351,7 @@ already gone as deleted; it is retried 5 more times, waiting 1, 2, 4, 8,
 then 15 minutes. A run that gives up logs `content deletion failed` and
 fails; the hourly sweep deletes those blobs a day later.
 
-The workflow `inbok.account-content-deletion`, on the same queue, deletes
+The workflow `amplop.account-content-deletion`, on the same queue, deletes
 a disconnected account's whole key prefix. A [disconnect](#disconnecting)
 saves it, with the account's ID, in the transaction that saves the
 [account removal](#account-removal); it is a job of its own so that
@@ -364,17 +364,17 @@ part rows went with it.
 The worker saves these jobs from its own steps, so it opens a DBOS client
 for its storage, as `serve` does: DBOS refuses a workflow's own context in
 a caller's transaction. Every worker runs the workflow and listens to
-`inbok.content`.
+`amplop.content`.
 
 ### Sending a message
 
-The workflow `inbok.outgoing-message`, run from the queue
-`inbok.google-send`, sends a member's [outgoing message](#sending-mail).
+The workflow `amplop.outgoing-message`, run from the queue
+`amplop.google-send`, sends a member's [outgoing message](#sending-mail).
 Saving the message saves the job in the same transaction, under the
-workflow ID `inbok.outgoing-message/<message id>`, so a message has one
+workflow ID `amplop.outgoing-message/<message id>`, so a message has one
 send; its input is only the message's ID. Sends have their own queue: a
 run keeps its place in a queue's limit until it ends, and priority only
-orders runs still waiting, so on `inbok.google` a send could wait hours
+orders runs still waiting, so on `amplop.google` a send could wait hours
 behind long jobs once that queue has a limit. Neither queue has one yet.
 
 Gmail's `messages.send` has no idempotency key, so the message's status
@@ -416,7 +416,7 @@ again after a crash does only what is left:
 3. After an unanswered send, the run waits 2 minutes, then `check sent`
    lists the messages Gmail added to Sent since the noted history ID
    (`history.list`, up to 10 pages) and reads each one's
-   `X-Inbok-Message-Id`. Gmail replaces the `Message-ID` a client sets but
+   `X-Amplop-Message-Id`. Gmail replaces the `Message-ID` a client sets but
    keeps that header. A match ends the message `sent`, with Gmail's own
    time for it (`internalDate`), not the check's, which runs minutes later,
    as the member's mailbox shows it. No match, a message deleted before it
@@ -436,13 +436,13 @@ unless `sent`, or `outgoing message step failed` with an error that holds
 only Gmail's status. The Gmail client is given a logger that drops
 everything: Google's own would write each request's body, the whole
 message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. The worker
-registers the workflow, and listens to `inbok.google-send`, only when the
+registers the workflow, and listens to `amplop.google-send`, only when the
 Google settings are set, as for account removal.
 
 ### Synchronization
 
-Every sync of a connected account's mail is the workflow `inbok.sync`, run
-from the queue `inbok.google`, as [Synchronized mail](#synchronized-mail)
+Every sync of a connected account's mail is the workflow `amplop.sync`, run
+from the queue `amplop.google`, as [Synchronized mail](#synchronized-mail)
 describes. Its input is only the account's ID. DBOS refuses a second sync
 of an account while one is queued or running (its deduplication ID,
 `sync-<account ID>`), so a poll and a full sync of one account never run
@@ -460,11 +460,11 @@ history it no longer keeps, goes on into a full sync in the same run. The
 run's output names the kind it ran, `poll` or `full`, and the status it
 left. Each step that calls Gmail takes its own access token
 ([Calling Gmail](#calling-gmail)), so none is ever saved, and one that
-writes only inbok's data asks `Access.Check`, which reads the same state
+writes only amplop's data asks `Access.Check`, which reads the same state
 without calling Google.
 
-**The schedule.** The workflow `inbok.sync-schedule` runs at the start of
-every minute, in UTC (the schedule `inbok.sync.minutely`), and does not
+**The schedule.** The workflow `amplop.sync-schedule` runs at the start of
+every minute, in UTC (the schedule `amplop.sync.minutely`), and does not
 make up for minutes the worker was down. `mailsync.Schedule.Due` picks the
 accounts whose member is active and which need no reconnect, then:
 
@@ -487,16 +487,16 @@ accounts whose member is active and which need no reconnect, then:
   time Gmail answered, in one statement after the checks
   (`ConfirmSynced`), only where the account is still `complete` at that
   position and only forward, so a poll that finished meanwhile keeps its
-  own. `last_synced_at` so means when inbok last confirmed its copy, and a
+  own. `last_synced_at` so means when amplop last confirmed its copy, and a
   time minutes old on a `complete` account means syncing stopped.
 
-The run enqueues `inbok.sync` for each, keeping a sync already queued or
+The run enqueues `amplop.sync` for each, keeping a sync already queued or
 running. An idle account then costs one run a minute in all, the
 schedule's, and 1 unit of its Gmail quota;
 [message bodies](#message-bodies) have a minute's schedule of their own.
 
 **Sync now.** `POST /api/v0/connected-accounts/{id}/sync`
-(`mailsync.Service.Request`) enqueues `inbok.sync` for one of the member's
+(`mailsync.Service.Request`) enqueues `amplop.sync` for one of the member's
 accounts at once, skipping the minute's wait, the check, and the hour
 after a failure; the plan still chooses poll or full sync. One transaction
 locks the sync state, refuses another member's account and one that needs
@@ -515,7 +515,7 @@ mail shows within seconds. A request that lands after that last look,
 while the run ends, finds the run and starts none; the next minute's check
 then starts its poll, as without the request, unless the account has a
 failure recorded and its checks keep failing, when it waits for a check
-that succeeds or, after a failed full sync, the hour's retry (inbok accepts
+that succeeds or, after a failed full sync, the hour's retry (amplop accepts
 this: Gmail is failing then anyway). The page does not track when
 a request is answered: that would take exact bookkeeping across the two
 processes' clocks.
@@ -602,19 +602,19 @@ ended`, `poll ended`, or `sync ended` with how it ended otherwise; each
 line carries the `account_id`. A step retries within itself and returns
 how it ended as a value, which DBOS records whole: DBOS records a step's
 error only as text, so a worker resumed after it would no longer know a
-Gmail failure from inbok's.
+Gmail failure from amplop's.
 
 A sync stopped with its worker resumes at the step it stopped in (see
 [Which worker resumes what](#which-worker-resumes-what)): updating the
 containers copies nothing twice, and polls go on from the stored
 position. The worker registers both workflows and the schedule, and
-listens to `inbok.google`, only with the Google settings, as for the
+listens to `amplop.google`, only with the Google settings, as for the
 [account removal](#account-removal); without them it deletes the schedule
 an earlier start saved.
 
 ### Message bodies
 
-The workflow `inbok.message-bodies`, run from the queue `inbok.google`,
+The workflow `amplop.message-bodies`, run from the queue `amplop.google`,
 fetches the content of recent mail in the background, so a member opens
 it without waiting and search finds it by its text. Its input is only the
 account's ID: the account's own data lists what to fetch. A message needs
@@ -622,21 +622,21 @@ its body while it has no part rows, Gmail received it in the last 90 days,
 it is in no Spam or Trash mailbox (those stay metadata only), and
 its fetch has not failed for good in the last day (`body_failed_at`).
 
-The workflow `inbok.message-bodies-schedule` runs at the start of every
-minute, in UTC (the schedule `inbok.message-bodies.minutely`), and its
+The workflow `amplop.message-bodies-schedule` runs at the start of every
+minute, in UTC (the schedule `amplop.message-bodies.minutely`), and its
 step `pick due bodies` (`messagecontent.Fetcher.DueAccounts`) makes one
 query for the accounts whose member is active, which need no reconnect,
 whose full sync is `complete`, and which have a message needing its body.
 The rule's policy is Go's: the window (`mailsync.Window`), the day's
 skip, and the mailboxes left out (`mailsync.MetadataOnlyRoles`), which
 the queries take as parameters.
-For each, it enqueues `inbok.message-bodies`, keeping one already queued
+For each, it enqueues `amplop.message-bodies`, keeping one already queued
 or running (its deduplication ID, `message-bodies-<account ID>`); its
 output is how many it asked for. Bodies so wait for an account's first
 copy, which with the whole pace fills the mail list up to four times as
 fast. A later full sync, after Gmail dropped the account's history, can
 start while a body run is going; the run keeps on, sharing the pace
-(inbok accepts this). The accounts are found from their data
+(amplop accepts this). The accounts are found from their data
 each minute, not from events: a quiet account, which gets no sync run,
 still has a run that ended at its limit or failed, or a message whose day
 passed, picked up within a minute. A pick that fails fails the run, and
@@ -665,7 +665,7 @@ retries, a network failure, or the store or database down, concerns the
 whole account: it ends the run, logged as `message body fetch failed`
 with the `account_id`, without retries, and the next minute starts
 another. A per-message problem that shows only as such an error, e.g. a
-5xx one message alone causes, would end every run at that message; inbok
+5xx one message alone causes, would end every run at that message; amplop
 accepts that unlikely case. An account that needs a reconnect, has a
 deactivated member, is gone, or has a token no key opens ends the run
 quietly, as the sync records why.
@@ -673,7 +673,7 @@ quietly, as the sync records why.
 A run takes at most 50 steps, about 1,000 messages: some 12 minutes when
 each message's text comes in its first answer, longer when text comes
 separately or calls are retried. It so stays short to resume, and holds
-its place in `inbok.google`'s limit, if one is set, for a bounded number
+its place in `amplop.google`'s limit, if one is set, for a bounded number
 of messages; the next minute's schedule goes on. A mailbox with 10,000
 messages in 90 days so has its list after about 42 minutes and its bodies
 about 2 hours later.
@@ -695,7 +695,7 @@ days later. Runs that have not finished are never deleted, however old. In
 ```sql
 SELECT workflow_uuid, status, executor_id, to_timestamp(created_at / 1000) AS created
 FROM dbos.workflow_status
-WHERE name = 'inbok.cleanup'
+WHERE name = 'amplop.cleanup'
 ORDER BY created_at DESC
 LIMIT 10;
 ```
@@ -718,19 +718,19 @@ DBOS stores outputs as base64 of their JSON, hence the decode, e.g.
 
 ## Container image
 
-From the repository root, `make image` builds the `inbok:local` image
+From the repository root, `make image` builds the `amplop:local` image
 from the `Dockerfile`; `IMAGE=name:tag` picks another name. Nothing is
 pushed to a registry. It holds the binary, with the web app built in, on
 distroless's `static` base: no shell, no package manager, and the
 `nonroot` user (65532). It sets `GIN_MODE=release` and
-`INBOK_HTTP_ADDR=0.0.0.0:8080`, since a container's loopback is
+`AMPLOP_HTTP_ADDR=0.0.0.0:8080`, since a container's loopback is
 unreachable from other containers. Containers on the same Docker network
 can then reach it, and the host's network only if the port is published.
 To publish it for a proxy on the same host, bind loopback, e.g.
 `-p 127.0.0.1:8080:8080`: a bare `-p 8080:8080` listens on every host
-interface, and Docker's rules bypass host firewalls such as ufw. Its entry point is `inbok`, and its default command is
-`serve`, so `docker run inbok:local migrate` runs a migration and
-`docker run inbok:local worker` the worker.
+interface, and Docker's rules bypass host firewalls such as ufw. Its entry point is `amplop`, and its default command is
+`serve`, so `docker run amplop:local migrate` runs a migration and
+`docker run amplop:local worker` the worker.
 
 The base images are pinned by version and digest; the `Dockerfile` says
 how to update one. Builds cache downloaded Go modules and pnpm packages
@@ -752,7 +752,7 @@ make backend-build
 ```
 
 It builds the web app, copies `web/dist/client` into
-`backend/internal/webapp/dist`, and writes `backend/bin/inbok`. Go embeds
+`backend/internal/webapp/dist`, and writes `backend/bin/amplop`. Go embeds
 that folder when it compiles, so rebuild after any web change. Only the
 folder's `.gitkeep` is committed. The copy stays after the build, so later
 `go build`, `go run`, and Air also include it until you empty the folder:
@@ -783,7 +783,7 @@ no directory listings, and only the files in the build can be sent.
 
 ### Security headers
 
-Every response from inbok's handlers, the API's and the web app's,
+Every response from amplop's handlers, the API's and the web app's,
 carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
 and `X-Frame-Options: DENY`. The web app's files and shell also carry this
 `Content-Security-Policy`:
@@ -793,7 +793,7 @@ default-src 'self'; script-src 'self' <shell hashes>; object-src 'none';
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 ```
 
-Pages load only inbok's own files and call only its own API. No `<style>`
+Pages load only amplop's own files and call only its own API. No `<style>`
 element or `style` attribute in the HTML applies; styles set from script,
 e.g. React's `style` props, still do. The build's shell has inline
 scripts, and their text changes with every build, so `serve` reads the
@@ -846,7 +846,7 @@ a 403 `fetch-destination-refused` before the session check. An
 operation a browser loads another way lists its destinations under the
 `fetchDestKey` metadata, e.g. `iframe` for a message body. A request
 without the header, e.g. from curl, passes. The message view frames
-mail on inbok's origin, so an image in a message naming an API address,
+mail on amplop's origin, so an image in a message naming an API address,
 which the sanitizer keeps only as an absolute URL once the member loads
 remote content, would otherwise send that GET with the member's cookie;
 a GET still changes nothing.
@@ -883,7 +883,7 @@ changing an operation, regenerate it from `backend` without starting the
 server:
 
 ```sh
-go run ./cmd/inbok export ../api/generated/openapi.json
+go run ./cmd/amplop export ../api/generated/openapi.json
 ```
 
 ## Errors
@@ -977,7 +977,7 @@ write may have committed before the deadline, so the 503 does not say it was
 not. A client that leaves cancels its request's context; serve's shutdown
 never does, as it waits for requests instead. Returning that cancellation
 logs "client closed request" at info level, and the request's line shows
-status 499, as a client leaving is no failure of inbok's; any other error
+status 499, as a client leaving is no failure of amplop's; any other error
 while the client leaves stays an unexpected 500.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
@@ -992,20 +992,20 @@ its request.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `INBOK_HTTP_ADDR` | `127.0.0.1:8080`; the image sets `0.0.0.0:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
-| `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
-| `INBOK_PUBLIC_URL` | none, required | The address users open inbok at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
-| `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
-| `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets, the system email password, and connected Gmail accounts' refresh tokens; see Encryption keys below. Invalid entries stop startup. |
-| `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
-| `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
-| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
-| `INBOK_S3_ENDPOINT` | none, required | The S3 service that holds message content, e.g. `http://127.0.0.1:8333`; see Message content store below. |
-| `INBOK_S3_ACCESS_KEY_ID` | none, required | The key ID inbok signs in to it with. |
-| `INBOK_S3_SECRET_ACCESS_KEY` | none, required | The secret for that key ID. |
-| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers, as the worker reads it; serve [searches](#searching) it. Serve starts without asking it, and a search answers 503 while it is down. |
-| `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, as the worker reads it. |
+| `AMPLOP_HTTP_ADDR` | `127.0.0.1:8080`; the image sets `0.0.0.0:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
+| `AMPLOP_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
+| `AMPLOP_PUBLIC_URL` | none, required | The address users open amplop at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
+| `AMPLOP_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
+| `AMPLOP_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
+| `AMPLOP_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets, the system email password, and connected Gmail accounts' refresh tokens; see Encryption keys below. Invalid entries stop startup. |
+| `AMPLOP_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
+| `AMPLOP_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
+| `AMPLOP_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
+| `AMPLOP_S3_ENDPOINT` | none, required | The S3 service that holds message content, e.g. `http://127.0.0.1:8333`; see Message content store below. |
+| `AMPLOP_S3_ACCESS_KEY_ID` | none, required | The key ID amplop signs in to it with. |
+| `AMPLOP_S3_SECRET_ACCESS_KEY` | none, required | The secret for that key ID. |
+| `AMPLOP_MEILISEARCH_URL` | none, required | Where Meilisearch answers, as the worker reads it; serve [searches](#searching) it. Serve starts without asking it, and a search answers 503 while it is down. |
+| `AMPLOP_MEILISEARCH_KEY` | none, required | Meilisearch's master key, as the worker reads it. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
@@ -1017,26 +1017,26 @@ Message content, such as the text of a message, lives in an S3-compatible
 object store; PostgreSQL keeps what describes it. Every stack runs
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) for it, one container
 started with `weed mini`. Both `serve` and the worker read the three
-`INBOK_S3_*` settings. The worker, which writes most content, creates the
-bucket `inbok` at startup if it is missing, so a wrong address or key
+`AMPLOP_S3_*` settings. The worker, which writes most content, creates the
+bucket `amplop` at startup if it is missing, so a wrong address or key
 stops it there, and a store that does not answer stops it within 10
 seconds. `serve` starts without contacting the store: the store is a
 cache, so while it is down, only requests that read content fail.
 
-`INBOK_S3_ENDPOINT` is the origin alone: `http` or `https`, a host, and an
-optional port. inbok adds the bucket and key to the path (path-style
+`AMPLOP_S3_ENDPOINT` is the origin alone: `http` or `https`, a host, and an
+optional port. amplop adds the bucket and key to the path (path-style
 addressing). Plain `http` suits a store on a private network, as in the
 Compose files: requests are signed, so the secret never travels, but the
 content does, unencrypted. The keys are taken as they are.
 
 SeaweedFS makes the keys in its own `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY` its admin identity on every start, and the Compose
-files pass inbok's keys there. To change them, change them in `.env` and
+files pass amplop's keys there. To change them, change them in `.env` and
 start SeaweedFS again; the old key stops working and the content stays.
 SeaweedFS's S3 port checks the keys, but its other ports (master, filer,
 volume, and their gRPC ports) let anyone who reaches them read and write,
 so only the S3 port is published, to this machine only, and the deployment
-keeps SeaweedFS on a network of its own with inbok and the worker.
+keeps SeaweedFS on a network of its own with amplop and the worker.
 
 What describes the content is in PostgreSQL's `message_parts`: one row
 per MIME part of each message whose content was fetched, a message having
@@ -1127,7 +1127,7 @@ plain `http` nothing authenticates downloads, listings, or the store's
 answers, nor headers the signature leaves out, some of which SeaweedFS
 acts on (e.g. `X-Seaweedfs-Extract`, which unpacks a ZIP upload into
 other keys); and nothing encrypts content. The Compose files accept
-that, trusting the host and a network that only inbok, the worker, and
+that, trusting the host and a network that only amplop, the worker, and
 SeaweedFS share; anywhere else, use an `https` endpoint.
 
 The store's calls fail once a connection delivers no bytes for five
@@ -1150,25 +1150,25 @@ store must share goes there.
 
 ### Public URL
 
-`INBOK_PUBLIC_URL` is the origin users open inbok at: `https`, a host name
+`AMPLOP_PUBLIC_URL` is the origin users open amplop at: `https`, a host name
 or IP address, and an optional port, e.g. `https://mail.example.com`. Plain
 `http` is accepted only for `localhost` and loopback addresses, e.g.
 `http://localhost:5173` for the Vite dev server. A path other than `/`, a
 query, a fragment, or user info stops startup. Host names use letters,
-digits, and hyphens; inbok lowercases them and converts an internationalized
+digits, and hyphens; amplop lowercases them and converts an internationalized
 domain to its `xn--` form. The example value in `.env.example` is for
 development; a deployed server needs its own `https` origin.
 
-Links in inbok's emails start with this value, never with a request's `Host`
+Links in amplop's emails start with this value, never with a request's `Host`
 header, which a client chooses, so a client cannot point an emailed link at
 another server. When moving to another domain, keep the old one for 24
 hours, until links sent before the move expire: whoever holds it receives
-their secrets. The host is also the name inbok gives mail servers in SMTP's
+their secrets. The host is also the name amplop gives mail servers in SMTP's
 `EHLO` greeting; an IP address is sent in brackets, e.g. `[192.0.2.10]`.
 
 ### Encryption keys
 
-`INBOK_ENCRYPTION_KEYS` is a comma-separated list of `<id>:<key>` entries,
+`AMPLOP_ENCRYPTION_KEYS` is a comma-separated list of `<id>:<key>` entries,
 e.g. `2:<base64 key>,1:<base64 key>`. Each ID is a positive whole number
 without leading zeros; each key is 32 random bytes in standard base64, from
 `openssl rand -base64 32`. Startup fails, without printing key material, if
@@ -1230,18 +1230,18 @@ Google project: [emulate](https://github.com/vercel-labs/emulate)'s
 Google OAuth and Gmail API, version 0.13.0, with seeded mailboxes. Its
 image is built from `google-emulator/` in the repository with pnpm, since
 emulate publishes only an npm package. `.env.example` sets
-`INBOK_GOOGLE_BASE_URL=http://127.0.0.1:4000` and the development client
-the emulator registers, `inbok-dev.apps.googleusercontent.com`, fixed in
+`AMPLOP_GOOGLE_BASE_URL=http://127.0.0.1:4000` and the development client
+the emulator registers, `amplop-dev.apps.googleusercontent.com`, fixed in
 `google-emulator/emulate.config.mjs` so a real client secret in `.env`
-never reaches the emulator. `INBOK_GOOGLE_EMULATOR_PORT` moves it to
-another port; Compose gives the emulator `INBOK_GOOGLE_BASE_URL` as its
+never reaches the emulator. `AMPLOP_GOOGLE_EMULATOR_PORT` moves it to
+another port; Compose gives the emulator `AMPLOP_GOOGLE_BASE_URL` as its
 own address, the ID tokens' issuer, so the two agree.
 
-`INBOK_GOOGLE_BASE_URL` makes that one server answer for Google's sign-in
+`AMPLOP_GOOGLE_BASE_URL` makes that one server answer for Google's sign-in
 and Gmail hosts, at the emulator's paths: `/o/oauth2/v2/auth`,
 `/oauth2/token`, `/oauth2/revoke`, and `/gmail/v1/`. It accepts only
 `localhost` or a loopback address, `http` or `https`, and refuses to start
-otherwise, or when no client is set: inbok sends that server members'
+otherwise, or when no client is set: amplop sends that server members'
 authorization codes and refresh tokens, so a setting copied from a
 development `.env` cannot send them to another machine. For the same
 reason, while it is set, the client that carries them connects only to
@@ -1267,12 +1267,12 @@ back to the seed and refuses every refresh token handed out before.
 Each account keeps its Google ID (`sub`) across restarts.
 
 A patch in `google-emulator/patches/`, which pnpm applies on install,
-changes emulate where inbok needs Gmail's behavior: it adds
+changes emulate where amplop needs Gmail's behavior: it adds
 `users.getProfile`, keeps history IDs within 64 bits, as Gmail's are and
 as the Go client decodes them, lets a seed fix an account's `sub`,
 refuses a code exchanged by another client or with another redirect URI
 than its authorization request's, returns a sent message's other headers,
-e.g. `X-Inbok-Message-Id`, matches `metadataHeaders` in any case, and
+e.g. `X-Amplop-Message-Id`, matches `metadataHeaders` in any case, and
 refuses a label name as Gmail does: a taken one, in any case, with 409,
 and one Gmail keeps or longer than 225 characters with 400 "Invalid
 label name", after collapsing its white space. The
@@ -1290,7 +1290,7 @@ uses a small `httptest` stub instead:
   answers 400 `invalid_token` for one it does not know.
 - `history.list` never answers 404 for an old history ID, and nothing
   returns quota errors. A deletion reaches history only by deleting a
-  message for good, which needs a wider scope than inbok's.
+  message for good, which needs a wider scope than amplop's.
 - `messages.get` matches `metadataHeaders` only as written, e.g.
   `Message-ID`, and its snippets carry no HTML escaping unless a seed
   sets one.
@@ -1301,9 +1301,9 @@ uses a small `httptest` stub instead:
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
 - It takes a label name over 255 bytes, which Gmail fails with a 500;
-  inbok refuses one before calling.
+  amplop refuses one before calling.
 - It ignores `fields` and answers whole resources, so no test catches a
-  field list that leaves out what inbok reads, e.g. history's
+  field list that leaves out what amplop reads, e.g. history's
   `labelIds`.
 - A failed PKCE check leaves the code usable, and posting the consent
   form directly redirects to any `redirect_uri`; only the consent page
@@ -1312,7 +1312,7 @@ uses a small `httptest` stub instead:
   claim from the address's domain, and every response allows any origin.
 
 Go tests start their own emulator per test with `internal/googleemulator`,
-from the same Dockerfile, tagged `inbok-google-emulator:test` rather than
+from the same Dockerfile, tagged `amplop-google-emulator:test` rather than
 Compose's `:local`. The first test in a run builds it, never taking an
 existing image as found, so a test cannot run a stale emulator. Docker
 answers from its cache unless `google-emulator/` changed; the first build
@@ -1320,7 +1320,7 @@ needs network access for the npm registry.
 
 ## Reverse proxies
 
-`INBOK_TRUSTED_PROXIES` controls which peers may supply a forwarded client
+`AMPLOP_TRUSTED_PROXIES` controls which peers may supply a forwarded client
 address for sign-in and setup throttling, for the request limit on public
 writes, and for the address saved with each new session. Empty ignores
 forwarded addresses and uses the connection's address; behind a proxy, every
@@ -1330,14 +1330,14 @@ only the proxy's address ranges; trusting all addresses lets a caller forge
 their throttling address and the sign-in address shown in the session list.
 
 For one nginx proxy on the same host as Go, keep Go on `127.0.0.1:8080` and
-set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Go serves the web app too (see
+set `AMPLOP_TRUSTED_PROXIES=127.0.0.1/32`. Go serves the web app too (see
 The web app), so nginx forwards every path. Adapt the domain and
 certificate paths in this HTTPS server block:
 
 ```nginx
 server {
     listen 443 ssl;
-    server_name inbok.example.com;
+    server_name amplop.example.com;
     ssl_certificate /path/to/fullchain.pem;
     ssl_certificate_key /path/to/privkey.pem;
 
@@ -1380,9 +1380,9 @@ technology package fills (`google` for Gmail), and returns:
   `Provider.PartContent` reports. Neither has a text part inside an
   attachment, e.g. a forwarded message, which no view shows.
 
-These are inbok's own rules on top of a parsed tree. MIME libraries such
+These are amplop's own rules on top of a parsed tree. MIME libraries such
 as emersion's go-message or enmime read raw message bytes and decide no
-kinds or display; inbok reads Gmail's parsed `format=full` instead, which
+kinds or display; amplop reads Gmail's parsed `format=full` instead, which
 already splits the message into parts.
 
 Every string in a `Part` comes from the sender, so `Parse` makes it valid
@@ -1466,7 +1466,7 @@ The copy:
   `<base>`, and `<link>` are gone; an unknown element keeps its text.
 - keeps links, `href` on `a` only, with absolute `http`, `https`,
   `mailto`, and `tel` URLs, opening in a new tab. A relative URL would
-  resolve against inbok, and a URL with a space in it is dropped, as
+  resolve against amplop, and a URL with a space in it is dropped, as
   bluemonday drops it; a scheme-relative one, `//host/path`, reads as
   `https`.
 - turns `cid:` images and backgrounds into the part's URL, and drops
@@ -1517,10 +1517,10 @@ base-uri 'none'; frame-ancestors 'self'; img-src 'self'
 ```
 
 Nothing in the body runs, and it loads nothing but its own CSS and
-images from inbok's origin, which `withFetchDest` limits to part URLs
+images from amplop's origin, which `withFetchDest` limits to part URLs
 (see [API contract](#api-contract)); when remote content is allowed for
 the view, `img-src` adds `http:` and `https:`. `allow-same-origin` keeps
-the body on inbok's origin, so inline images load with the session
+the body on amplop's origin, so inline images load with the session
 cookie and the web app can size the frame. The response replaces the
 `X-Frame-Options: DENY` of [Security headers](#security-headers) with
 `SAMEORIGIN`. A `srcdoc` frame would take the web app's policy instead,
@@ -1565,7 +1565,7 @@ store's read timeout still ends a read that stalls.
 
 ## Email addresses
 
-Every address of inbok's own goes through `emailaddress.Parse`: setup,
+Every address of amplop's own goes through `emailaddress.Parse`: setup,
 sign-in, `recover-admin`, registration, the system email From address, each
 system email's recipient, and a connected Gmail account's email from Google.
 It trims surrounding spaces and tabs, accepts one bare address of at most
@@ -1585,10 +1585,10 @@ with an uppercase ASCII letter. New code that takes an address calls
 The recipients of a member's own mail go through `emailaddress.ParseRecipient`
 instead: the same rule and trimming, but every letter keeps its case, since
 the recipient's server may treat the local part's case as meaningful
-(RFC 5321) and inbok only sends to them.
+(RFC 5321) and amplop only sends to them.
 
 The cost of lowercasing: a mail server that treats the local part's case
-as meaningful is not supported for inbok's own addresses. Connected Gmail
+as meaningful is not supported for amplop's own addresses. Connected Gmail
 accounts are lowercased too, since Gmail ignores an address's case;
 recipients are not.
 
@@ -1607,7 +1607,7 @@ hashes ask for, not what the process holds: the garbage collector frees a
 finished hash's memory later, so under load the process briefly holds
 more. Every caller shares it:
 sign-in, setup, registration, password reset, TOTP backup codes, and
-`inbok recover-admin`.
+`amplop recover-admin`.
 A wait that outlives the request's context ends it; one that outlives the
 10-second request deadline is a 503 `service-busy` (see
 [Timeouts and shutdown](#timeouts-and-shutdown)). A TOTP request that ends
@@ -1619,7 +1619,7 @@ its attempt back.
 After applying migrations, create the first administrator through the web app:
 
 1. Generate a random token with `openssl rand -base64 32`.
-2. Set `INBOK_SETUP_TOKEN` in `.env` to that output, then start or restart
+2. Set `AMPLOP_SETUP_TOKEN` in `.env` to that output, then start or restart
    the backend. The Make commands load `.env`; direct Go commands need the
    shell-loading step shown in Run the server.
 3. Open `http://localhost:5173/setup` with the web app running. Enter the
@@ -1655,7 +1655,7 @@ independently of these browser redirects.
 `POST /api/v0/sessions` accepts email and password. Without confirmed TOTP, it
 creates a fresh session and returns HTTP 201 with
 `{"data":{"step":"complete"}}`. With confirmed TOTP, it returns
-`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie; no
+`{"data":{"step":"totp"}}` and a temporary `__Host-amplop-challenge` cookie; no
 session is created. The factor check and the chosen write share one user lock,
 so finishing two-factor enrollment cannot race a password-only session into
 existence afterward. Unknown email and wrong password return the same HTTP
@@ -1743,7 +1743,7 @@ sessions; see [Member management](#member-management). Member recovery is
 not implemented yet. Host-operator administrator recovery is described
 below.
 
-The cookie is `__Host-inbok-session`, with `Secure`, `HttpOnly`,
+The cookie is `__Host-amplop-session`, with `Secure`, `HttpOnly`,
 `SameSite=Lax`, `Path=/`, and no `Domain`. `Max-Age` is the remaining maximum
 session lifetime. Go sets these attributes explicitly; the name alone does
 not configure them. See the [cookie attribute reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).
@@ -1822,7 +1822,7 @@ Only a trusted host operator should run this command for an administrator
 who lost their password, authenticator, and backup codes. Before recovering
 another administrator, verify their identity through your deployment's
 operator process. The command trusts database write access; it does not ask
-for an inbok session, old password, TOTP code, or setup token, and it does not
+for an amplop session, old password, TOTP code, or setup token, and it does not
 check which machine runs it. Members cannot be recovered this way.
 
 An administrator who only forgot their password can use
@@ -1836,10 +1836,10 @@ running. From the repository root:
 
 ```sh
 set -a; . ./.env; set +a
-go -C backend run ./cmd/inbok recover-admin admin@example.com
+go -C backend run ./cmd/amplop recover-admin admin@example.com
 ```
 
-Only `INBOK_DATABASE_URL` is required. Terminal input prompts twice for a
+Only `AMPLOP_DATABASE_URL` is required. Terminal input prompts twice for a
 password of 15 to 128 Unicode code points without echo, then asks
 `Continue? [y/N]`. Only `y` or `yes` proceeds. With piped input, the command
 reads the first line and skips confirmation. Password spaces are preserved.
@@ -1847,16 +1847,16 @@ Use a password manager or another trusted program to supply that line; never
 put the password in arguments, environment variables, or shell history.
 
 In a container from the image, the binary is on the `PATH`. The
-container must have `INBOK_DATABASE_URL` set, as one running `serve` does.
+container must have `AMPLOP_DATABASE_URL` set, as one running `serve` does.
 Replace the container name with yours:
 
 ```sh
-docker exec -it inbok inbok recover-admin admin@example.com
+docker exec -it amplop amplop recover-admin admin@example.com
 ```
 
 For piped input, use `docker exec -i` without `-t` so it uses the one-line
 input mode. This repository's development Compose file starts PostgreSQL,
-Mailpit, and the Google emulator; it does not run inbok itself.
+Mailpit, and the Google emulator; it does not run amplop itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
@@ -1903,7 +1903,7 @@ ORDER BY id DESC;
 
 ## System email
 
-System email is the mail server inbok sends its own messages through,
+System email is the mail server amplop sends its own messages through,
 separate from members' mailboxes. It has no environment variables, because
 a test send must pass on the current settings before registration opens and
 each save is audited. An administrator with
@@ -1917,14 +1917,14 @@ username and password, and the From address and name. Security is `tls`
 (TLS from the first byte, usually port 465), `starttls` (required: a server
 that does not offer it fails the send, usually port 587), or `none`. `none`
 sends the whole message unencrypted and unchecked, so use it only for a
-server on the same host or a trusted private network. It allows no username, and inbok never signs in
+server on the same host or a trusted private network. It allows no username, and amplop never signs in
 without TLS, so the password never crosses the network in clear text. TLS
 checks the server's certificate against the host name with the system's
 roots and needs TLS 1.2 or newer. The host, username, and From address are saved
 without surrounding spaces, so a username of only spaces means no sign-in.
 
 The password is write-only. Reads return `hasPassword`; the value is
-encrypted with `INBOK_ENCRYPTION_KEYS` and bound to the host, port, and
+encrypted with `AMPLOP_ENCRYPTION_KEYS` and bound to the host, port, and
 username it was entered for. A save without a password keeps the saved one
 only when those three are unchanged, so an administrator cannot move it to a
 server they control and read it there. Clearing the username clears the
@@ -1945,9 +1945,9 @@ took the message for delivery, not that it arrived. One send, from dialing to
 the server's last reply, has at most 8 seconds, inside the 10-second request
 limit. A failed send logs a warning with its purpose, e.g. `test message`,
 the reason, host, port, security, username, and the first 512 bytes of the
-error. inbok never adds the password; the text can include the server's own
+error. amplop never adds the password; the text can include the server's own
 reply, except at sign-in. A reply to the sign-in can quote the Base64
-credentials inbok sent, the password included, so a failed sign-in keeps
+credentials amplop sent, the password included, so a failed sign-in keeps
 only the reply's code and enhanced code, e.g. `SMTP error 535: 5.7.8`, or
 `unexpected reply to the sign-in` for a reply it cannot use. A later reply
 keeps its text, but the credentials' Base64 lines become `[credentials]`
@@ -1969,10 +1969,10 @@ Two choices each email makes decide what a send does:
   does not stop it.
 
 ```text
-time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="send failed at auth: SMTP error 535: 5.7.8" request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
+time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=amplop@example.com err="send failed at auth: SMTP error 535: 5.7.8" request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
 ```
 
-A send is **unconfirmed** when inbok had written the whole message, final
+A send is **unconfirmed** when amplop had written the whole message, final
 dot included, and then failed while waiting for the server's answer
 without a 4xx or 5xx refusal: the connection dropped, time ran out, the
 reply was garbled, or the caller gave up. The server may have accepted
@@ -2008,19 +2008,19 @@ shows it in a web page instead of delivering it. On the Settings page, save:
 | Field | Value |
 |---|---|
 | Mail server | `127.0.0.1` |
-| Port | `1025`, or `INBOK_MAILPIT_SMTP_PORT` from `.env` |
+| Port | `1025`, or `AMPLOP_MAILPIT_SMTP_PORT` from `.env` |
 | Security | None |
 | Username and password | empty |
-| From address and name | any, e.g. `inbok@example.com` and `inbok` |
+| From address and name | any, e.g. `amplop@example.com` and `amplop` |
 
 Then send a test message and open `http://localhost:8025`
-(`INBOK_MAILPIT_WEB_PORT`) to read it. Verification links arrive there too.
+(`AMPLOP_MAILPIT_WEB_PORT`) to read it. Verification links arrive there too.
 Mailpit deletes its messages when it stops and keeps the newest 500.
 
 ## Email verification
 
 A signed-in account proves it controls its email address by following a
-link inbok emails to it. Nothing sends a link automatically: the user asks
+link amplop emails to it. Nothing sends a link automatically: the user asks
 for one on the web app's Security page. An unverified account signs in and
 works as before; `GET /api/v0/sessions/current` reports `emailVerified`.
 
@@ -2037,9 +2037,9 @@ as a redeem, starts it over. The link is saved before the send, so a 502
 quote the link. A test message to the same server shows the reply, except
 at sign-in, where it shows only the reply's code.
 
-The link is `INBOK_PUBLIC_URL` + `/verify-email#` + a 32-byte random secret
+The link is `AMPLOP_PUBLIC_URL` + `/verify-email#` + a 32-byte random secret
 in unpadded base64url. Browsers never send the part after `#` to a server,
-so the secret stays out of inbok's and its proxy's request logs and out of
+so the secret stays out of amplop's and its proxy's request logs and out of
 Referer headers. It still sits in the email, in the browser's history, and
 with any service that rewrites links in mail. Only the secret's SHA-256 hash
 is saved, in `email_verification_links`, with the email it was sent to. A
@@ -2132,7 +2132,7 @@ ORDER BY id DESC;
 
 ## Registration
 
-While an administrator keeps registration open, anyone who can reach inbok
+While an administrator keeps registration open, anyone who can reach amplop
 can create a member account. A visitor gives only an email first. The
 password comes after they follow a link emailed to them, so no one can
 choose the password of an email they do not control, and no half-made
@@ -2169,7 +2169,7 @@ visitors can register now; paused answers `false`.
 `{"status": "requested"}` whatever happens to that email:
 
 - an email without an account gets a link,
-  `INBOK_PUBLIC_URL/register/complete#` + a secret, made and stored like an
+  `AMPLOP_PUBLIC_URL/register/complete#` + a secret, made and stored like an
   [email verification](#email-verification) link (only its SHA-256 hash is
   saved, in `registration_links`), which expires after 24 hours;
 - an email with an account gets a notice instead: someone tried to register
@@ -2204,10 +2204,10 @@ nothing answers sooner, and while mail is failing it still answers 200
 where the others answer 502. Either shows that the email was asked about
 recently, never whether it has an account. Anyone can also use up the 50
 per hour and block registration for an hour; nothing stops that, but
-inbok logs a warning when it happens.
+amplop logs a warning when it happens.
 
 How it runs: every request first reads whether registration is open, so a
-closed inbok answers without waiting. It then waits for one PostgreSQL
+closed amplop answers without waiting. It then waits for one PostgreSQL
 advisory lock that all registration requests share
 (`LockRegistrationAttempts`), because the 50 per hour is one count over
 everyone. Under the lock it
@@ -2275,7 +2275,7 @@ email and chooses a new one (`passwordreset`).
 `randomsecret` secret, the user, the `email` it was sent to, and when it
 was created and expires, one hour later. Asking again keeps earlier links;
 completing a reset deletes all of the user's links, and so do deactivating
-a member and `inbok recover-admin`. The hourly
+a member and `amplop recover-admin`. The hourly
 [cleanup](#scheduled-cleanup) deletes expired links, and attempts that no
 limit counts any more.
 
@@ -2398,7 +2398,7 @@ ORDER BY id DESC;
 
 A member connects Gmail accounts with Google's consent page
 (`connectedaccount`). Only an instance with a Google client offers it:
-`INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET`, which the deploy
+`AMPLOP_GOOGLE_CLIENT_ID` and `AMPLOP_GOOGLE_CLIENT_SECRET`, which the deploy
 guide's [Connecting Gmail](../deploy/README.md#connecting-gmail) section
 shows how to create. `serve` builds `connectedaccount.Connections` only
 then; without it, `GET /api/v0/connected-accounts/providers` answers
@@ -2412,7 +2412,7 @@ stands in for Google.
 
 `connected_accounts` keeps each account's owner, `email`, Google's `sub`
 (`oauth_subject`), and its refresh token, sealed with
-`INBOK_ENCRYPTION_KEYS` and bound to the user and the account, as
+`AMPLOP_ENCRYPTION_KEYS` and bound to the user and the account, as
 [Encryption keys](#encryption-keys) describes. A member connects a Google
 account once; two members may each connect it.
 
@@ -2444,7 +2444,7 @@ or `reconnect`. The handler composes
 `connectedaccount`'s list with `mailsync`'s reports, since `mailsync`
 depends on `connectedaccount`; an account disconnected between the two
 reads is left out. `syncStopped` is true when no run of
-`inbok.sync.minutely` succeeded in the last 5 minutes, which the server
+`amplop.sync.minutely` succeeded in the last 5 minutes, which the server
 asks DBOS (`dbos.Client.SyncScheduleSucceeded`): no worker runs, a worker
 runs without the Google settings, or its runs fail. Google's `sub` stays
 on the server. Another member's account is answered as not found
@@ -2509,7 +2509,7 @@ accounts (`outgoingmessage`). `outgoing_messages` keeps
 each message under a random `uuid`: its sending account, whose owner owns
 it, the account's address when it was saved (a reconnect may change the
 account's), To, Cc, and Bcc, subject, plain text body, status, failure
-reason, the ID inbok gave it (`inbok_message_id`, a Message-ID with its
+reason, the ID amplop gave it (`amplop_message_id`, a Message-ID with its
 angle brackets), a reply's threading headers (`in_reply_to`,
 `internet_references`), Gmail's message ID once sent
 (`provider_message_id`) and thread ID once sent or, for a reply, when
@@ -2660,7 +2660,7 @@ Gmail's setup, as dismissing sends nothing; each message reports
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
 creation time in UTC as `Date`, the saved ID as both `Message-ID` and
-`X-Inbok-Message-Id`, a reply's `In-Reply-To` and `References`, and
+`X-Amplop-Message-Id`, a reply's `In-Reply-To` and `References`, and
 quoted-printable UTF-8 `text/plain`. Gmail
 replaces the `Message-ID` with its own, which synchronized mail keeps as
 `internet_message_id`; providers that keep a client's send the saved one.
@@ -2692,7 +2692,7 @@ Four tables hold it, each deleted with its account:
   `made_by` says who made it: the `provider`, for Gmail's labels of type
   `system`, e.g. `INBOX` or `CATEGORY_SOCIAL`, or the `member`; the
   labels a member sees have no role and are the member's.
-- `messages`: one row per provider message, with inbok's own random `id`
+- `messages`: one row per provider message, with amplop's own random `id`
   (a UUID, never derived from mail), Gmail's message and thread IDs, the
   provider's own timestamp (`internal_date`, Gmail's `internalDate`), the
   subject, the From, Reply-To, To, and Cc addresses as JSON lists of
@@ -2709,7 +2709,7 @@ Four tables hold it, each deleted with its account:
 - `sync_states`: one row per account, saved with it, with the full sync's
   `status` (`waiting`, `running`, `complete`, or `failed`), its
   `sync_generation`, the `position` the next poll asks for changes since,
-  when inbok last confirmed the copy (`last_synced_at`), and when the
+  when amplop last confirmed the copy (`last_synced_at`), and when the
   member last asked to sync now (`sync_requested_at`), which only that
   request writes, for its limit and a poll's recheck. `failure` and
   `failed_at` say why and when the last sync, full or poll, failed, until
@@ -2830,7 +2830,7 @@ Gmail's thread ID. Two tables keep them, derived from the
 synchronized mail so a list reads one index and never groups messages:
 
 - `conversations`: one row per thread with a message to show, with
-  inbok's own random `id`, which the web app's URLs and the other mail
+  amplop's own random `id`, which the web app's URLs and the other mail
   features use, and every column a list row shows: the newest message's
   date (`latest_date`), preview, and From, the oldest message's subject as
   sent, up to 10 senders in date order, the message count, and whether a
@@ -2866,7 +2866,7 @@ List Conversations' `place` and a change's `add`. A *label* is one of
 the member's own mailboxes, with no role, made by the member: a Gmail
 label, later an IMAP folder; [Labels](#labels) change them, and 404
 `label-not-found` names one the member does not have. *Mailbox* stays
-inside inbok: every label or folder the provider has, as
+inside amplop: every label or folder the provider has, as
 `mailsync.Mailbox` and the `mailboxes` table hold them.
 
 `conversation` reads them for the member, all under `/api/v0` and the
@@ -2924,7 +2924,7 @@ from that is not in Sent, else the newest, which `Derive` records as
 `newest_message_id`; the rest change every message. `untrash` puts a
 conversation back in the inbox, as Gmail's Move to Inbox does, since
 Trash took it out. `conversation.ActionService` calls Gmail inside the
-request, and inbok writes only what Gmail answers:
+request, and amplop writes only what Gmail answers:
 
 1. It finds the member's threads, another ID refused `not-found`, and
    reads their rows as they stand before.
@@ -2991,9 +2991,9 @@ as above. A provider whose messages sit in one
 folder each moves them: such a change removes one place and adds one.
 
 Each conversation is changed or refused on its own, so one answer can
-hold both, and nothing changes in inbok that Gmail did not accept: a
+hold both, and nothing changes in amplop that Gmail did not accept: a
 refusal needs no undoing. The poll that follows finds Gmail's record of
-the action, which inbok already holds. Opening a conversation marks
+the action, which amplop already holds. Opening a conversation marks
 nothing read; the web app sends `read`. Without a Google client the
 operation answers 409 `gmail-not-configured`, and the API server takes
 access tokens itself, as the worker does.
@@ -3011,7 +3011,7 @@ their provider, under `/api/v0` and the Labels tag:
   inside it follow, keeping their own names.
 - `DELETE /labels/{id}` deletes it and every label inside it, never
   their mail: their conversations keep their other places and stay in
-  All mail. It answers `{deleted}`, the IDs of the labels inbok no
+  All mail. It answers `{deleted}`, the IDs of the labels amplop no
   longer has.
 
 `label.Service` checks the input (`ValidateName`: not blank, at most
@@ -3045,13 +3045,13 @@ whole names:
   label, with `labels.delete`, which takes a label off its messages and
   deletes none. Gmail's API deletes only the label asked, and its web app
   deletes those inside too (checked against Gmail,
-  2026-11-16); inbok does as the web app does. A label already gone
+  2026-11-16); amplop does as the web app does. A label already gone
   counts as deleted, so asking again finishes a delete that stopped.
 
 The refusals are field errors, 422 `validation-error`, so a form marks
 the field: at `body.name` a name holding `/` (`label.SeparatorError`), a
 whole name over Gmail's 225 characters or 255 bytes with the names
-above it (Gmail answers 400 and 500, so inbok checks first), a name Gmail
+above it (Gmail answers 400 and 500, so amplop checks first), a name Gmail
 keeps, e.g. `Inbox` or `All Mail` in any case (Gmail's 400 "Invalid
 label name"), and a name the account has in any case (Gmail's 409); at
 `body.parent` a parent that isn't one. A label not the member's answers
@@ -3081,22 +3081,22 @@ themselves load from PostgreSQL with the usual ownership check.
 Jobs keep the index in step with synchronized mail, and Search Conversations
 [searches](#searching) it.
 
-The index holds every message inbok keeps, Spam and Trash included, and
+The index holds every message amplop keeps, Spam and Trash included, and
 a query decides which mailboxes it leaves out. Each write to a member's
 mail saves, in its own transaction, a job naming the messages it
 changed, so the job commits with the change and a rollback drops it:
 
 | Write | Job |
 |-|-|
-| `UpdateSyncedMail`: messages saved, updated (labels and flags), or deleted, by a sync or a member's action | `inbok.search-indexing` for those messages and every message of their threads |
-| `SaveMessageParts`: a body stored | `inbok.search-indexing` for the message |
-| `SavePartBlob`: a text body the provider sends apart, e.g. Gmail's long HTML | `inbok.search-indexing` for the message |
-| `DeleteConnectedAccount`: an account disconnected | `inbok.search-account-removal` for the account |
+| `UpdateSyncedMail`: messages saved, updated (labels and flags), or deleted, by a sync or a member's action | `amplop.search-indexing` for those messages and every message of their threads |
+| `SaveMessageParts`: a body stored | `amplop.search-indexing` for the message |
+| `SavePartBlob`: a text body the provider sends apart, e.g. Gmail's long HTML | `amplop.search-indexing` for the message |
+| `DeleteConnectedAccount`: an account disconnected | `amplop.search-account-removal` for the account |
 
 A job's input is the member and the message IDs, never mail. When it
 runs, `search.Indexer` reads those messages as PostgreSQL holds them
 then, upserts the ones it finds, and deletes the ones it does not, e.g.
-deleted since. Both jobs run on the queue `inbok.search`, partitioned by
+deleted since. Both jobs run on the queue `amplop.search`, partitioned by
 member with one run at a time in each partition
 (`dbos.WithPartitionConcurrency(1)`), so a member's runs never overlap
 while different members' run side by side. Together these keep the
@@ -3114,7 +3114,7 @@ one DBOS step each, and each step retries for about an hour (1, 2, 4,
 count again) while the member's later runs wait behind it. A run that still fails is logged and dropped: its messages
 stay as they were in the index until they change again or the index is
 [rebuilt](#rebuilding-the-index), e.g. by the next nightly rebuild. A message's document holds its subject, sender, recipients,
-date, account, the inbok IDs of its mailboxes, its conversation's
+date, account, the amplop IDs of its mailboxes, its conversation's
 places, and, once its body is stored, its text in two fields: `body_text`, the text of the bodies a
 view of it shows, and `alt_text`, the text of its other text parts,
 e.g. the plain-text alternative of HTML a view shows. A word in either
@@ -3128,7 +3128,7 @@ in as lists place it (`conversation_mailboxes`), and
 its whole conversation in the inbox, so the derive step of
 `UpdateSyncedMail` returns every message of each thread it derives, and
 the write's job indexes them all. A long thread's new reply so indexes
-its older messages again, which inbok accepts. Three more fields serve
+its older messages again, which amplop accepts. Three more fields serve
 filters: `from_addresses`, every address of its From as PostgreSQL holds
 it, without empty ones, e.g. a group's name; `internal_date`, when the
 provider received it, in Unix milliseconds, Gmail's own precision; and,
@@ -3305,10 +3305,10 @@ is not found, as in Gmail. Without `q`, every message the filters keep
 matches, newest first by the date ranking rule, each conversation
 through its newest such message, and the adapter asks for IDs alone,
 since there is nothing to mark. `has=attachment` only finds messages
-whose content inbok has fetched: not those of an account connected
+whose content amplop has fetched: not those of an account connected
 moments ago, while the body fetch catches up; unopened ones in Spam or
 Trash, which it skips; one whose fetch failed for good; nor one that
-reaches inbok older than 90 days, e.g. imported, or ages past 90 days
+reaches amplop older than 90 days, e.g. imported, or ages past 90 days
 before its turn, which the body fetch never takes unless it is opened.
 
 Cutting excerpts is most of a search's cost in Meilisearch, and it grows
@@ -3334,7 +3334,7 @@ place:
 
 1. `Rebuild.Owners` lists every member in PostgreSQL, with mail or not,
    and every owner Meilisearch keeps an index for.
-2. For each, in the member's partition of `inbok.search`, so live jobs
+2. For each, in the member's partition of `amplop.search`, so live jobs
    wait while it runs, `Rebuild.Owner` deletes the whole index of a
    member PostgreSQL no longer has. Otherwise it lists the IDs the
    index holds, writes each of the member's messages 100 at a time with
@@ -3348,20 +3348,20 @@ it wrote to may have been replaced since, e.g. by a new, empty
 Meilisearch. An interrupted step is not recorded, so a resumed run
 repeats the member whole; an index replaced after a member's step
 finished needs a new rebuild, which `upgrade.sh` and the restore steps
-run. A rebuild of every member, `inbok.search-rebuild`, enqueues
-the members' runs, `inbok.search-member-rebuild`, and waits for them;
+run. A rebuild of every member, `amplop.search-rebuild`, enqueues
+the members' runs, `amplop.search-member-rebuild`, and waits for them;
 it runs outside every member's partition, since it waits on them. It
 runs nightly at 03:00 UTC, when the worker is running then (DBOS does
-not make up a missed night), as `inbok.search-rebuild-schedule`
-from the schedule `inbok.search-rebuild.nightly`, and when the command
-asks for it, from the queue `inbok.search-rebuild`:
+not make up a missed night), as `amplop.search-rebuild-schedule`
+from the schedule `amplop.search-rebuild.nightly`, and when the command
+asks for it, from the queue `amplop.search-rebuild`:
 
 ```sh
 set -a; . ./.env; set +a
-go -C backend run ./cmd/inbok search rebuild
+go -C backend run ./cmd/amplop search rebuild
 ```
 
-The command needs only `INBOK_DATABASE_URL` and a running worker, which
+The command needs only `AMPLOP_DATABASE_URL` and a running worker, which
 does the work; it waits up to two hours and prints what the rebuild did.
 `deploy/upgrade.sh` runs it after every upgrade, and the deploy README's
 restore steps run it before the site opens again. A database that held
@@ -3388,7 +3388,7 @@ a rebuild or wiped data; after it, add a field under a new name
 instead.
 
 To see what the index holds during development, open Meilisearch's
-dashboard at `http://localhost:7700`, give it `INBOK_MEILISEARCH_KEY`,
+dashboard at `http://localhost:7700`, give it `AMPLOP_MEILISEARCH_KEY`,
 and pick a member's index.
 
 ## Logs and request IDs
@@ -3406,7 +3406,7 @@ serving it, e.g. a failed email send. Quote it when reporting a failed
 request. An incoming `X-Request-ID` that parses as a UUID, e.g. nginx's
 `$request_id`, is reused unchanged; any other value is replaced.
 
-`cmd/inbok` builds one root logger with `logging.New` and passes it to every
+`cmd/amplop` builds one root logger with `logging.New` and passes it to every
 service and to `httpapi`. A line gets `request_id` when it is logged with
 the request's context, e.g. `logger.WarnContext(ctx, ...)`.
 
@@ -3481,7 +3481,7 @@ require.ErrorIs(t, err, lost)
 The database schema changes through numbered SQL files, called
 migrations, in `backend/internal/repository/postgres/migrations`. Each
 file has an `Up` part that applies the change and a `Down` part that
-undoes it. `inbok migrate` applies the files the database has not seen
+undoes it. `amplop migrate` applies the files the database has not seen
 yet and records them; `serve` never does. `migrate` then creates or
 upgrades the workflow tables [DBOS](https://docs.dbos.dev) keeps
 background work in, in the `dbos` schema. Their migrations ship inside the
@@ -3490,14 +3490,14 @@ covers both steps, so a second `migrate` on the same database waits for
 the first.
 
 Upgrading the SDK can bring new workflow table migrations. Review them
-like inbok's own: the release before must keep working on the migrated
+like amplop's own: the release before must keep working on the migrated
 tables. `dbos.MigrationStatements("dbos", n)` in Go lists the SQL from
 version `n` on; `SELECT version FROM dbos.dbos_migrations` shows a
 database's current version.
 
-The role in `INBOK_DATABASE_URL` needs the right to create a schema in its
+The role in `AMPLOP_DATABASE_URL` needs the right to create a schema in its
 database, and `migrate` also connects to the server's `postgres` database
-to check that inbok's exists. The owner a Docker PostgreSQL creates from
+to check that amplop's exists. The owner a Docker PostgreSQL creates from
 `POSTGRES_USER`, as in `compose.yaml`, has both.
 
 Go does not read `.env`, so load it into your shell first. From
@@ -3505,12 +3505,12 @@ Go does not read `.env`, so load it into your shell first. From
 
 ```sh
 set -a; . ../.env; set +a
-go run ./cmd/inbok migrate
+go run ./cmd/amplop migrate
 ```
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL, e.g. `postgres://inbok:inbok@127.0.0.1:5432/inbok?sslmode=disable`. |
+| `AMPLOP_DATABASE_URL` | none, required | PostgreSQL connection URL, e.g. `postgres://amplop:amplop@127.0.0.1:5432/amplop?sslmode=disable`. |
 
 For development, the [Goose](https://pressly.github.io/goose/) command is
 pinned in `tools.mod` and reads the `GOOSE_*` settings in `.env`. From
@@ -3522,13 +3522,13 @@ go tool -modfile=tools.mod goose reset                # run every Down part
 go tool -modfile=tools.mod goose create -s add_x sql  # next numbered file
 ```
 
-Goose knows only inbok's files: `goose reset` and `make db-reset` leave
+Goose knows only amplop's files: `goose reset` and `make db-reset` leave
 the `dbos` schema in place. To empty that too, run `DROP SCHEMA dbos CASCADE;` in `psql`; the
 next `migrate` creates it again.
 
-Until the first release, inbok is deployed nowhere, so a schema change
+Until the first release, amplop is deployed nowhere, so a schema change
 edits the migration that made the table rather than adding one that
-alters it; inbok keeps no compatibility with unreleased schemas.
+alters it; amplop keeps no compatibility with unreleased schemas.
 A database that already applied it, e.g. your `.env`
 stack, then needs `make db-reset`, losing its data, and its accounts
 connected again. After the first release, never edit a migration a
@@ -3620,13 +3620,13 @@ httpapi --> messagecontent <-- s3
   whose types never leave the package.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
-  `msgid` (which msg-ids inbok writes, and how References is trimmed,
+  `msgid` (which msg-ids amplop writes, and how References is trimmed,
   for sync and replies), `randomsecret` (emailed link secrets and their hashes), `clientprefix`
   (which addresses count as one client), or `logging` (how loggers are
   built and tagged with the request). It
   imports no feature or technology package and is named for its rule.
 - A feature can use another feature through an interface it declares:
-  `emailverification` sends through a `mailer` interface, which `cmd/inbok`
+  `emailverification` sends through a `mailer` interface, which `cmd/amplop`
   fills with `systememail`'s `Mailer`. A feature may import another's plain
   rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
@@ -3655,7 +3655,7 @@ httpapi --> messagecontent <-- s3
 - `dbos` is the technology package for [Background work](#background-work):
   it opens DBOS for the worker, registers and schedules its workflows,
   launches it, and shuts it down. Its steps call features through
-  interfaces it declares, in `dbos.Services`, which `cmd/inbok` fills, e.g.
+  interfaces it declares, in `dbos.Services`, which `cmd/amplop` fills, e.g.
   with `emailverification.Cleanup`; like other technology packages it may
   import a feature's plain types, e.g. `account.NoticeOutcome`, while
   features never import DBOS. Its `Client` saves workflows inside a storage
@@ -3664,7 +3664,7 @@ httpapi --> messagecontent <-- s3
   pgx's `pgx.Tx`, which DBOS's API takes, without importing each other
   outside tests. It is the only package besides `repository/postgres`
   that imports the DBOS SDK, whose package is also named `dbos`.
-- `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
+- `cmd/amplop` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
 ### Files and sections
@@ -3710,14 +3710,14 @@ To add a feature, e.g. `account`:
    Test the operations with fake services. Add an `Account` field to
    `Services` and call `registerAccount` in `New`, before
    `registerProblemTypes`, which lists the problem types registered so far.
-5. `cmd/inbok/main.go`: set `Account` in `serve`'s `Services`.
+5. `cmd/amplop/main.go`: set `Account` in `serve`'s `Services`.
 6. Regenerate `api/generated/openapi.json`.
 
 Each step can be its own commit.
 
 ## Adding a background job
 
-Background work runs in `inbok worker` on DBOS; read
+Background work runs in `amplop worker` on DBOS; read
 [Background work](#background-work) first. A job is a **workflow** made of
 **steps**: DBOS records each finished step's result and, after a stop,
 resumes at the first step without one. The rules every job follows:
@@ -3729,7 +3729,7 @@ resumes at the first step without one. The rules every job follows:
   copy, and record why in a comment on the step.
 - Steps call plain feature methods. Feature packages never import DBOS;
   `internal/dbos` declares a small interface for what it calls and a field
-  for it in `dbos.Services`, which `cmd/inbok/worker.go` fills, as `serve`
+  for it in `dbos.Services`, which `cmd/amplop/worker.go` fills, as `serve`
   fills `httpapi.Services`. `dbos.NewWorker` registers every workflow and
   schedule, as `httpapi.New` registers every operation.
 - Bulk work runs in bounded batches, one step each, so a run makes durable
@@ -3756,7 +3756,7 @@ rows of a new table, as password reset's links and attempts were added:
    PostgreSQL, as `DeleteExpiredEmailVerificationLinks` is.
 3. `internal/dbos`: a field in `Services`, and its entry at the end of
    `Worker.cleanups` in `cleanup.go`, with a name that stays fixed.
-4. `cmd/inbok/worker.go`: set the field to the feature's `Cleanup`.
+4. `cmd/amplop/worker.go`: set the field to the feature's `Cleanup`.
 
 For a new scheduled job, follow `internal/dbos/cleanup.go`: register the
 workflow under a fixed name and save its schedule with
@@ -3771,12 +3771,12 @@ For a job that runs once per request, follow the recovery notice
    outcome value for one that is not.
 2. `internal/dbos`: an input struct holding IDs and no personal data,
    the workflow registered under a fixed name with each step's retry
-   policy, and a field in `Services` for the feature's type. A job that sends inbok's
-   email runs on `inbok.email`, one that calls Google in the background on
-   `inbok.google`, and one a member waits for on Gmail, a send, on
-   `inbok.google-send` (`queue.go`), so it never waits behind long
+   policy, and a field in `Services` for the feature's type. A job that sends amplop's
+   email runs on `amplop.email`, one that calls Google in the background on
+   `amplop.google`, and one a member waits for on Gmail, a send, on
+   `amplop.google-send` (`queue.go`), so it never waits behind long
    background runs; another kind of job adds its own queue there.
-3. `cmd/inbok/worker.go`: set that field.
+3. `cmd/amplop/worker.go`: set that field.
 4. Save the workflow with the change that needs it, in one transaction.
    The feature's `Storage` method documents that it saves the job; its
    `repository/postgres` implementation calls a method of the
@@ -3827,7 +3827,7 @@ A token lasts as long as Google's `expires_in` said, usually an hour.
   error wraps `connectedaccount.ErrRefreshFailed`, so a job can tell
   Google's failure from its own storage's, which `Token` returns as is.
 - `Access.Check` answers the same stop errors, `ErrTokenUnreadable`
-  included, without asking Google, for a step that writes only inbok's
+  included, without asking Google, for a step that writes only amplop's
   data but must still stop for a stopped account.
 - It writes only against the token it read, so a reconnect or another
   job's replacement in between wins; it then reads again once, and
@@ -3841,7 +3841,7 @@ A token lasts as long as Google's `expires_in` said, usually an hour.
   that must not act for an account gone since, e.g. one sending mail,
   checks again where it acts.
 
-Build `Access` in `cmd/inbok/worker.go` only when a Google client is
+Build `Access` in `cmd/amplop/worker.go` only when a Google client is
 configured, as `connectedaccount.Removals` is, so the job's field in
 `dbos.Services` stays nil otherwise: a nil `*Access` stored in it would
 pass the worker's nil check.

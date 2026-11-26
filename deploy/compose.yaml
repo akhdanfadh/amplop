@@ -1,5 +1,5 @@
-# A self-hosted inbok: PostgreSQL, Meilisearch for search, SeaweedFS for
-# message content, a one-off migration, the inbok server, its background
+# A self-hosted amplop: PostgreSQL, Meilisearch for search, SeaweedFS for
+# message content, a one-off migration, the amplop server, its background
 # worker, and Caddy for HTTPS. Values come from deploy/.env; copy
 # .env.example.
 # From deploy/, start it with docker compose up -d --build, and upgrade it
@@ -8,27 +8,27 @@
 # NOTE: The images below are pinned by version and digest, like the
 # Dockerfile's base images; the Dockerfile says how to update a digest.
 
-# Not "inbok": the development stack in a checkout named inbok has that
+# Not "amplop": the development stack in a checkout named amplop has that
 # name, and sharing it would share its database volume.
-name: inbok-deploy
+name: amplop-deploy
 
-# migrate, inbok, and worker connect with this URL. The password is hex, so it needs
+# migrate, amplop, and worker connect with this URL. The password is hex, so it needs
 # no escaping here.
-x-database-url: &database-url postgres://inbok:${INBOK_POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/inbok?sslmode=disable
+x-database-url: &database-url postgres://amplop:${AMPLOP_POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/amplop?sslmode=disable
 
-# inbok and worker keep message content in SeaweedFS with these keys,
+# amplop and worker keep message content in SeaweedFS with these keys,
 # which SeaweedFS takes as its admin identity on every start.
-x-s3-access-key-id: &s3-access-key-id ${INBOK_S3_ACCESS_KEY_ID:?set it in deploy/.env}
-x-s3-secret-access-key: &s3-secret-access-key ${INBOK_S3_SECRET_ACCESS_KEY:?set it in deploy/.env}
+x-s3-access-key-id: &s3-access-key-id ${AMPLOP_S3_ACCESS_KEY_ID:?set it in deploy/.env}
+x-s3-secret-access-key: &s3-secret-access-key ${AMPLOP_S3_SECRET_ACCESS_KEY:?set it in deploy/.env}
 
 services:
   postgres:
     image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
     restart: unless-stopped
     environment:
-      POSTGRES_USER: inbok
-      POSTGRES_PASSWORD: ${INBOK_POSTGRES_PASSWORD:?set it in deploy/.env}
-      POSTGRES_DB: inbok
+      POSTGRES_USER: amplop
+      POSTGRES_PASSWORD: ${AMPLOP_POSTGRES_PASSWORD:?set it in deploy/.env}
+      POSTGRES_DB: amplop
 
     # PostgreSQL 18 and newer keep data under /var/lib/postgresql/18/docker;
     # mount the parent so data survives recreating the container.
@@ -58,7 +58,7 @@ services:
     image: getmeili/meilisearch:v1.56.1@sha256:b7ba431bf6f9b26cc86132798f3640964147a699cf23f026b74c6c05dbb1d60d
     restart: unless-stopped
     environment:
-      MEILI_MASTER_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
+      MEILI_MASTER_KEY: ${AMPLOP_MEILISEARCH_KEY:?set it in deploy/.env}
       # Refuses a master key under 16 bytes and turns off the web
       # dashboard.
       MEILI_ENV: production
@@ -117,15 +117,15 @@ services:
   # Applies pending migrations, then exits. Every docker compose up or
   # start runs it again, which does nothing once the database is current.
   migrate:
-    # The image the inbok service builds, so an upgrade migrates with the
-    # code it then serves. Only inbok builds it: Compose would otherwise
+    # The image the amplop service builds, so an upgrade migrates with the
+    # code it then serves. Only amplop builds it: Compose would otherwise
     # build it once per service; worker uses it the same way.
-    image: ${INBOK_IMAGE:-inbok:local}
+    image: ${AMPLOP_IMAGE:-amplop:local}
     pull_policy: never
     command: migrate
     restart: "no"
     environment:
-      INBOK_DATABASE_URL: *database-url
+      AMPLOP_DATABASE_URL: *database-url
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,32 +136,32 @@ services:
     networks:
       - db
 
-  inbok:
+  amplop:
     # Built from the repository's Dockerfile. The image's own health check
-    # runs inbok health, which caddy waits for below. Only upgrade.sh sets
-    # INBOK_IMAGE, to build and migrate with a candidate image first.
-    image: ${INBOK_IMAGE:-inbok:local}
+    # runs amplop health, which caddy waits for below. Only upgrade.sh sets
+    # AMPLOP_IMAGE, to build and migrate with a candidate image first.
+    image: ${AMPLOP_IMAGE:-amplop:local}
     build:
       context: ..
     restart: unless-stopped
     environment:
-      INBOK_DATABASE_URL: *database-url
-      INBOK_ENCRYPTION_KEYS: ${INBOK_ENCRYPTION_KEYS:?set it in deploy/.env}
-      INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:?set it in deploy/.env}
-      INBOK_SETUP_TOKEN: ${INBOK_SETUP_TOKEN:-}
+      AMPLOP_DATABASE_URL: *database-url
+      AMPLOP_ENCRYPTION_KEYS: ${AMPLOP_ENCRYPTION_KEYS:?set it in deploy/.env}
+      AMPLOP_PUBLIC_URL: ${AMPLOP_PUBLIC_URL:?set it in deploy/.env}
+      AMPLOP_SETUP_TOKEN: ${AMPLOP_SETUP_TOKEN:-}
       # Both empty: Gmail is not offered.
-      INBOK_GOOGLE_CLIENT_ID: ${INBOK_GOOGLE_CLIENT_ID:-}
-      INBOK_GOOGLE_CLIENT_SECRET: ${INBOK_GOOGLE_CLIENT_SECRET:-}
-      INBOK_S3_ENDPOINT: http://seaweedfs:8333
-      INBOK_S3_ACCESS_KEY_ID: *s3-access-key-id
-      INBOK_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
+      AMPLOP_GOOGLE_CLIENT_ID: ${AMPLOP_GOOGLE_CLIENT_ID:-}
+      AMPLOP_GOOGLE_CLIENT_SECRET: ${AMPLOP_GOOGLE_CLIENT_SECRET:-}
+      AMPLOP_S3_ENDPOINT: http://seaweedfs:8333
+      AMPLOP_S3_ACCESS_KEY_ID: *s3-access-key-id
+      AMPLOP_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
       # It searches members' mail.
-      INBOK_MEILISEARCH_URL: http://meilisearch:7700
-      INBOK_MEILISEARCH_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
+      AMPLOP_MEILISEARCH_URL: http://meilisearch:7700
+      AMPLOP_MEILISEARCH_KEY: ${AMPLOP_MEILISEARCH_KEY:?set it in deploy/.env}
       # Caddy's own addresses below, and nothing else: a forwarded client
       # address from any other peer is ignored.
-      INBOK_TRUSTED_PROXIES: 10.83.70.2/32,fd24:44bd:915f::2/128
-    # Not seaweedfs or meilisearch: inbok starts without them, so a cache
+      AMPLOP_TRUSTED_PROXIES: 10.83.70.2/32,fd24:44bd:915f::2/128
+    # Not seaweedfs or meilisearch: amplop starts without them, so a cache
     # or index that is down keeps no one from signing in. The worker waits
     # for both.
     depends_on:
@@ -178,10 +178,10 @@ services:
       - content
 
   # Runs background work. Restarting or replacing it is safe: work it left
-  # unfinished resumes when it starts again under the same INBOK_WORKER_ID,
+  # unfinished resumes when it starts again under the same AMPLOP_WORKER_ID,
   # which defaults to "worker". A second worker at once needs its own ID.
   worker:
-    image: ${INBOK_IMAGE:-inbok:local}
+    image: ${AMPLOP_IMAGE:-amplop:local}
     pull_policy: never
     command: worker
     restart: unless-stopped
@@ -189,25 +189,25 @@ services:
     # it kills. A kill is safe, just less tidy: unfinished work resumes.
     stop_grace_period: 15s
     environment:
-      INBOK_DATABASE_URL: *database-url
+      AMPLOP_DATABASE_URL: *database-url
       # The image's health check asks this address. Loopback: nothing else
       # needs to reach the worker. 8081 is the worker's port everywhere,
       # though its own container would allow serve's 8080 too.
-      INBOK_HTTP_ADDR: 127.0.0.1:8081
-      # It sends inbok's email: the keys decrypt the saved SMTP password,
+      AMPLOP_HTTP_ADDR: 127.0.0.1:8081
+      # It sends amplop's email: the keys decrypt the saved SMTP password,
       # and links in its messages start with the public URL.
-      INBOK_ENCRYPTION_KEYS: ${INBOK_ENCRYPTION_KEYS:?set it in deploy/.env}
-      INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:?set it in deploy/.env}
+      AMPLOP_ENCRYPTION_KEYS: ${AMPLOP_ENCRYPTION_KEYS:?set it in deploy/.env}
+      AMPLOP_PUBLIC_URL: ${AMPLOP_PUBLIC_URL:?set it in deploy/.env}
       # It synchronizes Gmail accounts and revokes a disconnected one's
-      # permission at Google, with the same client as inbok.
-      INBOK_GOOGLE_CLIENT_ID: ${INBOK_GOOGLE_CLIENT_ID:-}
-      INBOK_GOOGLE_CLIENT_SECRET: ${INBOK_GOOGLE_CLIENT_SECRET:-}
+      # permission at Google, with the same client as amplop.
+      AMPLOP_GOOGLE_CLIENT_ID: ${AMPLOP_GOOGLE_CLIENT_ID:-}
+      AMPLOP_GOOGLE_CLIENT_SECRET: ${AMPLOP_GOOGLE_CLIENT_SECRET:-}
       # It applies the search index's settings when it starts.
-      INBOK_MEILISEARCH_URL: http://meilisearch:7700
-      INBOK_MEILISEARCH_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
-      INBOK_S3_ENDPOINT: http://seaweedfs:8333
-      INBOK_S3_ACCESS_KEY_ID: *s3-access-key-id
-      INBOK_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
+      AMPLOP_MEILISEARCH_URL: http://meilisearch:7700
+      AMPLOP_MEILISEARCH_KEY: ${AMPLOP_MEILISEARCH_KEY:?set it in deploy/.env}
+      AMPLOP_S3_ENDPOINT: http://seaweedfs:8333
+      AMPLOP_S3_ACCESS_KEY_ID: *s3-access-key-id
+      AMPLOP_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
     depends_on:
       postgres:
         condition: service_healthy
@@ -228,14 +228,14 @@ services:
     image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     restart: unless-stopped
     environment:
-      INBOK_DOMAIN: ${INBOK_DOMAIN:?set it in deploy/.env}
+      AMPLOP_DOMAIN: ${AMPLOP_DOMAIN:?set it in deploy/.env}
 
     # 80 answers certificate checks and redirects to HTTPS; 443/udp carries
     # HTTP/3.
     ports:
-      - ${INBOK_CADDY_HTTP_PORT:-80}:80
-      - ${INBOK_CADDY_HTTPS_PORT:-443}:443
-      - ${INBOK_CADDY_HTTPS_PORT:-443}:443/udp
+      - ${AMPLOP_CADDY_HTTP_PORT:-80}:80
+      - ${AMPLOP_CADDY_HTTPS_PORT:-443}:443
+      - ${AMPLOP_CADDY_HTTPS_PORT:-443}:443/udp
 
     # Caddy's image asks for its config folder, not the single file, so a
     # reload sees edits: docker compose exec -w /etc/caddy caddy caddy reload
@@ -246,7 +246,7 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      inbok:
+      amplop:
         condition: service_healthy
     networks:
       edge:
@@ -254,8 +254,8 @@ services:
         ipv6_address: fd24:44bd:915f::2
 
 networks:
-  # Caddy, inbok, and worker, with internet access for certificates and
-  # system email. The subnets are fixed so inbok can trust exactly Caddy's
+  # Caddy, amplop, and worker, with internet access for certificates and
+  # system email. The subnets are fixed so amplop can trust exactly Caddy's
   # addresses. If one collides with a network on the host, change it, its
   # ip_range, and Caddy's addresses in both places above.
   edge:
@@ -274,13 +274,13 @@ networks:
         - subnet: fd24:44bd:915f::/64
           ip_range: fd24:44bd:915f::1:0/112
 
-  # PostgreSQL, Meilisearch, migrate, inbok, and worker, with no internet
+  # PostgreSQL, Meilisearch, migrate, amplop, and worker, with no internet
   # access. Caddy is not on it, so the service facing the internet cannot
   # reach the database or the search index.
   db:
     internal: true
 
-  # SeaweedFS, inbok, and worker, with no internet access. Only the two
+  # SeaweedFS, amplop, and worker, with no internet access. Only the two
   # services that hold its keys can reach it, since its ports other than
   # S3 need none.
   content:
@@ -288,7 +288,7 @@ networks:
 
 # docker compose down -v deletes these: postgres holds the only copy of the
 # database, and caddy-data the certificates. seaweedfs holds message
-# content, which inbok fetches again from Gmail when it is gone. Plain down
+# content, which amplop fetches again from Gmail when it is gone. Plain down
 # keeps them.
 volumes:
   postgres:

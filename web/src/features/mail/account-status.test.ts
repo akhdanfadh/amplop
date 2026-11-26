@@ -3,7 +3,7 @@ import type { ListedAccount } from "@/api/generated/model";
 import { listedAccount } from "@/test/mail-api";
 import { accountDetail, accountStatus } from "./account-status";
 
-// account returns an account inbok can use whose sync is sync.
+// account returns an account amplop can use whose sync is sync.
 function account(sync: Partial<ListedAccount["sync"]>): ListedAccount {
   const base = listedAccount(1, "ana@example.com");
   return { ...base, sync: { ...base.sync, ...sync } };
@@ -32,7 +32,7 @@ describe("accountStatus", () => {
     );
     expect(failed).toMatchObject({ words: "Sync failed", tone: "destructive" });
     expect(failed?.detail).toMatch(
-      /^Couldn't get mail from Gmail at .+\. inbok will try again within an hour\.$/,
+      /^Couldn't get mail from Gmail at .+\. amplop will try again within an hour\.$/,
     );
   });
 
@@ -41,7 +41,7 @@ describe("accountStatus", () => {
     expect(accountStatus(refused)).toMatchObject({
       words: "Reconnect",
       tone: "warning",
-      detail: "Google stopped accepting inbok's access. Reconnect it in Connected accounts.",
+      detail: "Google stopped accepting amplop's access. Reconnect it in Connected accounts.",
     });
   });
 });

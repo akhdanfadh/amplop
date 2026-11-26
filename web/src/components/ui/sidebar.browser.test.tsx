@@ -42,7 +42,7 @@ function Frame({ open: initial = true }: { open?: boolean }) {
       <Sidebar label="Mail">
         <SidebarHeader className="flex-row items-center justify-between">
           <a href="#top" className="group-data-[collapsible=icon]:hidden">
-            inbok
+            amplop
           </a>
           <SidebarTrigger />
         </SidebarHeader>
@@ -56,7 +56,7 @@ function Frame({ open: initial = true }: { open?: boolean }) {
             </SidebarMenuItem>
           </SidebarMenu>
           <SidebarGroup>
-            <SidebarGroupLabel>This inbok</SidebarGroupLabel>
+            <SidebarGroupLabel>This amplop</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip="Members" detail="2 members, 1 invited.">
@@ -107,7 +107,7 @@ function TopBarFrame() {
       <Sidebar label="Mail">
         <SidebarHeader className="flex-row items-center justify-between">
           <a href="#top" className="group-data-[collapsible=icon]:hidden">
-            inbok
+            amplop
           </a>
           <SidebarTrigger />
         </SidebarHeader>
@@ -271,7 +271,7 @@ describe("Sidebar", () => {
 
   it("keeps focus in the sidebar when the rail hides the focused part", async () => {
     await render(<Frame />);
-    const wordmark = page.getByRole("link", { name: "inbok" });
+    const wordmark = page.getByRole("link", { name: "amplop" });
     wordmark.element().focus();
     await userEvent.keyboard("{Control>}b{/Control}");
     expect(state()).toBe("collapsed");
@@ -518,7 +518,7 @@ describe("Sidebar", () => {
             <SidebarMenuItem>
               <SidebarMenuButton href="#studio">
                 <InboxIcon aria-hidden="true" />
-                <span>studio.team.accounts@inbok-example.org</span>
+                <span>studio.team.accounts@amplop-example.org</span>
                 <SidebarMenuBadge>
                   1,204<span className="sr-only"> unread</span>
                 </SidebarMenuBadge>
@@ -541,7 +541,7 @@ describe("Sidebar", () => {
     // A screen reader hears the count with the name.
     await expect
       .element(
-        page.getByRole("link", { name: "studio.team.accounts@inbok-example.org 1,204 unread" }),
+        page.getByRole("link", { name: "studio.team.accounts@amplop-example.org 1,204 unread" }),
       )
       .toBeInTheDocument();
   });
@@ -581,7 +581,7 @@ describe("Sidebar", () => {
     await userEvent.keyboard("{Control>}b{/Control}");
     await expect.poll(() => members.getBoundingClientRect().top).toBe(before);
     // Still named for screen readers, its words hidden behind a line.
-    const label = page.getByText("This inbok").element();
+    const label = page.getByText("This amplop").element();
     expect(getComputedStyle(label).color).toBe("rgba(0, 0, 0, 0)");
     expect(getComputedStyle(label, "::before").height).toBe("1px");
   });
@@ -642,7 +642,7 @@ describe("Sidebar", () => {
     {
       part: "the wordmark, which the rail hides",
       from: [1440, 900],
-      focused: () => page.getByRole("link", { name: "inbok" }),
+      focused: () => page.getByRole("link", { name: "amplop" }),
       to: [1100, 800],
       takes: () => sidebarButton("Expand sidebar"),
     },

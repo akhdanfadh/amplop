@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
+import { useCreateSession, useGetCurrentSession } from "@/api/generated/amplop";
 import { uncertainOutcome, userMessage } from "@/api/problem";
 import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";

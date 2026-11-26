@@ -6,7 +6,7 @@ import (
 
 	"uuid"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // accountsPrefix starts every content key: accounts/<account>/<blob ID>.

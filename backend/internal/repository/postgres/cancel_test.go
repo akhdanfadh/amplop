@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/httpapi"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/httpapi"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 func TestCancelEnrollmentStorage(t *testing.T) {
@@ -194,7 +194,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 			api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{
 				Session: f.sessions, TOTP: newTOTPService(t, f.db, time.Now),
 			})
-			cookie := &http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+			cookie := &http.Cookie{Name: "__Host-amplop-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 
 			for range 2 {
 				request := httptest.NewRequest(http.MethodDelete, "/api/v0/totp/enrollment", nil)
@@ -237,7 +237,7 @@ func TestCancelConfirmedHTTP(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/v0/totp/enrollment", nil)
 	request.Header.Set("Origin", "http://example.com")
-	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: confirmed.Secret})
+	request.AddCookie(&http.Cookie{Name: "__Host-amplop-session", Value: confirmed.Secret})
 	response := httptest.NewRecorder()
 
 	api.Handler().ServeHTTP(response, request)

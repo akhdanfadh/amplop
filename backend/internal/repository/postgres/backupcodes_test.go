@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/totp"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/totp"
 )
 
 func backupCodeUser(t *testing.T, conn *pgx.Conn, email string) int64 {

@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/logging"
-	"inbok/internal/session"
+	"amplop/internal/logging"
+	"amplop/internal/session"
 )
 
 type failingInput struct {
@@ -328,7 +328,7 @@ func TestErrorNegotiation(t *testing.T) {
 }
 
 func TestErrorConstructor(t *testing.T) {
-	const childFlag = "INBOK_TEST_ERROR_CONSTRUCTOR"
+	const childFlag = "AMPLOP_TEST_ERROR_CONSTRUCTOR"
 
 	// Install the alternate constructor before the first API, in its own process.
 	if os.Getenv(childFlag) == "" {

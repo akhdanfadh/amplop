@@ -13,7 +13,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"inbok/internal/passwordhash"
+	"amplop/internal/passwordhash"
 )
 
 // testImage matches compose.yaml: tests run the PostgreSQL that

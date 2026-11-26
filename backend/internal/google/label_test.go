@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/googleemulator"
-	"inbok/internal/label"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/googleemulator"
+	"amplop/internal/label"
+	"amplop/internal/mailsync"
 )
 
 // workLabels are alex's labels Work, Work/Projects, Work/Projects/Q4, and
@@ -55,7 +55,7 @@ func TestCreateMailbox(t *testing.T) {
 	assert.Contains(t, mailboxes, mailsync.Mailbox{ProviderID: id, Name: "Q1 plans", ProviderParentID: "Label_projects", MadeBy: mailsync.MadeByMember})
 }
 
-// Gmail's refusals are label's errors; the ones inbok checks first never
+// Gmail's refusals are label's errors; the ones amplop checks first never
 // reach Gmail.
 func TestCreateMailboxRefused(t *testing.T) {
 	client, token := startMailbox(t, workLabels(), nil)

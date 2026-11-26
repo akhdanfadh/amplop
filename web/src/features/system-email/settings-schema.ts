@@ -15,7 +15,7 @@ const newSettings: SettingsValues = {
   username: "",
   password: "",
   fromAddress: "",
-  fromName: "inbok",
+  fromName: "amplop",
 };
 
 // The port each mode usually uses (RFC 8314 section 3.3 for TLS, RFC 6409

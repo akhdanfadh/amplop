@@ -10,14 +10,14 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // The search index's workflows' names in DBOS's tables, where enqueued
 // runs outlive the code that made them. Their runs use [searchQueue].
 const (
-	searchIndexingWorkflow       = "inbok.search-indexing"
-	searchAccountRemovalWorkflow = "inbok.search-account-removal"
+	searchIndexingWorkflow       = "amplop.search-indexing"
+	searchAccountRemovalWorkflow = "amplop.search-account-removal"
 )
 
 // SearchIndexingInput is the search indexing workflow's input: the
@@ -112,14 +112,14 @@ func runSearchAccountRemoval(ctx dbos.Context, index searchIndex, input SearchAc
 }
 
 // The search rebuild's names in DBOS's tables. A rebuild of every member
-// runs on [searchRebuildQueue] when inbok search rebuild asks for it, and
+// runs on [searchRebuildQueue] when amplop search rebuild asks for it, and
 // nightly on its schedule; each member's rebuild runs on [searchQueue], in
 // the member's partition.
 const (
-	searchRebuildWorkflow         = "inbok.search-rebuild"
-	searchRebuildScheduleWorkflow = "inbok.search-rebuild-schedule"
-	searchRebuildSchedule         = "inbok.search-rebuild.nightly"
-	searchMemberRebuildWorkflow   = "inbok.search-member-rebuild"
+	searchRebuildWorkflow         = "amplop.search-rebuild"
+	searchRebuildScheduleWorkflow = "amplop.search-rebuild-schedule"
+	searchRebuildSchedule         = "amplop.search-rebuild.nightly"
+	searchMemberRebuildWorkflow   = "amplop.search-member-rebuild"
 
 	// searchRebuildCron fires at 03:00 UTC every day. DBOS's cron has a
 	// seconds field first.

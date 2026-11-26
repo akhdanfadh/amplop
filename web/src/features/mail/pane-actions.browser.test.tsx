@@ -169,7 +169,7 @@ describe("the reading pane's actions", () => {
   it("lists a deleted conversation in Trash, though Trash's first page answers late", async () => {
     // The Inbox list, left for Trash, lets its rows go while Trash's first
     // page loads; TanStack DB, patched, then reads that page again rather
-    // than the whole place, which inbok refuses.
+    // than the whole place, which amplop refuses.
     const rows = [
       conversation(3),
       conversation(2),
@@ -306,7 +306,7 @@ describe("the reading pane's actions", () => {
   it("removes a conversation the provider no longer has, back on the list", async () => {
     const rows = [conversation(2), conversation(1)];
     const router = await open(rows, 0);
-    // Gone at Gmail, and from inbok's lists once its poll noticed.
+    // Gone at Gmail, and from amplop's lists once its poll noticed.
     api.refuse[rows[0].id] = "not-found";
     api.conversations = [rows[1]];
 

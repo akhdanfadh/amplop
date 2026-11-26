@@ -6,7 +6,7 @@ import {
   getGetSystemEmailQueryKey,
   getSendSystemEmailTestMessageMutationKey,
   useSaveSystemEmail,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { SystemEmailSettings } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";

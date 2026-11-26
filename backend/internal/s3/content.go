@@ -14,7 +14,7 @@ import (
 	s3api "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // maxDeleteKeys is the most keys one DeleteObjects request takes (S3 API).
@@ -97,7 +97,7 @@ func (s *Store) DeleteAccount(ctx context.Context, account int64) error {
 }
 
 // ListOlder yields the ref of every content object last modified before
-// cutoff. It skips objects whose keys inbok does not write, e.g. ones
+// cutoff. It skips objects whose keys amplop does not write, e.g. ones
 // copied in by hand, since no ref names them.
 func (s *Store) ListOlder(ctx context.Context, cutoff time.Time) iter.Seq2[messagecontent.Ref, error] {
 	return func(yield func(messagecontent.Ref, error) bool) {

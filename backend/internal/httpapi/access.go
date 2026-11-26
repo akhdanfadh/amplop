@@ -8,8 +8,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 
-	"inbok/internal/account"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/session"
 )
 
 // accessKey names the shared operation metadata entry for required access.

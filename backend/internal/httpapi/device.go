@@ -6,7 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 
-	"inbok/internal/session"
+	"amplop/internal/session"
 )
 
 // resolveClientAddr parses the address Gin selected using its proxy rules.

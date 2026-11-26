@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 // tenCodes is a backup-code set a fake returns.
@@ -98,7 +98,7 @@ func postTOTP(api *API, path, body, origin string, auth totpAuth) *httptest.Resp
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp"+path, strings.NewReader(body))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Origin", origin)
-	request.Header.Set("User-Agent", "inbok-totp-test/1.0")
+	request.Header.Set("User-Agent", "amplop-totp-test/1.0")
 	if auth == totpAuthAuthenticated {
 		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
 	}
@@ -411,7 +411,7 @@ func TestFinishTOTPEnrollment(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"status":"on","backupCodesLeft":10,"backupCodesWaiting":false}}`, response.Body.String())
 	assert.Equal(t, session.Authenticated{Identity: sessions.identity, Session: sessions.reference}, service.current)
 	assert.Equal(t, "one-time-token", service.token)
-	assert.Equal(t, session.Device{UserAgent: "inbok-totp-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
+	assert.Equal(t, session.Device{UserAgent: "amplop-totp-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 	cookies := response.Result().Cookies()
 	require.Len(t, cookies, 1)

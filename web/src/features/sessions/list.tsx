@@ -6,7 +6,7 @@ import {
   useDeleteOtherSessions,
   useDeleteSession,
   useListSessions,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ListedSession } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import {

@@ -2,7 +2,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
-import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
+import { getListOutgoingMessagesQueryKey } from "@/api/generated/amplop";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
 import { fakeClock } from "@/test/clock";
@@ -196,7 +196,7 @@ describe("OutboxPage", () => {
     await show();
 
     await expect.element(page.getByRole("heading", { name: "Outbox", level: 1 })).toHaveFocus();
-    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const list = page.getByRole("grid", { name: "Messages sent from amplop" });
     // Recipients by mail's rules for names: several by their address's name.
     await expect
       .element(list.getByRole("row", { name: /^To ana@example.com, Lunch, Sent, / }))
@@ -212,7 +212,7 @@ describe("OutboxPage", () => {
       .element(list.getByRole("row", { name: /Weekly update, Tried again/ }))
       .toBeVisible();
     await expect.element(list.getByText("· You sent it again as a new message.")).toBeVisible();
-    await expect.element(list.getByText(/inbok keeps up to 50 messages here/)).toBeVisible();
+    await expect.element(list.getByText(/amplop keeps up to 50 messages here/)).toBeVisible();
   });
 
   it("keeps an address left to right, and each of several recipients in its own direction", async () => {
@@ -271,7 +271,7 @@ describe("OutboxPage", () => {
     serve({ messages: [refused, sent, tried] });
     await show();
 
-    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const list = page.getByRole("grid", { name: "Messages sent from amplop" });
     const notSent = list.getByRole("rowgroup", { name: "Not sent yet" });
     const done = list.getByRole("rowgroup", { name: "Done" });
     await expect.element(notSent.getByRole("row", { name: /Q4 deck, Not sent/ })).toBeVisible();
@@ -289,7 +289,7 @@ describe("OutboxPage", () => {
     await expect
       .element(
         list.getByText(
-          "inbok keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.",
+          "amplop keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.",
         ),
       )
       .toBeVisible();
@@ -299,7 +299,7 @@ describe("OutboxPage", () => {
     serve({ messages: [sent, tried] });
     await show();
 
-    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const list = page.getByRole("grid", { name: "Messages sent from amplop" });
     // A section's own element has no box: the list places its rows.
     await expect.element(list.getByRole("rowgroup", { name: "Done" })).toBeInTheDocument();
     expect(list.getByRole("rowgroup", { name: "Not sent yet" }).elements()).toHaveLength(0);
@@ -316,7 +316,7 @@ describe("OutboxPage", () => {
     const clock = fakeClock();
     serve({ messages: [sending], later: [[sending], [sent]] });
     await show();
-    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const list = page.getByRole("grid", { name: "Messages sent from amplop" });
     await userEvent.click(
       list.getByRole("rowgroup", { name: "Not sent yet" }).getByRole("row", { name: /Lunch/ }),
     );
@@ -351,7 +351,7 @@ describe("OutboxPage", () => {
       ],
     });
     const router = await show();
-    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const list = page.getByRole("grid", { name: "Messages sent from amplop" });
     await expect
       .element(
         list.getByRole("rowgroup", { name: "Not sent yet" }).getByRole("row", { name: /Lunch/ }),
@@ -440,7 +440,7 @@ describe("OutboxPage", () => {
     const dismissible: OutgoingMessage = { ...refused, allowedActions: ["send-again", "dismiss"] };
     serve({ messages: [sent, dismissible], dismiss: { id: dismissible.id } });
     await show();
-    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const list = page.getByRole("grid", { name: "Messages sent from amplop" });
     await userEvent.click(list.getByRole("row", { name: /Q4 deck/ }));
     const status = page.getByRole("region", { name: "Status" });
 
@@ -529,19 +529,19 @@ describe("OutboxPage", () => {
   it("says a reread failed above an empty Outbox too", async () => {
     serve({ messages: [], outbox: internalError, failFrom: 1 });
     const router = await show();
-    await expect.element(page.getByText("Nothing sent from inbok yet")).toBeVisible();
+    await expect.element(page.getByText("Nothing sent from amplop yet")).toBeVisible();
 
     await router.options.context.queryClient.invalidateQueries({
       queryKey: getListOutgoingMessagesQueryKey(),
     });
     await expect.element(page.getByText(/^Could not reload your messages/)).toBeVisible();
-    await expect.element(page.getByText("Nothing sent from inbok yet")).toBeVisible();
+    await expect.element(page.getByText("Nothing sent from amplop yet")).toBeVisible();
   });
 
-  it("says when nothing was sent from inbok yet", async () => {
+  it("says when nothing was sent from amplop yet", async () => {
     serve({ messages: [] });
     await show();
-    await expect.element(page.getByText("Nothing sent from inbok yet")).toBeVisible();
+    await expect.element(page.getByText("Nothing sent from amplop yet")).toBeVisible();
   });
 
   it("says when the list can't be read, with Try again", async () => {

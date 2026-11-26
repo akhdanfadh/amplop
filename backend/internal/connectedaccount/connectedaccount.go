@@ -18,7 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"inbok/internal/emailaddress"
+	"amplop/internal/emailaddress"
 )
 
 // Errors a caller shows the member. None includes an email, subject, or
@@ -42,7 +42,7 @@ var (
 )
 
 // MaxNameLength is the most characters an account's name may have:
-// inbok's choice, enough for a name beside the address in the sidebar.
+// amplop's choice, enough for a name beside the address in the sidebar.
 const MaxNameLength = 64
 
 // Input [Connections] never sends; they guard other callers.
@@ -67,7 +67,7 @@ type Identity struct {
 	Email   string
 }
 
-// Status says whether inbok can use an account's permission at Google now.
+// Status says whether amplop can use an account's permission at Google now.
 type Status string
 
 const (
@@ -97,7 +97,7 @@ type Account struct {
 	// nil when it last accepted it.
 	NeedsReconnectSince *time.Time
 	CreatedAt           time.Time
-	// Status is whether inbok can use the account now, as [Service] read it.
+	// Status is whether amplop can use the account now, as [Service] read it.
 	Status Status
 	// Name is what the member calls the account, shown instead of its
 	// address; empty until they choose one.
@@ -115,9 +115,9 @@ const (
 	ActionSync       Action = "sync"        // sync it now
 	ActionSend       Action = "send"        // send messages from it
 	ActionChangeMail Action = "change-mail" // change its mail: conversations and labels
-	ActionReconnect  Action = "reconnect"   // give inbok its permission again
+	ActionReconnect  Action = "reconnect"   // give amplop its permission again
 	ActionRename     Action = "rename"      // set or clear its name
-	ActionDisconnect Action = "disconnect"  // delete it from inbok
+	ActionDisconnect Action = "disconnect"  // delete it from amplop
 )
 
 // Actions are every [Action], in the order the API lists them.

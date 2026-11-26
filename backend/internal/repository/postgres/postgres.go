@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DB stores inbok's data in PostgreSQL. Each feature adds its methods.
+// DB stores amplop's data in PostgreSQL. Each feature adds its methods.
 type DB struct {
 	pool      *pgxpool.Pool
 	workflows Workflows // nil until [DB.WithWorkflows]

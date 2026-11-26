@@ -7,7 +7,7 @@ export const pageName = {
   registration: "Registration",
   systemEmail: "System email",
 };
-export const thisInbok = "This inbok";
+export const thisAmplop = "This amplop";
 
 // Security's lead: what the page holds.
 export const securityLead =

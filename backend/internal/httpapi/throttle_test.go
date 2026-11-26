@@ -15,12 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/emailverification"
-	"inbok/internal/passwordreset"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/emailverification"
+	"amplop/internal/passwordreset"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 type fakeThrottle struct {

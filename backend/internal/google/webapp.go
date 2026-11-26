@@ -3,8 +3,8 @@ package google
 import (
 	"net/url"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
 )
 
 // WebApp finds conversations in Gmail's own web app.

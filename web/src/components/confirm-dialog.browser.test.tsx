@@ -13,7 +13,7 @@ function Held({ pending }: { pending: boolean }) {
       isOpen
       onOpenChange={() => {}}
       title="Open registration?"
-      description="Anyone who can reach this inbok can create a member account."
+      description="Anyone who can reach this amplop can create a member account."
       action="Open registration"
       working="Opening..."
       pending={pending}

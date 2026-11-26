@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // searchCall is one call a [fakeSearch] took.

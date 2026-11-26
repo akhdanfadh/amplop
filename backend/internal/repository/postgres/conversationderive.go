@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // errCountRange means a conversation has more messages than an integer
@@ -30,10 +30,10 @@ var errCountRange = errors.New("conversation's message count is out of storage's
 // DESIGN: Conversations are a summary the list reads with one index, kept
 // only by this function. Every write to the mail tables goes through
 // [DB.UpdateSyncedMail], which calls it for the threads it touched, so the
-// summary is right after every write inbok makes. SQL run by hand, or a write
+// summary is right after every write amplop makes. SQL run by hand, or a write
 // added elsewhere, leaves it stale. A database trigger would cover such
 // writes, but it would fire several times per sync step, some with
-// memberships half replaced, and move the rules into PL/pgSQL, which inbok
+// memberships half replaced, and move the rules into PL/pgSQL, which amplop
 // uses nowhere else.
 func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, threads []string) ([]uuid.UUID, error) {
 	if len(threads) == 0 {

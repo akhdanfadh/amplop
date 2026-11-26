@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/randomsecret"
+	"amplop/internal/randomsecret"
 )
 
 type fakeClock struct{ now time.Time }

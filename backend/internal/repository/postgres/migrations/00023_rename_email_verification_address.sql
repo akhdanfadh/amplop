@@ -1,5 +1,5 @@
 -- +goose Up
--- inbok names an email `email` everywhere else; "address" also means a
+-- amplop names an email `email` everywhere else; "address" also means a
 -- client's IP address.
 ALTER TABLE email_verification_links RENAME COLUMN address TO email;
 

@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactElement } from "react";
 import { MailXIcon } from "lucide-react";
-import { useGetCurrentSession, useListConnectedAccounts } from "@/api/generated/inbok";
+import { useGetCurrentSession, useListConnectedAccounts } from "@/api/generated/amplop";
 import { Banner } from "@/components/banner";
 import { loadedFreshMs } from "@/api/cached-read";
 import { idleRefresh } from "./sync";
 import { syncStoppedText } from "./text";
 
-// SyncStopped says, on every signed-in page, that inbok has stopped getting
+// SyncStopped says, on every signed-in page, that amplop has stopped getting
 // new mail for every account, while the accounts list says syncing stopped
-// on this inbok, and nothing otherwise: before its first read answers, and
+// on this amplop, and nothing otherwise: before its first read answers, and
 // after a failed read, it keeps the last answer. It reads the list again
 // every minute, as Connected accounts does when nothing moves, so it
 // follows a stop or a recovery on any page. Only an administrator can fix

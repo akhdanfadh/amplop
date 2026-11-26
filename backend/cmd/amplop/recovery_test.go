@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,7 +142,7 @@ func TestRecoveryFailures(t *testing.T) {
 			err := runRecovery(t.Context(), "admin@example.com", service, console)
 
 			require.Error(t, err)
-			slog.New(slog.NewTextHandler(&logs, nil)).Error("inbok failed", "err", err)
+			slog.New(slog.NewTextHandler(&logs, nil)).Error("amplop failed", "err", err)
 			assert.NotContains(t, err.Error(), secret)
 			assert.NotContains(t, output.String(), secret)
 			assert.NotContains(t, logs.String(), secret)
@@ -201,13 +201,13 @@ func TestRecoveryReadErrors(t *testing.T) {
 }
 
 func TestRecoveryNoURL(t *testing.T) {
-	t.Setenv("INBOK_DATABASE_URL", "")
-	t.Setenv("INBOK_SETUP_TOKEN", "short")
-	t.Setenv("INBOK_ENCRYPTION_KEYS", "invalid")
+	t.Setenv("AMPLOP_DATABASE_URL", "")
+	t.Setenv("AMPLOP_SETUP_TOKEN", "short")
+	t.Setenv("AMPLOP_ENCRYPTION_KEYS", "invalid")
 
 	err := run(t.Context(), []string{"recover-admin", "admin@example.com"}, discard)
 
-	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+	require.ErrorContains(t, err, "AMPLOP_DATABASE_URL")
 }
 
 func TestRecoveryUsage(t *testing.T) {
@@ -249,7 +249,7 @@ func TestRecoveryPartialRead(t *testing.T) {
 
 			require.Error(t, err)
 			assert.Empty(t, service.password, "an input failure must not reach recovery")
-			slog.New(slog.NewTextHandler(&logs, nil)).Error("inbok failed", "err", err)
+			slog.New(slog.NewTextHandler(&logs, nil)).Error("amplop failed", "err", err)
 			for _, text := range []string{err.Error(), output.String(), logs.String()} {
 				assert.NotContains(t, text, password)
 				assert.NotContains(t, text, "private-read-error")

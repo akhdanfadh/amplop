@@ -1,6 +1,6 @@
 # AGENTS.md
 
-inbok is a Go API (`backend/`) and a React single-page app (`web/`). The
+amplop is a Go API (`backend/`) and a React single-page app (`web/`). The
 contract between them is `api/generated/openapi.json`. Read the doc for
 the area you change before editing it:
 
@@ -49,10 +49,10 @@ the area you change before editing it:
   loads another way, e.g. a message body in a frame or an image, lists
   its `Sec-Fetch-Dest` values under `fetchDestKey`. A GET changes
   nothing either way.
-- Services take a `*slog.Logger` from `cmd/inbok`, built by `logging.New`.
+- Services take a `*slog.Logger` from `cmd/amplop`, built by `logging.New`.
   Log with the request's context, e.g. `logger.WarnContext(ctx, ...)`, so the
   line carries its `request_id`.
-- No `var _ Interface = (*Type)(nil)` checks: `cmd/inbok` passes each
+- No `var _ Interface = (*Type)(nil)` checks: `cmd/amplop` passes each
   implementation to the constructor that takes the interface, so the
   build already fails where one stops fitting.
 - A write that spans features is one `Storage` method shaped as an
@@ -100,7 +100,7 @@ The web app reads these from the contract; keep them stable:
   `body.items[3].tags`; only that marks the field in a form.
 - Received Problem Details can omit members and use relative URI references.
   Parse them with `web/src/api/received-problem.ts`.
-- inbok problems require `type`, `status`, `title`, and `detail`. Types use
+- amplop problems require `type`, `status`, `title`, and `detail`. Types use
   versioned URI references, e.g. `/api/v0/problems/validation-error`.
   `instance` is initially omitted. Tracing uses `X-Request-ID`.
 - A second 409 meaning on one operation needs its own `type` URI so the
@@ -164,7 +164,7 @@ The web app reads these from the contract; keep them stable:
 - The code is the source of truth. A fact lives in one place: in code or
   its comment, or in the technical doc section that owns it. Any other doc
   describes the behaviour and links to that place instead of copying it.
-- `README.md` says what inbok is and does, how to run it, what it cannot
+- `README.md` says what amplop is and does, how to run it, what it cannot
   do, and where the docs are. It copies no version, number, limit,
   schedule, or implementation detail that the code or `backend/README.md`,
   `web/README.md`, or `deploy/README.md` holds; it links there. It may
@@ -182,7 +182,7 @@ The web app reads these from the contract; keep them stable:
   `[Outgoing.To]`, when `go doc` can resolve it: an exported name in the
   same package, in a package that package imports, or in a one-word
   standard library package such as `errors`. Never write a full import
-  path, e.g. `[inbok/internal/account.ErrUserNotFound]`; gopls cannot
+  path, e.g. `[amplop/internal/account.ErrUserNotFound]`; gopls cannot
   jump to it, so write the name plainly. The comment on an unexported
   declaration or a test may also bracket an unexported name in its
   package, e.g. `[emailQueue]`; `go doc` shows it as text, but gopls
@@ -191,7 +191,7 @@ The web app reads these from the contract; keep them stable:
   https://tip.golang.org/doc/comment#links.
 - A check that holds input to a rule names the rule's source above it,
   unless the code already says it: an RFC, a library's behaviour, an
-  attack, or inbok's own choice, e.g. `// SASL PLAIN guarantees only 255
+  attack, or amplop's own choice, e.g. `// SASL PLAIN guarantees only 255
   octets (RFC 4616).` A reader can then tell a protocol limit from a
   number someone picked. A comment that restates the check adds nothing.
 - `NOTE:` marks only a surprise a reader must know: a tool's unexpected

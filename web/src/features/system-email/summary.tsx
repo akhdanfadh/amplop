@@ -43,7 +43,7 @@ export function Summary({ settings }: { settings: SystemEmailSettings }): ReactE
   );
 }
 
-// SystemEmailBadge says whether inbok can send its own email
+// SystemEmailBadge says whether amplop can send its own email
 // (systemEmailState) with settings, undefined when none are saved.
 export function SystemEmailBadge({
   settings,

@@ -7,7 +7,7 @@ import (
 
 	gosmtp "github.com/emersion/go-smtp"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 // failed returns err as a [*systememail.SendError] with reason, permanent

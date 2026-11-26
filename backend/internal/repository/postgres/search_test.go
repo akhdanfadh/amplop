@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/search"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/search"
 )
 
 // searchWorkflows saves each search indexing job as rows of
@@ -249,7 +249,7 @@ func TestConnectedAccountSearchRemovalFails(t *testing.T) {
 }
 
 // A member's index sources are their messages among the IDs, with
-// addresses as stored, mailboxes by inbok's IDs in order, whether parts
+// addresses as stored, mailboxes by amplop's IDs in order, whether parts
 // are stored, and their conversation's mailboxes and star, none for a
 // draft alone in its thread; another member's message, and an unknown ID,
 // are left out.

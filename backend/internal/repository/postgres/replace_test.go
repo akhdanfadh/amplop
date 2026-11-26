@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/httpapi"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/totp"
+	"amplop/internal/httpapi"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/totp"
 )
 
 // newReplacement turns the fixture's factor on, with two active backup
@@ -211,7 +211,7 @@ func TestReplaceHTTP(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Origin", "http://example.com")
-		request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
+		request.AddCookie(&http.Cookie{Name: "__Host-amplop-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
 		response := httptest.NewRecorder()
 		api.Handler().ServeHTTP(response, request)
 		return response

@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 type fakeCodeSignIn struct {
@@ -38,7 +38,7 @@ func postCode(api *API, body, origin string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/sessions/totp", strings.NewReader(body))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Origin", origin)
-	request.Header.Set("User-Agent", "inbok-code-test/1.0")
+	request.Header.Set("User-Agent", "amplop-code-test/1.0")
 	request.AddCookie(&http.Cookie{Name: challengeCookieName, Value: "private-challenge"})
 
 	response := httptest.NewRecorder()
@@ -61,7 +61,7 @@ func TestCreateSessionWithCode(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"step":"complete"}}`, response.Body.String())
 	assert.Equal(t, "012345", service.code)
 	assert.Equal(t, "private-challenge", service.secret)
-	assert.Equal(t, session.Device{UserAgent: "inbok-code-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
+	assert.Equal(t, session.Device{UserAgent: "amplop-code-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 
 	cookies := response.Result().Cookies()

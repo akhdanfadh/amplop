@@ -3,7 +3,7 @@
 // provider lists them after, as a sync saves them.
 //
 // DESIGN: a label is a mailbox of the member's with no role. The provider
-// stays authoritative: inbok saves only what the provider lists after a
+// stays authoritative: amplop saves only what the provider lists after a
 // change, never the change it asked for, so it shows nothing the provider
 // does not have, and copies none of its naming rules beyond the checks a
 // provider's code makes before calling it.
@@ -20,12 +20,12 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // MaxNameLength is how many characters a label's own name holds at most,
-// inbok's choice: Gmail's limit on a label's whole name, so no own name
+// amplop's choice: Gmail's limit on a label's whole name, so no own name
 // passes that Gmail refuses alone (checked against Gmail, 2026-11-16). A
 // provider's code also checks the whole name, with the names of the labels it
 // is under.
@@ -141,11 +141,11 @@ type Provider interface {
 }
 
 // providerBudget is how long a label change waits on its provider at
-// most, inbok's choice, as conversation actions wait.
+// most, amplop's choice, as conversation actions wait.
 var providerBudget = 7 * time.Second
 
 // providerReserve is how much of the caller's deadline a change keeps for
-// listing the mailboxes after, saving them, and answering, inbok's choice:
+// listing the mailboxes after, saving them, and answering, amplop's choice:
 // with a request's 10 seconds, [providerBudget] fits whole when the request
 // started on time.
 var providerReserve = 3 * time.Second
@@ -256,13 +256,13 @@ func (s *Service) Edit(ctx context.Context, userID int64, id uuid.UUID, name str
 }
 
 // Delete deletes userID's label id and every label inside it at the
-// provider, never their mail, and returns the IDs of those labels inbok
+// provider, never their mail, and returns the IDs of those labels amplop
 // no longer has after. It returns [ErrNotFound] when userID has no label
 // id, and the errors of [Service.Create] but those of names and parents.
 // A delete that stopped part way returns its error: asking again
 // finishes it.
 func (s *Service) Delete(ctx context.Context, userID int64, id uuid.UUID) ([]uuid.UUID, error) {
-	// 1. Find the label and the labels inside it, as inbok has them now.
+	// 1. Find the label and the labels inside it, as amplop has them now.
 	label, labels, err := s.readLabel(ctx, userID, id)
 	if err != nil {
 		return nil, err
@@ -317,10 +317,10 @@ func (s *Service) readLabel(ctx context.Context, userID int64, id uuid.UUID) (La
 // of the account after, and change's error when it failed, else the
 // error of listing or saving.
 //
-// DESIGN: the list after is saved even after a failure, so inbok shows
+// DESIGN: the list after is saved even after a failure, so amplop shows
 // whatever part of the change the provider kept, e.g. the labels a delete
 // that stopped part way deleted, and a label the provider says is taken
-// that inbok had not synced yet. A sync that read the mailboxes before
+// that amplop had not synced yet. A sync that read the mailboxes before
 // this change and saves after it shows the old ones until the next sync,
 // which is accepted.
 func (s *Service) write(ctx context.Context, userID, accountID int64, change func(context.Context, connectedaccount.AccessToken) error) ([]Label, error) {

@@ -7,8 +7,8 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // Errors a caller shows the member.
@@ -273,7 +273,7 @@ func (s *Service) Get(ctx context.Context, userID int64, id uuid.UUID) (Detail, 
 	if err != nil {
 		return Detail{}, err
 	}
-	// A draft shows nowhere: inbok cannot open one.
+	// A draft shows nowhere: amplop cannot open one.
 	detail.Messages = slices.DeleteFunc(detail.Messages, Message.draft)
 	linkAnswers(detail.Messages)
 	detail.ProviderURL = s.linker.ConversationURL(detail.Source, detail.Conversation)
@@ -283,7 +283,7 @@ func (s *Service) Get(ctx context.Context, userID int64, id uuid.UUID) (Detail, 
 // linkAnswers sets each of messages' [Message.Answers]: the message among
 // messages whose Message-ID is the last of its In-Reply-To. In-Reply-To
 // lists the parents a message answers (RFC 5322 section 3.6.4); taking
-// the last as the one answered is inbok's choice, as a reply names one
+// the last as the one answered is amplop's choice, as a reply names one
 // parent and a mailer adding more puts the newest last. Of two copies
 // with one Message-ID, e.g. a message the account sent itself, it
 // answers the first in messages' order.

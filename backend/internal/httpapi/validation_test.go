@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/session"
+	"amplop/internal/session"
 )
 
 // Input details preserve nested paths and use each field's own correction rules.
@@ -91,7 +91,7 @@ func TestValidationDetails(t *testing.T) {
 		{"wrong type", `{"name":"ok","enabled":"PRIVATE-INPUT"}`, []string{
 			"body.enabled: Enter a valid value.",
 		}},
-		{"marker in rejected value", `{"name":"inbok-internal-required:PRIVATE-INPUT","enabled":false}`, []string{
+		{"marker in rejected value", `{"name":"amplop-internal-required:PRIVATE-INPUT","enabled":false}`, []string{
 			"body.name: Use at most 4 characters.",
 		}},
 	}
@@ -113,7 +113,7 @@ func TestValidationDetails(t *testing.T) {
 			}
 
 			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
-			for _, private := range []string{"PRIVATE-INPUT", "inbok-internal-", `"value"`} {
+			for _, private := range []string{"PRIVATE-INPUT", "amplop-internal-", `"value"`} {
 				assert.NotContains(t, response.Body.String(), private)
 			}
 
@@ -132,7 +132,7 @@ func TestValidationDetails(t *testing.T) {
 	// The private marker never reaches the contract either.
 	doc, err := a.OpenAPI()
 	require.NoError(t, err)
-	assert.NotContains(t, string(doc), "inbok-internal-")
+	assert.NotContains(t, string(doc), "amplop-internal-")
 }
 
 // A fraction beyond a bound gets one range correction without echoing its value.

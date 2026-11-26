@@ -148,7 +148,7 @@ type OutgoingMessage struct {
 	BccAddresses       []byte
 	Subject            string
 	Body               string
-	InbokMessageID     string
+	AmplopMessageID    string
 	InReplyTo          *string
 	InternetReferences []string
 	Status             string

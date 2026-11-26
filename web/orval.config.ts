@@ -34,18 +34,18 @@ const jsonOperations = defineTransformer((spec) => {
 // TanStack Query hook for it, and the types they use with a Zod schema for
 // each, from the OpenAPI document that Go exports.
 export default defineConfig({
-  inbok: {
+  amplop: {
     input: {
       target: "../api/generated/openapi.json",
       // Redirects are addresses another site sends the browser to, e.g.
-      // Google's return to inbok; a call from the web app would use up what
+      // Google's return to amplop; a call from the web app would use up what
       // they carry. Their schemas stay, e.g. ConnectOutcome, which the
       // landing route reads.
       filters: { mode: "exclude", tags: ["Redirects"], includeUnreferencedSchemas: true },
       override: { transformer: jsonOperations },
     },
     output: {
-      target: "src/api/generated/inbok.ts",
+      target: "src/api/generated/amplop.ts",
       // Delete the old output first, so a removed operation disappears.
       clean: true,
       // Hooks such as useGetHealth(), on top of plain fetch functions.

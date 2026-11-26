@@ -13,7 +13,7 @@ import {
   getListPlacesQueryKey,
   listConversations,
   listPlaces,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { PlaceCountOutput } from "@/api/generated/model/placeCount.zod";
 import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.zod";
 import type { ConversationRowOutput } from "@/api/generated/model/conversationRow.zod";
@@ -391,7 +391,7 @@ export function placeKey(accountId: number, place: string): string {
 // collections before it.
 //
 // DESIGN: no refetchInterval: it reads every loaded page again, 200
-// requests at row 5,000; inbok's own timer (createMail) reads only each
+// requests at row 5,000; amplop's own timer (createMail) reads only each
 // open list's newest page.
 function createConversations(client: QueryClient, id: string) {
   const ties = new Map<string, Ties>();

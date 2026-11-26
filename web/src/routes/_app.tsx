@@ -1,12 +1,12 @@
 import type { ReactElement } from "react";
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-import { getGetSystemEmailQueryOptions } from "@/api/generated/inbok";
+import { getGetSystemEmailQueryOptions } from "@/api/generated/amplop";
 import { cachedRead } from "@/api/cached-read";
 import { readSession } from "@/features/auth/guard";
 import { ComposeWindow } from "@/features/outgoing-messages/compose-window";
 import { ComposeProvider, useCompose } from "@/features/outgoing-messages/compose-store";
 
-// The signed-in part of inbok: mail and settings. Before any of it draws,
+// The signed-in part of amplop: mail and settings. Before any of it draws,
 // a visitor without a session goes to sign-in, which brings them back
 // here afterwards, and an administrator without two-factor authentication,
 // whose session the server lets do nothing else, goes to set it up.

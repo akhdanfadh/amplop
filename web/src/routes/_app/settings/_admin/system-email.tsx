@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { getGetSystemEmailQueryOptions, useGetSystemEmail } from "@/api/generated/inbok";
+import { getGetSystemEmailQueryOptions, useGetSystemEmail } from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
@@ -29,10 +29,10 @@ export const systemEmailLoader = cachedLoader(getGetSystemEmailQueryOptions);
 export const Route = createFileRoute("/_app/settings/_admin/system-email")({
   loader: systemEmailLoader,
   component: SystemEmail,
-  head: () => ({ meta: [{ title: "System email - inbok" }] }),
+  head: () => ({ meta: [{ title: "System email - amplop" }] }),
 });
 
-// SystemEmail is the mail server inbok sends its own messages through: the
+// SystemEmail is the mail server amplop sends its own messages through: the
 // saved settings, a form to change them, and a test message.
 function SystemEmail(): ReactElement {
   const { session } = Route.useRouteContext();

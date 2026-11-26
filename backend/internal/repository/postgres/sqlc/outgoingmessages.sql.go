@@ -29,7 +29,7 @@ func (q *Queries) DeleteOldSendAttempts(ctx context.Context, arg DeleteOldSendAt
 
 const insertOutgoingMessage = `-- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
-    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id,
+    to_addresses, cc_addresses, bcc_addresses, subject, body, amplop_message_id,
     in_reply_to, internet_references, provider_thread_id)
 VALUES ($1, $2,
     $3, $4, $5, $6, $7, $8,
@@ -45,7 +45,7 @@ type InsertOutgoingMessageParams struct {
 	BccAddresses       []byte
 	Subject            string
 	Body               string
-	InbokMessageID     string
+	AmplopMessageID    string
 	InReplyTo          *string
 	InternetReferences []string
 	ProviderThreadID   *string
@@ -66,7 +66,7 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 		arg.BccAddresses,
 		arg.Subject,
 		arg.Body,
-		arg.InbokMessageID,
+		arg.AmplopMessageID,
 		arg.InReplyTo,
 		arg.InternetReferences,
 		arg.ProviderThreadID,
@@ -115,7 +115,7 @@ func (q *Queries) InsertSendAttempt(ctx context.Context, arg InsertSendAttemptPa
 const listOutgoingMessages = `-- name: ListOutgoingMessages :many
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
-    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
+    om.amplop_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
     om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
     om.sent_again_as, om.dismissed_at
 FROM outgoing_messages om
@@ -142,7 +142,7 @@ type ListOutgoingMessagesRow struct {
 	BccAddresses       []byte
 	Subject            string
 	Body               string
-	InbokMessageID     string
+	AmplopMessageID    string
 	InReplyTo          *string
 	InternetReferences []string
 	Status             string
@@ -178,7 +178,7 @@ func (q *Queries) ListOutgoingMessages(ctx context.Context, arg ListOutgoingMess
 			&i.BccAddresses,
 			&i.Subject,
 			&i.Body,
-			&i.InbokMessageID,
+			&i.AmplopMessageID,
 			&i.InReplyTo,
 			&i.InternetReferences,
 			&i.Status,
@@ -233,7 +233,7 @@ func (q *Queries) ListSendAttemptTimes(ctx context.Context, arg ListSendAttemptT
 const lockMemberOutgoingMessage = `-- name: LockMemberOutgoingMessage :one
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.amplop_message_id, om.in_reply_to, om.internet_references, om.status,
     om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
     om.dismissed_at
@@ -262,7 +262,7 @@ func (q *Queries) LockMemberOutgoingMessage(ctx context.Context, arg LockMemberO
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InbokMessageID,
+		&i.AmplopMessageID,
 		&i.InReplyTo,
 		&i.InternetReferences,
 		&i.Status,
@@ -279,7 +279,7 @@ func (q *Queries) LockMemberOutgoingMessage(ctx context.Context, arg LockMemberO
 
 const lockOutgoingMessage = `-- name: LockOutgoingMessage :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = $1 FOR NO KEY UPDATE
@@ -298,7 +298,7 @@ func (q *Queries) LockOutgoingMessage(ctx context.Context, id uuid.UUID) (Outgoi
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InbokMessageID,
+		&i.AmplopMessageID,
 		&i.InReplyTo,
 		&i.InternetReferences,
 		&i.Status,
@@ -461,7 +461,7 @@ func (q *Queries) ReadAnsweredMessage(ctx context.Context, arg ReadAnsweredMessa
 const readOutgoingMessage = `-- name: ReadOutgoingMessage :one
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.amplop_message_id, om.in_reply_to, om.internet_references, om.status,
     om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
     om.dismissed_at
@@ -488,7 +488,7 @@ func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessa
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InbokMessageID,
+		&i.AmplopMessageID,
 		&i.InReplyTo,
 		&i.InternetReferences,
 		&i.Status,
@@ -529,7 +529,7 @@ func (q *Queries) ReadOutgoingMessageKey(ctx context.Context, arg ReadOutgoingMe
 
 const readOutgoingMessageToSend = `-- name: ReadOutgoingMessageToSend :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = $1
@@ -547,7 +547,7 @@ func (q *Queries) ReadOutgoingMessageToSend(ctx context.Context, id uuid.UUID) (
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InbokMessageID,
+		&i.AmplopMessageID,
 		&i.InReplyTo,
 		&i.InternetReferences,
 		&i.Status,
@@ -565,7 +565,7 @@ func (q *Queries) ReadOutgoingMessageToSend(ctx context.Context, id uuid.UUID) (
 const setOutgoingMessageDismissed = `-- name: SetOutgoingMessageDismissed :one
 UPDATE outgoing_messages SET dismissed_at = $1 WHERE id = $2
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 `
@@ -587,7 +587,7 @@ func (q *Queries) SetOutgoingMessageDismissed(ctx context.Context, arg SetOutgoi
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InbokMessageID,
+		&i.AmplopMessageID,
 		&i.InReplyTo,
 		&i.InternetReferences,
 		&i.Status,
@@ -641,7 +641,7 @@ UPDATE outgoing_messages SET
     sent_at = $5
 WHERE id = $6
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    bcc_addresses, subject, body, amplop_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
     provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 `
@@ -674,7 +674,7 @@ func (q *Queries) UpdateOutgoingMessageStatus(ctx context.Context, arg UpdateOut
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InbokMessageID,
+		&i.AmplopMessageID,
 		&i.InReplyTo,
 		&i.InternetReferences,
 		&i.Status,

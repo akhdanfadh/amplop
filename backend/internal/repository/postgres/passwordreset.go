@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/account"
-	"inbok/internal/passwordreset"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/account"
+	"amplop/internal/passwordreset"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 const passwordResetAction = "password-reset"

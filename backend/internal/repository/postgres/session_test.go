@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/session"
 )
 
 func sessionStorage(t *testing.T) (*DB, session.State) {

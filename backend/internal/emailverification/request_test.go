@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/systememail"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/systememail"
 )
 
 func TestRequest(t *testing.T) {
@@ -25,9 +25,9 @@ func TestRequest(t *testing.T) {
 	sent := mailer.sent[0]
 	assert.Equal(t, "email verification", sent.Purpose)
 	assert.Equal(t, "admin@example.org", sent.To)
-	assert.Equal(t, "Verify your email address for inbok", sent.Subject)
+	assert.Equal(t, "Verify your email address for amplop", sent.Subject)
 	assert.True(t, sent.Private, "the body holds the secret")
-	assert.Contains(t, sent.Body, "Someone asked inbok at https://mail.example.com to verify this email address.")
+	assert.Contains(t, sent.Body, "Someone asked amplop at https://mail.example.com to verify this email address.")
 	assert.Contains(t, sent.Body, "The link expires in 24 hours.")
 	assert.Contains(t, sent.Body, "If you didn't ask for this, you can ignore this email.")
 

@@ -9,7 +9,7 @@ import {
   useGetTOTPStatus,
   useShowWaitingTOTPBackupCodes,
   useStartTOTPEnrollment,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type {
   ResponseTotpStatus,
   TotpEnrollment,

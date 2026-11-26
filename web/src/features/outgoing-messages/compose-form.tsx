@@ -8,7 +8,7 @@ import {
 } from "react";
 import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
-import { useSendMessage, useSendMessageAgain } from "@/api/generated/inbok";
+import { useSendMessage, useSendMessageAgain } from "@/api/generated/amplop";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";

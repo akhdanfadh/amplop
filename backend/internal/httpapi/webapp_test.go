@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/webapp"
+	"amplop/internal/webapp"
 )
 
 // fakeWebApp serves /security and /assets/index-BrBO-kCw.js, recording each

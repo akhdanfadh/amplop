@@ -14,9 +14,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"uuid"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/session"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/session"
 )
 
 const (
@@ -35,7 +35,7 @@ const (
 )
 
 // GoogleCallbackURL returns the address Google sends members back to for an
-// inbok served at publicURL, which the Google client registers.
+// amplop served at publicURL, which the Google client registers.
 func GoogleCallbackURL(publicURL *url.URL) string {
 	return publicURL.JoinPath(apiPrefix, googleCallbackPath).String()
 }
@@ -96,7 +96,7 @@ type connectedAccount struct {
 	Provider            connectedaccount.Provider `json:"provider" enum:"gmail"`
 	Email               string                    `json:"email"`
 	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null until it does. Reconnecting clears it."`
-	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
+	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether amplop can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key amplop has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
 	CreatedAt           time.Time                 `json:"createdAt"`
 	Name                *string                   `json:"name" nullable:"true" doc:"What the member calls the account, shown instead of its email; null until they choose one."`
 	Color               int                       `json:"color" minimum:"1" maximum:"8" doc:"The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least."`
@@ -160,8 +160,8 @@ func accountNotFoundResponse(responses map[string]*huma.Response) {
 
 type connectedAccounts struct {
 	Accounts []listedAccount `json:"accounts" nullable:"false" doc:"Oldest first."`
-	// SyncStopped is the whole inbok's, not an account's.
-	SyncStopped bool `json:"syncStopped" doc:"Whether syncing has stopped on this inbok: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it."`
+	// SyncStopped is the whole amplop's, not an account's.
+	SyncStopped bool `json:"syncStopped" doc:"Whether syncing has stopped on this amplop: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it."`
 }
 
 // listedAccount is a [connectedAccount] with where its sync stands.
@@ -173,7 +173,7 @@ type listedAccount struct {
 	Provider            connectedaccount.Provider `json:"provider" enum:"gmail"`
 	Email               string                    `json:"email"`
 	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null until it does. Reconnecting clears it."`
-	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
+	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether amplop can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key amplop has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
 	CreatedAt           time.Time                 `json:"createdAt"`
 	Name                *string                   `json:"name" nullable:"true" doc:"What the member calls the account, shown instead of its email; null until they choose one."`
 	Color               int                       `json:"color" minimum:"1" maximum:"8" doc:"The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least."`
@@ -217,7 +217,7 @@ func registerConnectedAccountList(api huma.API, handler connectedAccountHandler)
 		Path:        connectedAccountsPath,
 		Summary:     "List Connected Accounts",
 		Tags:        []string{tagConnectedAccounts},
-		Description: "Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this inbok.",
+		Description: "Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this amplop.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   memberResponses(api),
@@ -315,7 +315,7 @@ func (p offeredProviders) offered(provider connectedaccount.Provider) bool {
 
 // authorization is where the browser goes next: Google's consent page.
 type authorization struct {
-	URL string `json:"url" format:"uri" doc:"Google's consent page. Open it in the same browser tab; Google then sends the browser back to inbok, which ends on the web app's /connected-accounts page with an outcome. The address works once, for 10 minutes, and only for this session."`
+	URL string `json:"url" format:"uri" doc:"Google's consent page. Open it in the same browser tab; Google then sends the browser back to amplop, which ends on the web app's /connected-accounts page with an outcome. The address works once, for 10 minutes, and only for this session."`
 }
 
 func registerGmailConnect(api huma.API, handler connectedAccountHandler) {
@@ -441,7 +441,7 @@ var connectOutcomes = []connectOutcome{
 // an error. Its fields have no limits, so no input is refused with a body
 // the browser would show instead of the landing route.
 type googleCallbackInput struct {
-	State string `query:"state" doc:"The state inbok sent to Google."`
+	State string `query:"state" doc:"The state amplop sent to Google."`
 	Code  string `query:"code" doc:"The authorization code, when the member agreed."`
 	Error string `query:"error" doc:"Google's error, e.g. access_denied when the member cancelled."`
 
@@ -504,7 +504,7 @@ const connectOutcomeSchemaName = "ConnectOutcome"
 
 func (h connectedAccountHandler) handleGoogleCallback(ctx context.Context, in *googleCallbackInput) (*landing, error) {
 	outcome := h.finish(ctx, in)
-	// A relative reference: the browser resolves it against inbok's own
+	// A relative reference: the browser resolves it against amplop's own
 	// address, whatever the request's Host header says.
 	location := connectLandingPath + "?" + url.Values{outcomeParam: {string(outcome)}}.Encode()
 	// The redirect is the only record of a code's use; caching it would
@@ -602,7 +602,7 @@ func registerAccountRename(api huma.API, handler connectedAccountHandler) {
 		Path:        connectedAccountsPath + "/{id}",
 		Summary:     "Rename Account",
 		Tags:        []string{tagConnectedAccounts},
-		Description: "Sets the name the web app shows for a connected account instead of its email, or clears it. Only inbok keeps the name; Google's account is unchanged.",
+		Description: "Sets the name the web app shows for a connected account instead of its email, or clears it. Only amplop keeps the name; Google's account is unchanged.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   responses,
@@ -654,8 +654,8 @@ func registerAccountDisconnect(api huma.API, handler connectedAccountHandler) {
 		Path:        connectedAccountsPath + "/{id}",
 		Summary:     "Disconnect Account",
 		Tags:        []string{tagConnectedAccounts},
-		Description: "Deletes a connected account and everything inbok keeps for it. " +
-			"Afterwards inbok asks Google to end its permission, unless another member connected the same Google account.",
+		Description: "Deletes a connected account and everything amplop keeps for it. " +
+			"Afterwards amplop asks Google to end its permission, unless another member connected the same Google account.",
 		Metadata:  map[string]any{accessKey: session.AccessMember},
 		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses: responses,

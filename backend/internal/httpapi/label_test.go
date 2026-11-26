@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/connectedaccount"
-	"inbok/internal/label"
-	"inbok/internal/mailsync"
+	"amplop/internal/account"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/label"
+	"amplop/internal/mailsync"
 )
 
 var (

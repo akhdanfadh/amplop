@@ -6,7 +6,7 @@ import {
   getGetRegistrationSettingsQueryKey,
   getGetSystemEmailQueryKey,
   useSendSystemEmailTestMessage,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
 import { emailAddress } from "@/api/validation";
 import { useAppForm } from "@/components/form/app-form";

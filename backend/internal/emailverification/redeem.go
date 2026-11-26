@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/randomsecret"
+	"amplop/internal/randomsecret"
 )
 
 // ErrLinkInvalid means a link is malformed, unknown, used, expired, sent to

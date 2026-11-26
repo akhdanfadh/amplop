@@ -11,9 +11,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/outgoingmessage"
-	"inbok/internal/session"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/outgoingmessage"
+	"amplop/internal/session"
 )
 
 const outgoingMessagesPath = "/outgoing-messages"
@@ -67,14 +67,14 @@ type outgoingMessageSummary struct {
 	Cc                 []string                 `json:"cc" nullable:"false"`
 	Bcc                []string                 `json:"bcc" nullable:"false"`
 	Subject            string                   `json:"subject"`
-	Status             outgoingmessage.Status   `json:"status" enum:"waiting,sending,sent,failed,unknown" doc:"waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again."`
-	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
+	Status             outgoingmessage.Status   `json:"status" enum:"waiting,sending,sent,failed,unknown" doc:"waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and amplop cannot tell; check the account's Sent folder before sending it again."`
+	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which amplop has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
 	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as, with or without edits; null until then."`
 	DismissedAt        *time.Time               `json:"dismissedAt" nullable:"true" doc:"When the member dismissed this failed or unknown message (Dismiss Outgoing Message); null until then."`
 	Outstanding        bool                     `json:"outstanding" doc:"Whether the message still needs the member: waiting or sending, or failed or unknown and neither sent again nor dismissed. List Outgoing Messages lists these first."`
 	Reply              bool                     `json:"reply" doc:"Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too."`
 	CreatedAt          time.Time                `json:"createdAt"`
-	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
+	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when amplop found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
 	// Listed here, so every client offers only what the service accepts
 	// instead of restating its rule (AGENTS.md, "API contract").
 	AllowedActions []outgoingmessage.Action `json:"allowedActions" nullable:"false" doc:"What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account's state, as it returns the same copy, while Gmail is set up. dismiss (Dismiss Outgoing Message) while it is outstanding and failed or unknown, whatever its account's state. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don't know."`
@@ -168,7 +168,7 @@ func outgoingMessageProblem(err error) error {
 		return newProblem(http.StatusConflict, sendingAccountNeedsReconnectType, "Account needs reconnecting", "Google stopped accepting the sending account's permission. Reconnect it to send.")
 	// The same type: either way the member reconnects the account.
 	case errors.Is(err, outgoingmessage.ErrTokenUnreadable):
-		return newProblem(http.StatusConflict, sendingAccountNeedsReconnectType, "Account needs reconnecting", "inbok can't open the permission it saved for the sending account. Reconnect it to send.")
+		return newProblem(http.StatusConflict, sendingAccountNeedsReconnectType, "Account needs reconnecting", "amplop can't open the permission it saved for the sending account. Reconnect it to send.")
 	case errors.Is(err, errGmailNotConfigured):
 		return newProblem(http.StatusConflict, gmailNotConfiguredType, "Gmail not configured", "Gmail accounts can't send until an administrator sets up a Google client.")
 	case errors.Is(err, outgoingmessage.ErrThrottled):
@@ -194,7 +194,7 @@ func outgoingMessageResponses(api huma.API, statuses ...int) map[string]*huma.Re
 // sendResponses adds the failures every send shares to responses.
 func sendResponses(responses map[string]*huma.Response) {
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again. " +
+	conflict.Description = "The sending account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Nothing is sent from it until its permission is usable again. " +
 		"Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now."
 	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
 		"needsReconnect":     {Value: outgoingMessageProblem(outgoingmessage.ErrNeedsReconnect)},
@@ -255,7 +255,7 @@ func (in idempotencyKeyInput) parseKey() (uuid.UUID, error) {
 	return key, nil
 }
 
-// newOutgoingMessage is a message to send. Its limits are inbok's choices.
+// newOutgoingMessage is a message to send. Its limits are amplop's choices.
 type newOutgoingMessage struct {
 	ConnectedAccountID int64    `json:"connectedAccountId" minimum:"1" doc:"The sending account, one of the signed-in account's connected accounts."`
 	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
@@ -489,7 +489,7 @@ func registerOutgoingMessageList(api huma.API, handler outgoingMessageHandler) {
 		Path:        outgoingMessagesPath,
 		Summary:     "List Outgoing Messages",
 		Tags:        []string{tagOutgoingMessages},
-		Description: "Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
+		Description: "Lists at most 50 messages the signed-in account sent from amplop, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   memberResponses(api),

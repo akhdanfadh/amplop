@@ -33,7 +33,7 @@ import (
 const (
 	// [imageRepo] and [imageTag] name the image built from google-emulator/;
 	// Compose's is :local.
-	imageRepo = "inbok-google-emulator"
+	imageRepo = "amplop-google-emulator"
 	imageTag  = "test"
 	// containerPort is where the image's emulate listens.
 	containerPort = "4000/tcp"
@@ -152,7 +152,7 @@ func messageConfig(m Message) map[string]any {
 // Emulator is a running emulator.
 type Emulator struct {
 	// BaseURL is the emulator's origin, e.g. http://127.0.0.1:41234: the
-	// value for INBOK_GOOGLE_BASE_URL and the ID token's issuer.
+	// value for AMPLOP_GOOGLE_BASE_URL and the ID token's issuer.
 	BaseURL *url.URL
 }
 
@@ -289,7 +289,7 @@ func containerOutput(ctx context.Context, c *testcontainers.DockerContainer) str
 }
 
 // Consent does what a person does on Google's consent page for authURL, an
-// authorization URL inbok built: it opens the page, picks the account with
+// authorization URL amplop built: it opens the page, picks the account with
 // email, and agrees. It returns the redirect URL Google sends the browser
 // back to, with code and state. It fails the test if authURL is not on
 // the emulator, so a test never reaches Google, or if the emulator refuses
@@ -327,7 +327,7 @@ func (e *Emulator) Consent(t testing.TB, authURL, email string) *url.URL {
 	return location
 }
 
-// Revoke revokes token at the emulator, as a member removing inbok's
+// Revoke revokes token at the emulator, as a member removing amplop's
 // access in their Google account does, so Google then refuses it.
 func (e *Emulator) Revoke(t testing.TB, token string) {
 	t.Helper()
@@ -355,7 +355,7 @@ func contextDir() string {
 	return filepath.Join(filepath.Dir(file), "..", "..", "..", "google-emulator")
 }
 
-// configFile returns seed as an emulate config module: inbok's development
+// configFile returns seed as an emulate config module: amplop's development
 // config's shape, without its environment variables.
 func configFile(seed Seed) (string, error) {
 	users := make([]map[string]any, 0, len(seed.Users))

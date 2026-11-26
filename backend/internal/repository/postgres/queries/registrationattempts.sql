@@ -1,6 +1,6 @@
 -- name: LockRegistrationAttempts :exec
 -- Serialize every registration request: the instance limit counts them all.
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.registration-attempt', 0));
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.registration-attempt', 0));
 
 -- name: DeleteOldRegistrationAttempts :exec
 DELETE FROM registration_attempts WHERE created_at <= @since;

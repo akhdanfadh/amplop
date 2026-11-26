@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"uuid"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // testID holds letters, so its upper-case spelling differs.
@@ -42,7 +42,7 @@ func TestParseContentKey(t *testing.T) {
 	}
 }
 
-// Only a key inbok writes parses. Any other spelling would give a ref
+// Only a key amplop writes parses. Any other spelling would give a ref
 // whose key differs, so a sweep deleting that ref would leave the object.
 func TestParseContentKeyForeign(t *testing.T) {
 	id := testID.String()

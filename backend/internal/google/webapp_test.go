@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
 )
 
 // A conversation opens in All mail, or in Spam or Trash when only there,

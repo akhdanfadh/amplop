@@ -10,16 +10,16 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/mailsync"
+	"amplop/internal/mailsync"
 )
 
 const (
 	// syncWorkflow, syncScheduleWorkflow, and syncSchedule name
 	// synchronization in DBOS's tables, where enqueued runs and the schedule
 	// outlive the code that made them. Sync runs use [googleQueue].
-	syncWorkflow         = "inbok.sync"
-	syncScheduleWorkflow = "inbok.sync-schedule"
-	syncSchedule         = "inbok.sync.minutely"
+	syncWorkflow         = "amplop.sync"
+	syncScheduleWorkflow = "amplop.sync-schedule"
+	syncSchedule         = "amplop.sync.minutely"
 
 	// syncCron fires at the start of every minute. DBOS's cron has a seconds
 	// field first.
@@ -69,7 +69,7 @@ type dueSyncs interface {
 }
 
 // pollEveryPages is how many full sync pages run between the polls inside
-// the full sync's run, inbok's choice: at about 25 seconds a page, new mail
+// the full sync's run, amplop's choice: at about 25 seconds a page, new mail
 // arrives within about two minutes while a long copy goes on. Counted in
 // pages, so a resumed run polls where the first did.
 const pollEveryPages = 4
@@ -77,7 +77,7 @@ const pollEveryPages = 4
 // syncRetries spans about five minutes, 30 seconds, then 1, 2, and 2 minutes,
 // retried within each step: each Gmail call has already retried its own rate
 // limits for about 15 seconds, so these cover a short outage, at Google or of
-// inbok's database, before the sync fails.
+// amplop's database, before the sync fails.
 var syncRetries = retries{attempts: 4, base: 30 * time.Second, ceiling: 2 * time.Minute}
 
 // syncDeduplication returns the deduplication ID of accountID's sync runs on

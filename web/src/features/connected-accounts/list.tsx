@@ -9,7 +9,7 @@ import {
   useDisconnectConnectedAccount,
   useReconnectConnectedAccount,
   useSyncConnectedAccount,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type {
   AccountSync,
   ListedAccount,
@@ -324,7 +324,7 @@ export function AccountList({
 
 // AccountRow is one account: its name, which the pencil opens a form for in
 // place, and one line on where it stands, then its actions, from its
-// allowedActions: Reconnect when inbok can't use it, else Check now unless
+// allowedActions: Reconnect when amplop can't use it, else Check now unless
 // a sync is already moving, and Disconnect. locked disables them while the
 // page leaves for Google, reconnecting marking this row's Reconnect as the
 // cause. onAction runs as an action starts, onNotice reports a Check now's
@@ -380,7 +380,7 @@ function AccountRow({
   // previous renders").
   if (landed && landedAs === undefined) setLandedAs(account);
   const checking = sync.isPending || waiting;
-  // An account inbok can't use needs its permission again, which Reconnect
+  // An account amplop can't use needs its permission again, which Reconnect
   // gives; a sync waiting or copying needs no start.
   const showSync =
     allowed.includes("sync") &&
@@ -651,7 +651,7 @@ function AccountNameText({
   );
 }
 
-// StatusLine says where account stands: why inbok can't use it, with the
+// StatusLine says where account stands: why amplop can't use it, with the
 // fix while reconnectable, else where its sync, view, stands.
 function StatusLine({
   account,
@@ -664,13 +664,13 @@ function StatusLine({
 }): ReactElement {
   const reconnect = reconnectable && " Reconnect and choose this same Google account.";
   if (account.status === "token-unreadable")
-    return <>inbok can no longer use the access it saved for this account.{reconnect}</>;
+    return <>amplop can no longer use the access it saved for this account.{reconnect}</>;
   if (account.status === "needs-reconnect") {
     if (account.needsReconnectSince === null)
-      return <>Google stopped accepting inbok&apos;s access.{reconnect}</>;
+      return <>Google stopped accepting amplop&apos;s access.{reconnect}</>;
     return (
       <>
-        Google stopped accepting inbok&apos;s access on{" "}
+        Google stopped accepting amplop&apos;s access on{" "}
         <time dateTime={account.needsReconnectSince} className="whitespace-nowrap">
           {formatDate(account.needsReconnectSince)}
         </time>
@@ -721,7 +721,7 @@ function Moment({ iso }: { iso: string }): ReactElement {
 // closed popup; and a phone turns a popup into a tab. The same tab already
 // comes back to this page with the outcome and a fresh list.
 function openGoogle(result: ResponseAuthorization): void {
-  // The address comes from inbok's own server, which also serves this app,
+  // The address comes from amplop's own server, which also serves this app,
   // so it is trusted as the app's code is.
   window.location.assign(result.data.url);
 }

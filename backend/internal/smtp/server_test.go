@@ -22,11 +22,11 @@ import (
 	gosmtp "github.com/emersion/go-smtp"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 const (
-	testUsername = "inbok@example.com"
+	testUsername = "amplop@example.com"
 	testPassword = "app password 7f3c"
 	testTimeout  = 2 * time.Second
 	testHello    = "mail.example.com"
@@ -182,7 +182,7 @@ func testCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	require.NoError(t, err)
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "inbok test SMTP"},
+		Subject:               pkix.Name{CommonName: "amplop test SMTP"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1)},
@@ -202,11 +202,11 @@ func testCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
 
 func testMessage() systememail.Message {
 	return systememail.Message{
-		FromAddress: "inbok@example.com",
-		FromName:    "inbok",
+		FromAddress: "amplop@example.com",
+		FromName:    "amplop",
 		To:          "admin@example.org",
-		Subject:     "Test message from inbok",
-		Body:        "This is a test message from inbok.\nIt needs no reply.\n",
+		Subject:     "Test message from amplop",
+		Body:        "This is a test message from amplop.\nIt needs no reply.\n",
 	}
 }
 

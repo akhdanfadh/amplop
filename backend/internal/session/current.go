@@ -5,8 +5,8 @@ import (
 	"errors"
 	"uuid"
 
-	"inbok/internal/account"
-	"inbok/internal/randomsecret"
+	"amplop/internal/account"
+	"amplop/internal/randomsecret"
 )
 
 // Access is a request's allowed or required level, ordered by privilege.

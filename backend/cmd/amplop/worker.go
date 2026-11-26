@@ -7,23 +7,23 @@ import (
 	"log/slog"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/config"
-	"inbok/internal/connectedaccount"
-	"inbok/internal/dbos"
-	"inbok/internal/emailverification"
-	"inbok/internal/google"
-	"inbok/internal/mailsync"
-	"inbok/internal/meilisearch"
-	"inbok/internal/messagecontent"
-	"inbok/internal/outgoingmessage"
-	"inbok/internal/passwordreset"
-	"inbok/internal/registration"
-	"inbok/internal/repository/postgres"
-	"inbok/internal/s3"
-	"inbok/internal/search"
-	"inbok/internal/smtp"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/config"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/dbos"
+	"amplop/internal/emailverification"
+	"amplop/internal/google"
+	"amplop/internal/mailsync"
+	"amplop/internal/meilisearch"
+	"amplop/internal/messagecontent"
+	"amplop/internal/outgoingmessage"
+	"amplop/internal/passwordreset"
+	"amplop/internal/registration"
+	"amplop/internal/repository/postgres"
+	"amplop/internal/s3"
+	"amplop/internal/search"
+	"amplop/internal/smtp"
+	"amplop/internal/systememail"
 )
 
 // backgroundSendTimeout bounds one email the worker sends. No request
@@ -41,7 +41,7 @@ const backgroundSendTimeout = 5 * time.Minute
 const prepareSearchTimeout = time.Minute
 
 // worker runs background work until ctx is cancelled. Once it runs, it
-// answers health checks on INBOK_HTTP_ADDR, so the image's inbok health
+// answers health checks on AMPLOP_HTTP_ADDR, so the image's amplop health
 // checks it as it checks serve. It returns the first error, joined with
 // any error stopping DBOS.
 func worker(ctx context.Context, logger *slog.Logger) (err error) {
@@ -59,7 +59,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		return err
 	}
 	// The mailer decrypts the saved SMTP password, and the public URL starts
-	// the notice's links and names inbok to mail servers.
+	// the notice's links and names amplop to mail servers.
 	publicURL, err := config.PublicURL()
 	if err != nil {
 		return err

@@ -8,7 +8,7 @@ import (
 
 	"github.com/emersion/go-message/mail"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 // compose returns message as RFC 5322 bytes: From with name and address, To,
@@ -21,7 +21,8 @@ func compose(message systememail.Message, now time.Time) ([]byte, error) {
 	header.SetAddressList("To", []*mail.Address{{Address: message.To}})
 	header.SetSubject(message.Subject)
 	header.SetDate(now)
-	// The sender's domain identifies inbok's messages; the host name might not.
+	// The sender's domain identifies amplop's messages; the host name
+	// might not.
 	domain := message.FromAddress[strings.LastIndexByte(message.FromAddress, '@')+1:]
 	if domain == "" || domain == message.FromAddress {
 		domain = "localhost"

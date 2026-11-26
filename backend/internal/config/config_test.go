@@ -18,11 +18,11 @@ const (
 	testS3SecretAccessKey = "test-secret-access-key"
 )
 
-// TestMain clears every inbok setting the shell passed in, e.g. from a
+// TestMain clears every amplop setting the shell passed in, e.g. from a
 // sourced .env, so each test sees only what it sets.
 func TestMain(m *testing.M) {
 	for _, entry := range os.Environ() {
-		if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, "INBOK_") {
+		if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, "AMPLOP_") {
 			os.Unsetenv(name)
 		}
 	}
@@ -253,7 +253,7 @@ func TestLoadShortSetupToken(t *testing.T) {
 
 			cfg, err := Load()
 
-			require.EqualError(t, err, "INBOK_SETUP_TOKEN must be at least 32 characters")
+			require.EqualError(t, err, "AMPLOP_SETUP_TOKEN must be at least 32 characters")
 			assert.Empty(t, cfg.SetupToken)
 			assert.NotContains(t, err.Error(), c.token)
 		})
@@ -261,12 +261,12 @@ func TestLoadShortSetupToken(t *testing.T) {
 }
 
 func TestDatabaseURL(t *testing.T) {
-	t.Setenv(envDatabaseURL, "postgres://u:p@db:5432/inbok")
+	t.Setenv(envDatabaseURL, "postgres://u:p@db:5432/amplop")
 
 	url, err := DatabaseURL()
 	require.NoError(t, err)
 
-	assert.Equal(t, "postgres://u:p@db:5432/inbok", url)
+	assert.Equal(t, "postgres://u:p@db:5432/amplop", url)
 }
 
 func TestDatabaseURLRequired(t *testing.T) {
@@ -353,42 +353,42 @@ func TestLoadBadPublicURL(t *testing.T) {
 		value string
 		want  string
 	}{
-		{"", "INBOK_PUBLIC_URL is required"},
-		{"  ", "INBOK_PUBLIC_URL is required"},
+		{"", "AMPLOP_PUBLIC_URL is required"},
+		{"  ", "AMPLOP_PUBLIC_URL is required"},
 
 		// https, or http only for a loopback host.
-		{"mail.example.com", "INBOK_PUBLIC_URL must use https"},
-		{"ftp://mail.example.com", "INBOK_PUBLIC_URL must use https"},
-		{"http://mail.example.com", "INBOK_PUBLIC_URL must use https"},
-		{"http://localhost.example.com", "INBOK_PUBLIC_URL must use https"},
-		{"http://192.0.2.10", "INBOK_PUBLIC_URL must use https"},
-		{"http://0.0.0.0:5173", "INBOK_PUBLIC_URL must use https"},
+		{"mail.example.com", "AMPLOP_PUBLIC_URL must use https"},
+		{"ftp://mail.example.com", "AMPLOP_PUBLIC_URL must use https"},
+		{"http://mail.example.com", "AMPLOP_PUBLIC_URL must use https"},
+		{"http://localhost.example.com", "AMPLOP_PUBLIC_URL must use https"},
+		{"http://192.0.2.10", "AMPLOP_PUBLIC_URL must use https"},
+		{"http://0.0.0.0:5173", "AMPLOP_PUBLIC_URL must use https"},
 
 		// The origin alone.
-		{"https:mail.example.com", "INBOK_PUBLIC_URL must be"},
-		{"https://", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com/inbok", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com//", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com/?", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com?a=1", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com#", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com#top", "INBOK_PUBLIC_URL must be"},
-		{"https://user:secret@mail.example.com", "INBOK_PUBLIC_URL must be"},
+		{"https:mail.example.com", "AMPLOP_PUBLIC_URL must be"},
+		{"https://", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com/amplop", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com//", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com/?", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com?a=1", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com#", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com#top", "AMPLOP_PUBLIC_URL must be"},
+		{"https://user:secret@mail.example.com", "AMPLOP_PUBLIC_URL must be"},
 
 		// A host name, checked by idna.
-		{`https://mail.example.com"<b>`, "INBOK_PUBLIC_URL must be"},
-		{"https://mail_box.example.com", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com.", "INBOK_PUBLIC_URL must be"},
+		{`https://mail.example.com"<b>`, "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail_box.example.com", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com.", "AMPLOP_PUBLIC_URL must be"},
 
 		// An IP address that names one host.
-		{"https://0.0.0.0", "INBOK_PUBLIC_URL must be"},
-		{"https://[::]", "INBOK_PUBLIC_URL must be"},
-		{"https://[fe80::1%25en0]", "INBOK_PUBLIC_URL must be"},
+		{"https://0.0.0.0", "AMPLOP_PUBLIC_URL must be"},
+		{"https://[::]", "AMPLOP_PUBLIC_URL must be"},
+		{"https://[fe80::1%25en0]", "AMPLOP_PUBLIC_URL must be"},
 
 		// A port from 1 to 65535.
-		{"https://mail.example.com:", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com:0", "INBOK_PUBLIC_URL must be"},
-		{"https://mail.example.com:65536", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com:", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com:0", "AMPLOP_PUBLIC_URL must be"},
+		{"https://mail.example.com:65536", "AMPLOP_PUBLIC_URL must be"},
 	}
 	for _, c := range cases {
 		t.Run(c.value, func(t *testing.T) {
@@ -428,13 +428,13 @@ func TestLoadGoogleUnset(t *testing.T) {
 }
 
 func TestLoadGoogle(t *testing.T) {
-	setGoogle(t, " inbok.apps.googleusercontent.com\n", "client-secret\n", "")
+	setGoogle(t, " amplop.apps.googleusercontent.com\n", "client-secret\n", "")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 
 	require.NotNil(t, cfg.Google)
-	assert.Equal(t, "inbok.apps.googleusercontent.com", cfg.Google.ClientID)
+	assert.Equal(t, "amplop.apps.googleusercontent.com", cfg.Google.ClientID)
 	assert.Equal(t, "client-secret", cfg.Google.ClientSecret)
 	assert.Nil(t, cfg.Google.BaseURL)
 }
@@ -472,7 +472,7 @@ func TestLoadBadGoogle(t *testing.T) {
 	}{
 		{"id alone", "client-id-x", "", "", "must be set together"},
 		{"secret alone", "", "client-secret-x", "", "must be set together"},
-		{"base alone", "", "", "http://localhost:4000", "INBOK_GOOGLE_BASE_URL needs"},
+		{"base alone", "", "", "http://localhost:4000", "AMPLOP_GOOGLE_BASE_URL needs"},
 
 		// Another machine, or not http.
 		{"remote https", "client-id-x", "client-secret-x", "https://oauth2.googleapis.com", "must be an http or https address on this machine"},
@@ -483,10 +483,10 @@ func TestLoadBadGoogle(t *testing.T) {
 		{"ftp", "client-id-x", "client-secret-x", "ftp://localhost", "must be an http or https address on this machine"},
 
 		// The origin alone.
-		{"path", "client-id-x", "client-secret-x", "http://localhost:4000/google", "INBOK_GOOGLE_BASE_URL must be only"},
-		{"query", "client-id-x", "client-secret-x", "http://localhost:4000?x=1", "INBOK_GOOGLE_BASE_URL must be only"},
-		{"user info", "client-id-x", "client-secret-x", "http://user:secret@localhost:4000", "INBOK_GOOGLE_BASE_URL must be only"},
-		{"port", "client-id-x", "client-secret-x", "http://localhost:0", "INBOK_GOOGLE_BASE_URL must be only"},
+		{"path", "client-id-x", "client-secret-x", "http://localhost:4000/google", "AMPLOP_GOOGLE_BASE_URL must be only"},
+		{"query", "client-id-x", "client-secret-x", "http://localhost:4000?x=1", "AMPLOP_GOOGLE_BASE_URL must be only"},
+		{"user info", "client-id-x", "client-secret-x", "http://user:secret@localhost:4000", "AMPLOP_GOOGLE_BASE_URL must be only"},
+		{"port", "client-id-x", "client-secret-x", "http://localhost:0", "AMPLOP_GOOGLE_BASE_URL must be only"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -626,20 +626,20 @@ func TestS3SettingsBadEndpoint(t *testing.T) {
 		value string
 		want  string
 	}{
-		{"", "INBOK_S3_ENDPOINT is required"},
-		{"  ", "INBOK_S3_ENDPOINT is required"},
-		{"seaweedfs:8333", "INBOK_S3_ENDPOINT must be"},
-		{"ftp://seaweedfs:8333", "INBOK_S3_ENDPOINT must be"},
-		{"http://", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:8333/inbok", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:8333?a=1", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:8333#top", "INBOK_S3_ENDPOINT must be"},
-		{"http://user:secret@seaweedfs:8333", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:port", "INBOK_S3_ENDPOINT must be"},
-		{"http://:8333", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:0", "INBOK_S3_ENDPOINT must be"},
-		{"http://seaweedfs:65536", "INBOK_S3_ENDPOINT must be"},
+		{"", "AMPLOP_S3_ENDPOINT is required"},
+		{"  ", "AMPLOP_S3_ENDPOINT is required"},
+		{"seaweedfs:8333", "AMPLOP_S3_ENDPOINT must be"},
+		{"ftp://seaweedfs:8333", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:8333/amplop", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:8333?a=1", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:8333#top", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://user:secret@seaweedfs:8333", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:port", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://:8333", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:0", "AMPLOP_S3_ENDPOINT must be"},
+		{"http://seaweedfs:65536", "AMPLOP_S3_ENDPOINT must be"},
 	}
 	for _, c := range cases {
 		t.Run(c.value, func(t *testing.T) {

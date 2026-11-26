@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { cachedRead } from "@/api/cached-read";
-import { getGetCurrentSessionQueryOptions } from "@/api/generated/inbok";
+import { getGetCurrentSessionQueryOptions } from "@/api/generated/amplop";
 import type { CurrentSession } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 

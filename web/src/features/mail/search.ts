@@ -1,7 +1,7 @@
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { getLocalTimeZone, parseDate, today, type CalendarDate } from "@internationalized/date";
 import * as z from "zod";
-import { searchConversations } from "@/api/generated/inbok";
+import { searchConversations } from "@/api/generated/amplop";
 import type { FoundConversationOutput } from "@/api/generated/model/foundConversation.zod";
 import {
   searchConversationsParamsFromMax,

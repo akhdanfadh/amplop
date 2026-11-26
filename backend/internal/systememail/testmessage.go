@@ -8,9 +8,9 @@ import (
 
 const (
 	testMessagePurpose = "test message"
-	testMessageSubject = "Test message from inbok"
-	testMessageBody    = "This is a test message from inbok. An administrator sent it from\n" +
-		"inbok's settings.\n\n" +
+	testMessageSubject = "Test message from amplop"
+	testMessageBody    = "This is a test message from amplop. An administrator sent it from\n" +
+		"amplop's settings.\n\n" +
 		"If you can read this, the system email settings work. You don't need to reply.\n"
 )
 

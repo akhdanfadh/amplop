@@ -14,7 +14,7 @@ import (
 
 	"google.golang.org/api/googleapi"
 
-	"inbok/internal/mailsync"
+	"amplop/internal/mailsync"
 )
 
 // Gmail's backoff, as its usage limits page describes it: wait 1, 2, 4

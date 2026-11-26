@@ -16,7 +16,7 @@ import (
 
 	gosmtp "github.com/emersion/go-smtp"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 const (

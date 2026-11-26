@@ -17,18 +17,18 @@ import (
 //
 // The policy is the browser's second line of defense, deciding what
 // markup an attacker gets into a page can load, run, or send. 'self' is
-// inbok's own origin: its scheme, host, and port.
+// amplop's own origin: its scheme, host, and port.
 const policy = "" +
-	// Every load not named below only from inbok: images, fonts, fetch.
+	// Every load not named below only from amplop: images, fonts, fetch.
 	"default-src 'self'; " +
-	// Scripts only from inbok's files and the shell's inline scripts; no
+	// Scripts only from amplop's files and the shell's inline scripts; no
 	// other inline script, no eval.
 	"script-src 'self'%s; " +
 	// No <object> or <embed> plugins.
 	"object-src 'none'; " +
 	// No <base> element, which could send relative URLs to another host.
 	"base-uri 'none'; " +
-	// Forms submit only to inbok.
+	// Forms submit only to amplop.
 	"form-action 'self'; " +
 	// No site may frame a page.
 	"frame-ancestors 'none'"

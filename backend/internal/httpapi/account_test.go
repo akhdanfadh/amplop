@@ -19,9 +19,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/session"
 )
 
 // ========================
@@ -68,7 +68,7 @@ func postSetupSignIn(logger *slog.Logger, accounts *fakeAccounts, signIn *fakeFi
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(body))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("User-Agent", "inbok-setup-test/1.0")
+	request.Header.Set("User-Agent", "amplop-setup-test/1.0")
 	response := httptest.NewRecorder()
 	New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}, FirstAdminSignIn: signIn}).Handler().ServeHTTP(response, request)
 	return response
@@ -127,7 +127,7 @@ func TestCreateFirstAdmin(t *testing.T) {
 	// Setup signs the new administrator in, with enrollment access only.
 	assert.Equal(t, 1, signIn.calls)
 	assert.Equal(t, int64(7), signIn.userID)
-	assert.Equal(t, session.Device{UserAgent: "inbok-setup-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, signIn.device)
+	assert.Equal(t, session.Device{UserAgent: "amplop-setup-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, signIn.device)
 	cookies := response.Result().Cookies()
 	require.Len(t, cookies, 2)
 	assert.Equal(t, sessionCookieName, cookies[0].Name)

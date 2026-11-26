@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"time"
 
-	"inbok/internal/config"
-	"inbok/internal/dbos"
+	"amplop/internal/config"
+	"amplop/internal/dbos"
 )
 
-// searchRebuildTimeout bounds how long inbok search rebuild waits for the
-// worker's rebuild, inbok's choice: a member's rebuild can wait about an
+// searchRebuildTimeout bounds how long amplop search rebuild waits for the
+// worker's rebuild, amplop's choice: a member's rebuild can wait about an
 // hour behind the member's live index run while it retries, and a small
 // install's mail rebuilds in minutes.
 const searchRebuildTimeout = 2 * time.Hour

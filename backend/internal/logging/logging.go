@@ -1,12 +1,12 @@
-// Package logging builds inbok's loggers and adds request_id to lines logged
+// Package logging builds amplop's loggers and adds request_id to lines logged
 // with a request's context.
 //
-// DESIGN: cmd/inbok builds one root logger with [New] and passes it to every
+// DESIGN: cmd/amplop builds one root logger with [New] and passes it to every
 // service and to httpapi, so a line logged with a request's context carries
 // its request_id wherever it is written. Alternatives were exporting
 // httpapi's wrapper, which would make features depend on the HTTP package
 // for a logging rule, and wrapping loggers inside httpapi.New, which runs
-// after cmd/inbok has built the services. The logger stays a dependency
+// after cmd/amplop has built the services. The logger stays a dependency
 // passed in, not a context value, so tests can hand a service its own; only
 // the request ID travels in the context. The level stays slog's default,
 // Info, until something logs at Debug.

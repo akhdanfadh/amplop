@@ -13,7 +13,7 @@ import (
 
 	"uuid"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // Fake is a [search.Index] in memory. It matches text more simply than a

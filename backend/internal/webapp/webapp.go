@@ -1,4 +1,4 @@
-// Package webapp holds the built web app that the inbok binary serves.
+// Package webapp holds the built web app that the amplop binary serves.
 package webapp
 
 import (

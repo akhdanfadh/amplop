@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/connectedaccount"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/connectedaccount"
 )
 
 // memoryAccount is a connected account as storage reads it for a send.
@@ -144,7 +144,7 @@ func (m *memoryStorage) save(attempt Attempt, accountID int64, next NewMessage) 
 		ConnectedAccountID: accountID,
 		From:               next.From,
 		Content:            next.Content,
-		InbokMessageID:     next.InbokMessageID,
+		AmplopMessageID:    next.AmplopMessageID,
 		Threading:          next.Threading,
 		ProviderThreadID:   next.ProviderThreadID,
 		Status:             StatusWaiting,
@@ -294,7 +294,7 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, "me@gmail.com", message.From)
 	assert.Equal(t, []string{"Ann@Example.com"}, message.To, "saved as parsed")
 	assert.Equal(t, StatusWaiting, message.Status)
-	assert.True(t, strings.HasSuffix(message.InbokMessageID, "@gmail.com>"), message.InbokMessageID)
+	assert.True(t, strings.HasSuffix(message.AmplopMessageID, "@gmail.com>"), message.AmplopMessageID)
 	read, err := service.Get(t.Context(), 3, message.ID)
 	require.NoError(t, err)
 	assert.Equal(t, message, read)
@@ -568,11 +568,11 @@ func TestSendAgain(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.NotEqual(t, original.ID, copied.ID)
-			assert.NotEqual(t, original.InbokMessageID, copied.InbokMessageID)
+			assert.NotEqual(t, original.AmplopMessageID, copied.AmplopMessageID)
 			assert.Equal(t, original.Content, copied.Content)
 			assert.Equal(t, int64(5), copied.ConnectedAccountID)
 			assert.Equal(t, "renamed@gmail.com", copied.From)
-			assert.True(t, strings.HasSuffix(copied.InbokMessageID, "@gmail.com>"), copied.InbokMessageID)
+			assert.True(t, strings.HasSuffix(copied.AmplopMessageID, "@gmail.com>"), copied.AmplopMessageID)
 			assert.Equal(t, StatusWaiting, copied.Status)
 			read, err := service.Get(t.Context(), 3, original.ID)
 			require.NoError(t, err)

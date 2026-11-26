@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/encryption"
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
-	"inbok/internal/repository/postgres"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/encryption"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
+	"amplop/internal/repository/postgres"
 )
 
 // fakeContent records what it is asked to delete, and answers err.

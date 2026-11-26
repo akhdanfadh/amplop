@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ func TestAuthenticateRejected(t *testing.T) {
 	}{
 		{"wrong password", Credentials{User: user, PasswordHash: hash}, nil, "wrong password"},
 		{"unknown email", Credentials{}, ErrUserNotFound, "wrong password"},
-		{"unknown email with matching dummy", Credentials{}, ErrUserNotFound, "inbok dummy password"},
+		{"unknown email with matching dummy", Credentials{}, ErrUserNotFound, "amplop dummy password"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -103,14 +103,14 @@ func TestAuthenticateInvalidEmail(t *testing.T) {
 func TestDummyPasswordHash(t *testing.T) {
 	// The dummy must keep pace with the work settings used for new passwords.
 	dummy := strings.Split(dummyPasswordHash, "$")
-	current := strings.Split(hashPassword(t, "inbok dummy password"), "$")
+	current := strings.Split(hashPassword(t, "amplop dummy password"), "$")
 	require.Len(t, dummy, 6)
 	require.Len(t, current, 6)
 	assert.Equal(t, current[:4], dummy[:4])
 	assert.Len(t, dummy[4], len(current[4]))
 	assert.Len(t, dummy[5], len(current[5]))
 
-	match, err := passwordhash.Verify(t.Context(), "inbok dummy password", dummyPasswordHash)
+	match, err := passwordhash.Verify(t.Context(), "amplop dummy password", dummyPasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
 }

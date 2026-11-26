@@ -35,7 +35,7 @@ type Document struct {
 	// alternative of HTML a view shows: found, but ranked below
 	// [Document.BodyText].
 	AltText string
-	// The mailboxes the message is in, by inbok's IDs, Spam and Trash
+	// The mailboxes the message is in, by amplop's IDs, Spam and Trash
 	// included: the index holds every message, and a query decides which
 	// mailboxes it leaves out.
 	MailboxIDs []uuid.UUID

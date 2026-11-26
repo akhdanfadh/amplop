@@ -6,7 +6,7 @@ import {
   getGetCurrentSessionQueryKey,
   getGetTOTPStatusQueryKey,
   getListSessionsQueryKey,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ListedSessions, SentEmailVerification, TotpStatus } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
 import { data, fakeServer, held, memberSession, problem, type Server } from "@/test/server";

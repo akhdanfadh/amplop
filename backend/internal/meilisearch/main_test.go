@@ -19,7 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcmeilisearch "github.com/testcontainers/testcontainers-go/modules/meilisearch"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // testImage matches compose.yaml and deploy/compose.yaml: tests run the

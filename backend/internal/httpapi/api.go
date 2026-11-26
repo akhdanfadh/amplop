@@ -1,4 +1,4 @@
-// Package httpapi registers inbok's HTTP operations.
+// Package httpapi registers amplop's HTTP operations.
 package httpapi
 
 import (
@@ -14,11 +14,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const schemaTitle = "inbok"
+const schemaTitle = "amplop"
 const schemaVersion = "0.0.0"
 const apiPrefix = "/api/v0"
 
-// API serves inbok's HTTP operations and describes them as OpenAPI.
+// API serves amplop's HTTP operations and describes them as OpenAPI.
 type API struct {
 	router  *gin.Engine
 	api     huma.API

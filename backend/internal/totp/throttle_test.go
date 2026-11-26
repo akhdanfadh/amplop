@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/logging"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/logging"
 )
 
 type memoryCodeAttempts struct {

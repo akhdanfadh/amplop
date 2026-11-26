@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/emailaddress"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/emailaddress"
 )
 
 type memoryAttempts struct {

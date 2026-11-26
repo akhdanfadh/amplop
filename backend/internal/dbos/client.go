@@ -13,14 +13,14 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/logging"
-	"inbok/internal/outgoingmessage"
-	"inbok/internal/passwordreset"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/logging"
+	"amplop/internal/outgoingmessage"
+	"amplop/internal/passwordreset"
 )
 
 // Client saves workflows for a worker to run in a caller's transaction,
-// e.g. from inbok recover-admin, serve, or a worker's own step, whose
+// e.g. from amplop recover-admin, serve, or a worker's own step, whose
 // workflow context DBOS refuses in a caller's transaction. It implements
 // postgres.Workflows.
 type Client struct {
@@ -31,7 +31,7 @@ type Client struct {
 
 // NewClient opens a DBOS client on the database at url, without migrating
 // it, and logs to logger. It returns an error if url is malformed or the
-// workflow tables are missing or older than the SDK needs, which inbok
+// workflow tables are missing or older than the SDK needs, which amplop
 // migrate fixes.
 func NewClient(ctx context.Context, url string, logger *slog.Logger) (*Client, error) {
 	// 1. Parse url with pgx. DBOS's error for a malformed URL quotes it,
@@ -330,7 +330,7 @@ func (c *Client) enqueueRebuild(ctx dbos.Context) (dbos.WorkflowHandle[SearchReb
 var errNotScoped = errors.New("DBOS client cannot take a deadline")
 
 // scheduleReadTimeout bounds [Client.SyncScheduleSucceeded] when its
-// caller sets no shorter deadline, inbok's choice: under a request's
+// caller sets no shorter deadline, amplop's choice: under a request's
 // 10-second work limit.
 const scheduleReadTimeout = 5 * time.Second
 

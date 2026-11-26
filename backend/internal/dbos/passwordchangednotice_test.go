@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/passwordreset"
+	"amplop/internal/passwordreset"
 )
 
 // changedAt is when the password changed in these tests.

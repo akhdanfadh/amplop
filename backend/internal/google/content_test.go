@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
 )
 
 // withAttachment is a message whose text comes in the answer and whose

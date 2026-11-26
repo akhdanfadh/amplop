@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { getListMembersQueryOptions, useListMembers } from "@/api/generated/inbok";
+import { getListMembersQueryOptions, useListMembers } from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { cachedLoader, loadedFreshMs } from "@/api/cached-read";
@@ -17,10 +17,10 @@ export const membersLoader = cachedLoader(getListMembersQueryOptions);
 export const Route = createFileRoute("/_app/settings/_admin/members")({
   loader: membersLoader,
   component: Members,
-  head: () => ({ meta: [{ title: "Members - inbok" }] }),
+  head: () => ({ meta: [{ title: "Members - amplop" }] }),
 });
 
-// Members lists every account on this inbok and deactivates or reactivates
+// Members lists every account on this amplop and deactivates or reactivates
 // members. The page fills the window and the list scrolls inside it.
 function Members(): ReactElement {
   const { session } = Route.useRouteContext();

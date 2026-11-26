@@ -2,7 +2,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
+import { getListOutgoingMessagesQueryKey } from "@/api/generated/amplop";
 import type { OutgoingMessageSummary, PlaceCount } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
 import { listedAccount, mailApi } from "@/test/mail-api";

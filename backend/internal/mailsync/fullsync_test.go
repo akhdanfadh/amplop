@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 // syncNow is the fake clock's time.
@@ -629,7 +629,7 @@ func TestFullSyncEnded(t *testing.T) {
 	assert.Empty(t, storage.saved())
 }
 
-// A stopped account stops the steps that write only inbok's data too: a
+// A stopped account stops the steps that write only amplop's data too: a
 // member deactivated after the last page leaves the earlier messages and
 // the state as they were.
 func TestFullSyncStoppedLate(t *testing.T) {

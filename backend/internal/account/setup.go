@@ -6,8 +6,8 @@ import (
 	"crypto/subtle"
 	"errors"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
 )
 
 // SetupStatus describes whether the first administrator can be created.

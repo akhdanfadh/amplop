@@ -11,14 +11,14 @@ import (
 
 	"github.com/emersion/go-message/mail"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/msgid"
+	"amplop/internal/emailaddress"
+	"amplop/internal/msgid"
 )
 
-// inbokMessageIDHeader carries [Message.InbokMessageID]. Gmail keeps it
+// amplopMessageIDHeader carries [Message.AmplopMessageID]. Gmail keeps it
 // though it replaces the Message-ID (tested 2026-11-09), so a check after an
 // unanswered send finds the message by it.
-const inbokMessageIDHeader = "X-Inbok-Message-Id"
+const amplopMessageIDHeader = "X-Amplop-Message-Id"
 
 // fallbackMessageIDDomain stands in for a sending domain that cannot be a
 // Message-ID's right side.
@@ -36,13 +36,13 @@ var errUnsafeHeader = errors.New("the sender, subject, or a msg-id cannot be wri
 
 // compose returns message as an RFC 5322 message: From [Message.From], To,
 // Cc, and Bcc when not empty, Subject, Date when the member sent it,
-// Message-ID and X-Inbok-Message-Id, both [Message.InbokMessageID],
+// Message-ID and X-Amplop-Message-Id, both [Message.AmplopMessageID],
 // In-Reply-To and References when not empty, and the body as
 // quoted-printable UTF-8 plain text. The same message always gives the same
 // bytes. It returns an error, and no bytes, for a value that cannot be
 // written as a header: a [*RecipientError], or [errUnsafeHeader] for From,
 // the subject, or a msg-id. It does not apply [Content]'s limits, which
-// decided what inbok accepted.
+// decided what amplop accepted.
 func compose(message Message) ([]byte, error) {
 	// 1. Check each value that becomes a header, wherever the message came
 	// from: a stray character there starts another header line, e.g. a Bcc
@@ -64,7 +64,7 @@ func compose(message Message) ([]byte, error) {
 	if err != nil {
 		return nil, errUnsafeHeader
 	}
-	if !subjectSafe(message.Subject) || !msgid.Writable(message.InbokMessageID) ||
+	if !subjectSafe(message.Subject) || !msgid.Writable(message.AmplopMessageID) ||
 		message.InReplyTo != "" && !msgid.Writable(message.InReplyTo) ||
 		slices.ContainsFunc(message.References, func(id string) bool { return !msgid.Writable(id) }) {
 		return nil, errUnsafeHeader
@@ -84,8 +84,8 @@ func compose(message Message) ([]byte, error) {
 	header.SetDate(message.CreatedAt.UTC())
 	// Providers that keep a client's Message-ID send this one; Gmail
 	// replaces it.
-	header.Set("Message-Id", message.InbokMessageID)
-	header.Set(inbokMessageIDHeader, message.InbokMessageID)
+	header.Set("Message-Id", message.AmplopMessageID)
+	header.Set(amplopMessageIDHeader, message.AmplopMessageID)
 	if message.InReplyTo != "" {
 		header.Set("In-Reply-To", message.InReplyTo)
 	}
@@ -155,7 +155,7 @@ func setAddresses(header *mail.Header, key string, addresses []string) {
 // or [fallbackMessageIDDomain] when that domain is not an ASCII dot-atom
 // ([msgid.DotAtom]) or makes the ID too long for [msgid.Writable].
 func newMessageID(email string) (string, error) {
-	// The sender's own domain names no inbok host to the recipients, and the
+	// The sender's own domain names no amplop host to the recipients, and the
 	// message already carries it in From.
 	domain := email[strings.LastIndexByte(email, '@')+1:]
 	if domain == email || !msgid.DotAtom(domain) {

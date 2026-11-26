@@ -8,8 +8,8 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // Errors a [Provider] returns, which end a fetch for good: fetching again
@@ -18,7 +18,7 @@ var (
 	// ErrGone means the provider no longer has the message, or the message
 	// no such part.
 	ErrGone = errors.New("messagecontent: the provider no longer has it")
-	// ErrTooLarge means the provider's answer passed inbok's cap.
+	// ErrTooLarge means the provider's answer passed amplop's cap.
 	ErrTooLarge = errors.New("messagecontent: the provider's answer is too large")
 	// ErrUnreadable means the provider refused the request for this
 	// message, or its answer could not be read, e.g. content that is not
@@ -31,11 +31,11 @@ var (
 var ErrPartNotFound = errors.New("messagecontent: message part not found")
 
 const (
-	// bodyBatch is how many messages one [Fetcher.FetchDue] fetches, inbok's
+	// bodyBatch is how many messages one [Fetcher.FetchDue] fetches, amplop's
 	// choice: at Gmail's 80 a minute, a step of about 15 seconds.
 	bodyBatch = 20
 	// retryFailedAfter is how long the background fetch skips a message
-	// whose fetch failed for good, inbok's choice: such a failure seldom
+	// whose fetch failed for good, amplop's choice: such a failure seldom
 	// passes, so the minute's fetch does not ask again each time, while a
 	// provider that changes its mind is asked again the next day.
 	retryFailedAfter = 24 * time.Hour
@@ -44,7 +44,7 @@ const (
 // Provider fetches a message's content from its provider, with an access
 // token for the account. Each method only reads, so a retried call
 // changes nothing. Each returns [ErrGone] when the provider no longer has
-// the message, [ErrTooLarge] when its answer passes inbok's cap, and
+// the message, [ErrTooLarge] when its answer passes amplop's cap, and
 // [ErrUnreadable] when it refuses the request for this message or its
 // answer cannot be read. Any other error, e.g. the provider's rate limits
 // or a network failure, may pass by itself.
@@ -73,7 +73,7 @@ type PendingBody struct {
 }
 
 // DueFilter is which messages without parts the background fetch takes:
-// inbok's policy, which storage applies.
+// amplop's policy, which storage applies.
 type DueFilter struct {
 	// Since leaves out messages received before it, by the provider's own
 	// timestamp.

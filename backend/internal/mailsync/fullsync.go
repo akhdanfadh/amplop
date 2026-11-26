@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"inbok/internal/connectedaccount"
+	"amplop/internal/connectedaccount"
 )
 
 const (
@@ -14,7 +14,7 @@ const (
 	// timestamp.
 	Window = 90 * 24 * time.Hour
 	// deleteBatch is the most earlier messages one [FullSync.DeleteEarlier]
-	// deletes, inbok's choice, so one transaction stays short however much
+	// deletes, amplop's choice, so one transaction stays short however much
 	// the provider deleted, and the content and search work each deletion
 	// adds stays bounded.
 	deleteBatch = 1000
@@ -63,7 +63,7 @@ type Ending int
 
 const (
 	// EndingRetry means trying the step again may succeed: the provider or
-	// inbok failed. Past its retries, the sync fails with [FailureOf].
+	// amplop failed. Past its retries, the sync fails with [FailureOf].
 	EndingRetry Ending = iota + 1
 	// EndingWait means the sync waits for the member: the account needs
 	// reconnecting, or its member is deactivated. [FullSync.Wait] records it
@@ -111,7 +111,7 @@ func FailureOf(err error) Failure {
 }
 
 // MetadataOnlyRoles returns the roles of the mailboxes whose messages
-// inbok keeps as metadata only, never fetching their bodies in the
+// amplop keeps as metadata only, never fetching their bodies in the
 // background: spam and trash.
 func MetadataOnlyRoles() []Role {
 	return []Role{RoleJunk, RoleTrash}

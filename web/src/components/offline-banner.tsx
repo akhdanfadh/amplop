@@ -6,7 +6,7 @@ import { Banner } from "@/components/banner";
 // The banner's landmark name.
 export const offlineLabel = "Offline";
 
-// OfflineBanner says, while the browser reports no connection, that inbok
+// OfflineBanner says, while the browser reports no connection, that amplop
 // can't reach its server, and nothing otherwise. It reads the connection
 // as TanStack Query does, which pauses reads until it returns.
 export function OfflineBanner(): ReactElement {
@@ -24,7 +24,7 @@ export function OfflineBanner(): ReactElement {
         // announcement finds it again (WAI-ARIA APG, "Landmark Regions").
         <section aria-label={offlineLabel} className="shrink-0">
           <Banner tone="warning" icon={WifiOffIcon}>
-            You&apos;re offline. inbok shows what it already loaded and catches up when the
+            You&apos;re offline. amplop shows what it already loaded and catches up when the
             connection returns.
           </Banner>
         </section>

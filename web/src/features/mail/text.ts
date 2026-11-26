@@ -215,7 +215,7 @@ export const opensInNewTab = "(opens in a new tab)";
 export const unknownSender = "Unknown sender";
 
 // The list's end, once nothing older is left to load.
-export const listEnd = "That's everything inbok has copied. Older mail stays in Gmail.";
+export const listEnd = "That's everything amplop has copied. Older mail stays in Gmail.";
 
 // Read while a list's first page loads, and while it loads older ones.
 export const listLoading = "Loading conversations...";
@@ -232,7 +232,7 @@ export function newConversations(count: number): string {
 
 // The empty list's words (DESIGN.md "States").
 export const noAccountsTitle = "Connect your first account";
-export const noAccountsText = "inbok shows the mail of the accounts you connect.";
+export const noAccountsText = "amplop shows the mail of the accounts you connect.";
 export const connectGmail = "Connect Gmail";
 
 // emptyTitle returns what an empty list says of place, named name, its own
@@ -260,7 +260,7 @@ export const listFailed = "Couldn't load these conversations.";
 export const olderFailedText = "Couldn't load older conversations.";
 export const tryAgain = "Try again";
 export function refreshFailed(since: string): string {
-  return `Couldn't refresh. inbok isn't answering; showing mail from ${since}.`;
+  return `Couldn't refresh. amplop isn't answering; showing mail from ${since}.`;
 }
 
 // The reading pane's words while its messages load, and when they fail.
@@ -271,12 +271,12 @@ export const messagesFailed = "Couldn't load this conversation's messages.";
 export const checkMailName = "Check for new mail";
 export const checkFailedTitle = "Couldn't check for new mail";
 // Said when the browser is offline, so no check can start.
-export const offlineCheck = "You're offline, so inbok can't check for new mail.";
+export const offlineCheck = "You're offline, so amplop can't check for new mail.";
 // Said when the member has no account to check.
 export const noAccountToCheck = "Connect an account in Connected accounts to get its mail.";
 // Said when the accounts have not been read, or could not be.
 export const accountsNotRead =
-  "inbok couldn't read your accounts, so it checked nothing. Try again.";
+  "amplop couldn't read your accounts, so it checked nothing. Try again.";
 
 // CheckRefusal is why Check for new mail could not check one account: it
 // is no longer connected, it needs reconnecting, Gmail isn't set up on the
@@ -319,23 +319,23 @@ export function checkFailures(refused: readonly { name: string; refusal: CheckRe
     );
   const unavailable = of("unavailable");
   if (unavailable.length === 1)
-    sentences.push(`inbok can't check ${unavailable[0]} until an administrator sets up Gmail.`);
+    sentences.push(`amplop can't check ${unavailable[0]} until an administrator sets up Gmail.`);
   if (unavailable.length > 1)
     sentences.push(
-      `inbok can't check ${unavailable.length} accounts until an administrator sets up Gmail: ${names.format(unavailable)}.`,
+      `amplop can't check ${unavailable.length} accounts until an administrator sets up Gmail: ${names.format(unavailable)}.`,
     );
   const uncertain = of("uncertain");
   if (uncertain.length === 1)
     sentences.push(
-      `Couldn't tell whether inbok checked ${uncertain[0]}. Its mail still arrives within a minute.`,
+      `Couldn't tell whether amplop checked ${uncertain[0]}. Its mail still arrives within a minute.`,
     );
   if (uncertain.length > 1)
     sentences.push(
-      `Couldn't tell whether inbok checked ${uncertain.length} accounts: ${names.format(uncertain)}. Their mail still arrives within a minute.`,
+      `Couldn't tell whether amplop checked ${uncertain.length} accounts: ${names.format(uncertain)}. Their mail still arrives within a minute.`,
     );
   for (const { name, refusal } of refused) {
     if (refusal.kind === "failed")
-      sentences.push(`inbok couldn't check ${name}. ${refusal.message}`);
+      sentences.push(`amplop couldn't check ${name}. ${refusal.message}`);
   }
   return sentences.join(" ");
 }
@@ -366,9 +366,9 @@ export const syncFailedWords = "Sync failed";
 // Details on hover, beside the words above.
 export const syncWaitingDetail = "Getting ready to copy the last 90 days of mail.";
 export const needsReconnectDetail =
-  "Google stopped accepting inbok's access. Reconnect it in Connected accounts.";
+  "Google stopped accepting amplop's access. Reconnect it in Connected accounts.";
 export const tokenUnreadableDetail =
-  "inbok can no longer use the access it saved. Reconnect it in Connected accounts.";
+  "amplop can no longer use the access it saved. Reconnect it in Connected accounts.";
 
 // syncingDetail says how far a running full sync has copied.
 export function syncingDetail(messagesSoFar: number): string {
@@ -454,7 +454,7 @@ export const datePresetPhrases = {
   older: "older than a year",
 } as const;
 
-// rangePhrase says a chosen range in the sentence, as days inbok writes:
+// rangePhrase says a chosen range in the sentence, as days amplop writes:
 // "since 2 Nov 2026 and before 14 Nov 2026".
 export function rangePhrase(since: string | undefined, before: string | undefined): string {
   if (since && before) return `since ${since} and before ${before}`;
@@ -611,7 +611,7 @@ export function newLabelNamed(typed: string): string {
 // The page of a label the member doesn't have (LabelGone).
 export const labelGoneTitle = "This label doesn't exist";
 export const labelGoneBody =
-  "It may have been deleted, in inbok or in Gmail, or its account disconnected.";
+  "It may have been deleted, in amplop or in Gmail, or its account disconnected.";
 export const openInbox = "Open Inbox";
 
 // Editing and deleting labels (DESIGN.md "Sidebar"). The provider is

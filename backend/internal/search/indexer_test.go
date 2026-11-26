@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
-	"inbok/internal/search"
-	"inbok/internal/search/searchtest"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
+	"amplop/internal/search"
+	"amplop/internal/search/searchtest"
 )
 
 // Members and accounts of the indexer's tests.

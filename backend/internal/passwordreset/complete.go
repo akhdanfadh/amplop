@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
-	"inbok/internal/randomsecret"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
+	"amplop/internal/randomsecret"
 )
 
 // CompleteState is what completeStorage reads for one reset link.

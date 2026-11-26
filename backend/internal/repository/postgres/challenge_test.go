@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
 )
 
 func challengeStorage(t *testing.T) (*DB, *pgx.Conn, session.Challenge) {

@@ -36,7 +36,7 @@ CREATE TABLE sync_states (
     -- failed poll's.
     failure              text CHECK (failure IN ('provider', 'token-unreadable', 'internal')),
     failed_at            timestamptz,
-    -- When inbok last confirmed its copy matched the provider: a sync, full
+    -- When amplop last confirmed its copy matched the provider: a sync, full
     -- or poll, finished, or the minute's check found the position unchanged.
     last_synced_at       timestamptz,
     -- The server's time of the member's last request to sync now, which
@@ -57,7 +57,7 @@ CREATE TABLE sync_states (
 -- provider's, as received: a nested Gmail label is one name with slashes,
 -- e.g. Work/Projects. made_by is who made it: the provider, for its own
 -- purpose, e.g. Gmail's INBOX or CATEGORY_SOCIAL, or the member; the
--- labels a member sees have no role and are the member's. id is inbok's
+-- labels a member sees have no role and are the member's. id is amplop's
 -- own.
 CREATE TABLE mailboxes (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -90,7 +90,7 @@ CREATE TABLE mailboxes (
 CREATE UNIQUE INDEX mailboxes_account_provider_id_idx ON mailboxes (connected_account_id, provider_mailbox_id);
 
 -- A message's metadata as synchronization last read it, without its body,
--- which content storage keeps. id is inbok's own and random, never derived
+-- which content storage keeps. id is amplop's own and random, never derived
 -- from mail, so it can name the message in search documents, object keys, and
 -- URLs.
 CREATE TABLE messages (
@@ -100,7 +100,7 @@ CREATE TABLE messages (
     -- (RFC 8474) or an Outlook message ID.
     provider_message_id  text NOT NULL CHECK (provider_message_id <> ''),
     -- Gmail's thread ID; later an IMAP THREADID (RFC 8474), which may be
-    -- NIL, or Outlook's conversationId. Without one, inbok would thread by
+    -- NIL, or Outlook's conversationId. Without one, amplop would thread by
     -- headers.
     provider_thread_id   text NOT NULL CHECK (provider_thread_id <> ''),
     -- The provider's own timestamp, which the window counts from: Gmail's
@@ -137,7 +137,7 @@ CREATE TABLE messages (
     sync_generation      integer NOT NULL CHECK (sync_generation > 0),
     -- When fetching the message's content in the background last failed for
     -- good: the provider no longer had it or refused it, or its answer passed
-    -- inbok's cap or could not be read. The background fetch skips the
+    -- amplop's cap or could not be read. The background fetch skips the
     -- message for a day after, so one such message neither holds back the
     -- others nor is fetched every minute; opening it still tries. NULL when
     -- no fetch failed.

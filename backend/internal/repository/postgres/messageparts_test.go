@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/messagecontent"
+	"amplop/internal/mailsync"
+	"amplop/internal/messagecontent"
 )
 
 // contentWorkflows saves each content deletion job as rows of

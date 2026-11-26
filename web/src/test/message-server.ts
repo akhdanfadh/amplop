@@ -1,8 +1,8 @@
 import type { ServerResponse } from "node:http";
 import type { Plugin } from "vite-plus";
 
-// The browser tests' stand-in for inbok's message routes, on the test
-// page's own origin as inbok's are on the app's. Bodies come with the
+// The browser tests' stand-in for amplop's message routes, on the test
+// page's own origin as amplop's are on the app's. Bodies come with the
 // headers the Go server's body route sends (backend/internal/httpapi,
 // messagebody.go), so the frame meets the real sandbox and policy.
 export const messagePath = "/test-messages/";
@@ -13,7 +13,7 @@ const bodyPolicy =
   "sandbox allow-same-origin allow-popups allow-popups-to-escape-sandbox; default-src 'none'; " +
   "style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; img-src 'self'";
 
-// The cookie an inline image needs, as inbok's part route needs the session
+// The cookie an inline image needs, as amplop's part route needs the session
 // cookie; tests set it on the test page.
 export const sessionCookie = "test-session=yes";
 
@@ -84,7 +84,7 @@ export function messageServer(): Plugin {
   // The late.svg answers held back.
   const late: ServerResponse[] = [];
   return {
-    name: "inbok-test-messages",
+    name: "amplop-test-messages",
     configureServer(server) {
       server.middlewares.use(messagePath, (req, res) => {
         const url = new URL(req.url ?? "", "http://test");

@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"inbok/internal/emailaddress"
+	"amplop/internal/emailaddress"
 )
 
 // maxLoggedReply is how much of a failed send's error is logged.
@@ -34,7 +34,7 @@ type opener interface {
 	Open(id string, ciphertext []byte, owner string) ([]byte, error)
 }
 
-// Mailer sends inbok's own messages with the saved settings.
+// Mailer sends amplop's own messages with the saved settings.
 type Mailer struct {
 	storage    mailerStorage
 	encryption opener
@@ -64,7 +64,7 @@ type Outgoing struct {
 
 	// RequireTested sends only with settings that passed a test message,
 	// judged on the settings the send would use. Set it for mail nobody
-	// asked for, e.g. the recovery notice to other administrators, so inbok
+	// asked for, e.g. the recovery notice to other administrators, so amplop
 	// does not push it, and retry it, through settings no one has seen
 	// work. Mail someone asked for or caused, e.g. a link or the notice of
 	// their own reset, goes out whenever settings are configured, so a

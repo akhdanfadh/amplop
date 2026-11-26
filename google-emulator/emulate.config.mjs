@@ -1,19 +1,19 @@
 // The development and trial stacks' Google: seeded Gmail mailboxes and one
-// OAuth client, inbok's development one. Tests copy their own config over
+// OAuth client, amplop's development one. Tests copy their own config over
 // this file.
 
-// The client is fixed here rather than read from inbok's settings, so a
+// The client is fixed here rather than read from amplop's settings, so a
 // real Google client secret put in .env never reaches the emulator.
 // .env.example carries the same two values.
-const clientID = "inbok-dev.apps.googleusercontent.com";
-const clientSecret = "inbok-dev-secret";
+const clientID = "amplop-dev.apps.googleusercontent.com";
+const clientSecret = "amplop-dev-secret";
 
-// inbok's callback: its public URL and one fixed path. The path must match
-// the one inbok's API serves. URL resolution drops a trailing slash and
-// spells the host as inbok's settings do, e.g. in lowercase, so the two sides
+// amplop's callback: its public URL and one fixed path. The path must match
+// the one amplop's API serves. URL resolution drops a trailing slash and
+// spells the host as amplop's settings do, e.g. in lowercase, so the two sides
 // send the same text.
-const publicURL = process.env.INBOK_PUBLIC_URL;
-if (!publicURL) throw new Error("INBOK_PUBLIC_URL is required");
+const publicURL = process.env.AMPLOP_PUBLIC_URL;
+if (!publicURL) throw new Error("AMPLOP_PUBLIC_URL is required");
 const redirectURI = new URL("/api/v0/connected-accounts/google/callback", publicURL).href;
 
 // One message in a seeded mailbox. Dates are fixed so every start shows
@@ -38,7 +38,7 @@ export default {
       { email: alex, name: "Alex Rivera", uid: "100000000000000000001" },
       { email: blair, name: "Blair Chen", uid: "100000000000000000002" },
       { email: casey, name: "Casey Okafor", uid: "100000000000000000003" },
-      // Google does not vouch for this address, so inbok must not connect
+      // Google does not vouch for this address, so amplop must not connect
       // it.
       {
         email: "unverified@example.com",
@@ -51,7 +51,7 @@ export default {
       {
         client_id: clientID,
         client_secret: clientSecret,
-        name: "inbok (development)",
+        name: "amplop (development)",
         redirect_uris: [redirectURI],
       },
     ],

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { codesText, downloadingMessage, replaceLeaveText, setupLeaveText } from "./text";
 
-const fileName = "inbok-backup-codes.txt";
+const fileName = "amplop-backup-codes.txt";
 
 // notWaitingType answers "I've saved these codes" when the codes no longer
 // wait under that token, e.g. another tab showed them again, or made new ones.

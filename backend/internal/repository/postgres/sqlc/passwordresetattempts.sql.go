@@ -132,7 +132,7 @@ func (q *Queries) ListPasswordResetUserAttempts(ctx context.Context, arg ListPas
 }
 
 const lockPasswordResetClient = `-- name: LockPasswordResetClient :exec
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.password-reset:' || $1::text, 0))
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.password-reset:' || $1::text, 0))
 `
 
 // Serializes one client's requests, so the client limit counts every one.

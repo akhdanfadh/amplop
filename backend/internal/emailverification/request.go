@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/randomsecret"
-	"inbok/internal/systememail"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/randomsecret"
+	"amplop/internal/systememail"
 )
 
 // Product policy: enough for a lost or slow email, too few to flood an inbox.
@@ -18,7 +18,7 @@ var (
 
 const (
 	messagePurpose = "email verification"
-	messageSubject = "Verify your email address for inbok"
+	messageSubject = "Verify your email address for amplop"
 )
 
 var (
@@ -96,7 +96,7 @@ func (s *Service) messageBody(secret string) string {
 	// The secret goes in the fragment, which browsers never send to a
 	// server, so it stays out of request logs, proxies, and Referer headers.
 	link.Fragment = secret
-	return "Someone asked inbok at " + s.publicURL.String() + " to verify this email address.\n\n" +
+	return "Someone asked amplop at " + s.publicURL.String() + " to verify this email address.\n\n" +
 		"To verify it, open this link and select Verify email:\n\n" +
 		link.String() + "\n\n" +
 		"The link expires in 24 hours. If you didn't ask for this, you can ignore this email.\n"

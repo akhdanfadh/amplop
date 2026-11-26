@@ -13,7 +13,7 @@ import (
 // Message preparation
 // ========================
 
-const requiredFieldPrefix = "inbok-internal-required:"
+const requiredFieldPrefix = "amplop-internal-required:"
 
 // Schema preparation fills this map before requests start; requests only read it.
 // Entries contain safe text from schema limits, never submitted values.

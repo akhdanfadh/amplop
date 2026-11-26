@@ -6,7 +6,7 @@ import {
   getGetOutgoingMessageQueryKey,
   useReplyToMessage,
   useSendMessageAgain,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { useAppForm } from "@/components/form/app-form";
 import { FixedRow } from "@/components/form/fields";

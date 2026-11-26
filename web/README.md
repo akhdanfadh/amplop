@@ -1,4 +1,4 @@
-# inbok web app
+# amplop web app
 
 The browser app: React with TanStack Start, served as a single-page
 application, calling the Go server through a generated client. Running
@@ -25,9 +25,9 @@ The development server forwards every `/api` request to the Go server, so
 the browser talks to one address. Start the Go server as well; while it is
 down, `/api` requests get a plain-text 502, not Problem Details.
 
-| Variable             | Default                 | Meaning                                                                                                   |
-| -------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `INBOK_PROXY_TARGET` | `http://127.0.0.1:8080` | Go server URL that `/api` requests go to. Change it with `INBOK_HTTP_ADDR`, e.g. `http://127.0.0.1:9090`. |
+| Variable              | Default                 | Meaning                                                                                                    |
+| --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `AMPLOP_PROXY_TARGET` | `http://127.0.0.1:8080` | Go server URL that `/api` requests go to. Change it with `AMPLOP_HTTP_ADDR`, e.g. `http://127.0.0.1:9090`. |
 
 ## Production build
 
@@ -54,7 +54,7 @@ would be cached the same way and its changes not seen.
 Go sends the built app with a Content-Security-Policy; its value is in
 [Security headers](../backend/README.md#security-headers). The
 development server sends none. When a change touches any of these, run
-`make backend-build`, start `backend/bin/inbok serve`, and check that the
+`make backend-build`, start `backend/bin/amplop serve`, and check that the
 browser console logs no Content Security Policy violation:
 
 - Scripts: only the build's own files and the shell's inline scripts run.
@@ -73,10 +73,10 @@ browser console logs no Content Security Policy violation:
   `overscroll-contain` on each overlay's scrolling area (the sidebar's
   content, a dialog), so scrolling past its end never moves the page
   behind.
-- Images, fonts, and requests: only inbok's own origin. No `data:` URLs,
+- Images, fonts, and requests: only amplop's own origin. No `data:` URLs,
   no CDNs, and no calls to other sites.
-- Framing: no site, inbok included, may show a page of the app in a
-  frame. A page may frame inbok's own URLs; the message view frames a
+- Framing: no site, amplop included, may show a page of the app in a
+  frame. A page may frame amplop's own URLs; the message view frames a
   message body, whose response allows it (see
   [Message view](#message-view)).
 
@@ -548,7 +548,7 @@ only what the server shows after the password stays in memory:
 
 A reload asks for the password again, then shows the same QR code or the
 same codes, for 15 minutes from the start. After that the page says the
-setup expired and to remove the inbok entry from the app. Cancel setup sits
+setup expired and to remove the amplop entry from the app. Cancel setup sits
 on steps 2 and 3 and asks first in an `AlertDialog`, since the app may
 already hold the secret it throws away; "I've saved these codes" waits while
 it runs. Only step 3 warns before leaving, with `LeaveWarning` ("Leave
@@ -608,7 +608,7 @@ they work whoever opened the page; only a 401 from the session read words
 them "Sign in", and a failed read words them as for a signed-in member.
 
 `/register` asks for an email address while registration is open, and says
-the inbok isn't accepting new accounts otherwise. A paused registration,
+the amplop isn't accepting new accounts otherwise. A paused registration,
 open but with untested email settings, reads as closed.
 Every accepted request gets the same "Check your email" answer, with the
 address on a line of its own, so the page never tells whether an email has
@@ -671,14 +671,14 @@ list instead of requiring a check. A session the API reports gone reads
 reloaded list. "Sign out of this browser" waits for a send or an ending to
 finish.
 
-Administrators with confirmed TOTP see "This inbok" in the settings
+Administrators with confirmed TOTP see "This amplop" in the settings
 sidebar: Members, Registration, and System email (`/settings/members`,
 `/settings/registration`, `/settings/system-email`). An administrator
 without it never reaches settings: `_app` sends them to
 `/two-factor-setup`. A 401 on these pages is the session-end rule's
 (above); a 403 is an ordinary failure.
 
-System email configures the server inbok sends its own mail through. It
+System email configures the server amplop sends its own mail through. It
 shows the saved settings as a summary with "Edit settings"; the form opens
 in its place and closes on a save (web/DESIGN.md "Settings and signed-out
 pages"). The form applies Go's rules between fields before sending, and its
@@ -686,7 +686,7 @@ password description says when an empty password keeps the saved one. A
 save whose answer is lost keeps the form open and asks to save again: a
 save replaces the settings whole, so repeating it is safe. "Save and send
 test" saves, then sends a test. The username and password inputs carry
-password-manager opt-outs, so the inbok sign-in is neither filled in nor
+password-manager opt-outs, so the amplop sign-in is neither filled in nor
 saved there. A save or a test also marks Registration's status out of date,
 since either can pause or resume it.
 
@@ -704,7 +704,7 @@ settings in use pass a test, there is no Open, but a note says why and
 "Go to System email" leads there. An open registration whose settings no
 longer have a passing test reads Paused, with Close and the same link. Each
 change asks first in a `ConfirmDialog`, which holds it until the server
-answers: opening says anyone who can reach this inbok can create a member
+answers: opening says anyone who can reach this amplop can create a member
 account, and each adds storage and sync work; closing says unused sign-up
 links stop working. Every outcome rereads the status.
 
@@ -732,7 +732,7 @@ first, each by its colour dot and the name the member chose for it, else
 its address, wrapping at the address's seams (`Address`), with the
 address under a chosen name, and one line on where it stands. Each row
 offers what its `allowedActions` from the server include, never the
-page's own copy of the rule: Check now (`sync`) for an account inbok can
+page's own copy of the rule: Check now (`sync`) for an account amplop can
 use whose sync is not already moving, Reconnect for one it can't, and
 Disconnect. The pencil beside the name (Rename) opens the name form
 (`features/connected-accounts/name-form.tsx`, on the form kit) in its
@@ -751,15 +751,15 @@ red, as an alert, when the member has something to fix. The notice holds
 the last action's result until the next action starts.
 
 An account Google stopped accepting is marked "Needs reconnecting", with
-the date, and so is one whose saved access inbok can't open, e.g. after a
+the date, and so is one whose saved access amplop can't open, e.g. after a
 server key was lost, which the server checks at each read. Reconnect runs
 the same consent flow for that account, where the member must choose the
 same Google account. Disconnect asks first in a `ConfirmDialog` ("Disconnect
-Work"), which holds the request until the server answers: it says inbok
+Work"), which holds the request until the server answers: it says amplop
 removes the account with everything it saved for it and asks Google to
-end its access; for an account whose saved access inbok can't open, it
-says inbok can't ask Google, and that the member can remove inbok in
-their Google Account. The dialog leaves out that inbok does not ask when
+end its access; for an account whose saved access amplop can't open, it
+says amplop can't ask Google, and that the member can remove amplop in
+their Google Account. The dialog leaves out that amplop does not ask when
 another member here connected the same Google account, whose access
 stays. Once the server confirms, the row goes, the notice says "Work is
 disconnected.", and focus moves to the next row's pencil, else the
@@ -775,7 +775,7 @@ administrator to add a Google client as the self-hosting guide's
 Check now nor Reconnect. With no account, the section says "Connect your
 first account" with Connect Gmail, or "Gmail can't be connected yet"
 with only the next step under it ("Ask your administrator to set up
-Gmail on this inbok.", or for an administrator, to add a Google client):
+Gmail on this amplop.", or for an administrator, to add a Google client):
 the title says what can't happen, so a member doesn't take it for their
 own Gmail. A 401 from any read or write is the session-end rule's. A
 refused start rereads what it shows has changed: the providers on a 409,
@@ -787,14 +787,14 @@ start goes to Google only while the page is still open. The browser's
 back-forward cache can restore the page locked as it left for Google, so
 a restored page unlocks its buttons and rereads the list.
 
-Each account inbok can use (`status` `usable`) says where its sync
+Each account amplop can use (`status` `usable`) says where its sync
 stands on its one line: `sync.ts` picks the first that applies, and
 `text.ts` words it, in the member's terms of getting their mail rather
 than "sync": "Getting ready to copy your mail."; "Copying your last 90
-days of mail into inbok: N messages so far. New mail shows up in the
+days of mail into amplop: N messages so far. New mail shows up in the
 meantime."; on a failure, "Couldn't get mail from Gmail at" a time, then
-"inbok will try again.", or "within an hour" after a failed full sync, or
-"Couldn't get mail at" a time "because of a problem on inbok's side. Ask
+"amplop will try again.", or "within an hour" after a failed full sync, or
+"Couldn't get mail at" a time "because of a problem on amplop's side. Ask
 your administrator.", and on an account that was complete, "Your mail
 here is up to date as of" a time; else "Up to date, checked at" a time. A
 time shows its date only when it is not today. Check now, or Try again on
@@ -810,7 +810,7 @@ minute would overstate it. A 409 asks to reconnect the account first;
 every outcome rereads the list. The list is read again every 2 seconds
 while a sync is waiting or copying, or after a Check now as above, and
 otherwise every minute, so the checked time stays current; an account
-inbok cannot use waits for its member, so it does not count. When syncing
+amplop cannot use waits for its member, so it does not count. When syncing
 has stopped on the instance, every signed-in page shows a warning banner
 under the offline one (`SyncStopped`), which reads the list again every
 minute on any page, so it follows a stop and a recovery: members are
@@ -880,7 +880,7 @@ page's own copy of the rule; one that can't is listed but can't be chosen
 (marked when it needs reconnecting), and a member with none that can
 gets a link to Connected accounts instead, with why: no account yet, each
 needs reconnecting, or, usable as they are, Gmail isn't set up on the
-inbok ("Your Gmail accounts can't send yet."), which that page words by
+amplop ("Your Gmail accounts can't send yet."), which that page words by
 role. Focus starts in the
 first field to fill in: From, To, or, for Edit and send, the start of the
 message, which fills the window's height (`MessageField size="fill"`). A
@@ -941,7 +941,7 @@ new message. A refusal because the account needs
 reconnecting rereads the accounts and links Connected accounts.
 
 The Outbox (`outbox-page.tsx`) lists at most 50 of the member's messages
-from inbok, beside the reading pane, as a mail place (DESIGN.md
+from amplop, beside the reading pane, as a mail place (DESIGN.md
 "Outbox"), in two `GridListSection`s in the API's order: "Not sent yet",
 the `outstanding` ones, which the API lists first so newer finished ones
 never push one out, then "Done"; an empty one is left out. Each opens with a
@@ -1080,11 +1080,11 @@ Give it a `key` per message, so the next message starts afresh. Remote
 images stay blocked for another message's bodies even without one: the
 view remembers the URLs the member allowed, not a switch.
 
-An HTML body is an iframe whose `src` is the body's URL on inbok's
+An HTML body is an iframe whose `src` is the body's URL on amplop's
 origin. The server sends it sanitized, with a Content-Security-Policy of
 its own ([Showing HTML](../backend/README.md#showing-html)). The frame's
 `sandbox` (`frame.ts`) repeats that policy's: no script runs, links open
-in a new tab, and the body keeps inbok's origin, so inline images load
+in a new tab, and the body keeps amplop's origin, so inline images load
 with the session cookie and the page can read the body's height. Never
 give the frame `allow-scripts`: together with `allow-same-origin`, a
 body could remove its own sandbox. Never show a body through `srcdoc` or
@@ -1403,7 +1403,7 @@ const router = await appRouter("/mail/inbox", server);
   which also types the app's code. To lose the answer after the server
   acted, as a dropped connection does, the handler ends with
   `return lose()`, and `fetch` rejects.
-- The server answers as a quiet inbok, one with nothing to report: setup
+- The server answers as a quiet amplop, one with nothing to report: setup
   is done, the session read answers its `session`, the member has no
   connected account and syncing runs, system email is saved and tested
   (`testedSystemEmail`), and registration is closed. Those are the reads
@@ -1584,7 +1584,7 @@ passes after a change no member could notice.
   relation: inside, left of, not wider than, as far above the Undo bar
   as above the window's edge.
 - A class name, or a `data-*` state a library sets for its own use, is
-  asserted only when it is inbok's own public styling hook and nothing
+  asserted only when it is amplop's own public styling hook and nothing
   visible says the same. The theme's `dark` class on the page is such a
   hook; React Aria's `data-hovered` beside a style that shows the hover
   is not.
@@ -1785,7 +1785,7 @@ pnpm check
 ```
 
 `pnpm generate` rewrites `src/api/generated`; commit it, never edit it.
-`inbok.ts` holds one function per operation, named by its operation ID,
+`amplop.ts` holds one function per operation, named by its operation ID,
 except operations tagged `Redirects`: another site sends the browser
 there, e.g. Google's return after its consent page, and a call from the
 app would use up what they carry. `orval.config.ts` leaves them out but
@@ -1943,7 +1943,7 @@ that keep that cheap are in [DESIGN.md](DESIGN.md#data-for-mail). The
 collections live per query client and end with the member's session
 (`onAccountCacheClear` in `features/auth/session-cache.ts`), as do the
 router's loaded pages. `clearAccountCache` tells the browser's other
-inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
+amplop tabs over a `BroadcastChannel`, and a signed-in frame that hears
 it loads again, so a tab never shows one member's mail beside another's.
 Mail actions, e.g. the row's star or the picking bar's Archive, go
 through `perform` (`features/mail/perform.ts`), which gives the picking
@@ -1996,7 +1996,7 @@ The `pnpm build` output sends it once.
 
 ## Kept in the browser
 
-Any script on inbok's origin can read `localStorage` and
+Any script on amplop's origin can read `localStorage` and
 `sessionStorage`, and another site cannot
 ([MDN](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy#cross-origin_data_storage_access)).
 What guards them is what guards the whole page: the Content-Security-Policy
@@ -2017,7 +2017,7 @@ from scripts. First, what may be kept
   itself in each tab that hears the session end, and shows nothing
   until it knows the signed-in member wrote it.
 
-Then the way to keep it, by the value's shape. Keys start with `inbok-`.
+Then the way to keep it, by the value's shape. Keys start with `amplop-`.
 
 - Read before the first paint: a plain key that the root route's head
   script reads, in its own module, as `lib/theme.ts` does.
@@ -2039,12 +2039,12 @@ A value that belongs to the member registers its clearing with
 tabs keep their `sessionStorage` until they sign in or close: harmless
 for IDs, which match no other member's accounts, not for text.
 
-| Key                        | Holds                                                                                               | Way                         | At sign-out         |
-| -------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------- | ------------------- |
-| `inbok-theme`              | `light` or `dark`; none is the system's                                                             | head script, `lib/theme.ts` | kept                |
-| `inbok-sidebar-open`       | `true` or `false`: the full layout's sidebar open                                                   | `localStore`                | kept                |
-| `inbok-sidebar-folds`      | in `sessionStorage`: this tab's unfolded account IDs and label IDs                                  | collection                  | cleared in this tab |
-| `inbok-sidebar-last-folds` | the same, as the member last pressed them in any tab; a tab without folds of its own starts from it | `localStore`                | cleared             |
+| Key                         | Holds                                                                                               | Way                         | At sign-out         |
+| --------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------- | ------------------- |
+| `amplop-theme`              | `light` or `dark`; none is the system's                                                             | head script, `lib/theme.ts` | kept                |
+| `amplop-sidebar-open`       | `true` or `false`: the full layout's sidebar open                                                   | `localStore`                | kept                |
+| `amplop-sidebar-folds`      | in `sessionStorage`: this tab's unfolded account IDs and label IDs                                  | collection                  | cleared in this tab |
+| `amplop-sidebar-last-folds` | the same, as the member last pressed them in any tab; a tab without folds of its own starts from it | `localStore`                | cleared             |
 
 ## Forms
 

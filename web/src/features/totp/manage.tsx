@@ -8,7 +8,7 @@ import {
   useFinishTOTPBackupCodeReplacement,
   useGetTOTPStatus,
   useReplaceTOTPBackupCodes,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type {
   CurrentSession,
   ResponseTotpStatus,

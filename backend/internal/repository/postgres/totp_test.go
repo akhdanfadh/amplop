@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/encryption"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/encryption"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/totp"
 )
 
 // testKeyring is an encryption keyring with one fixed test key.

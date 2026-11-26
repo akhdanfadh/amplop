@@ -55,13 +55,13 @@ const outcomeNotices: Record<ConnectOutcome, PageNotice> = {
 };
 
 // outcomeNotice returns what the page says about outcome, the way Google's
-// return to inbok ended.
+// return to amplop ended.
 export function outcomeNotice(outcome: ConnectOutcome): PageNotice {
   return outcomeNotices[outcome];
 }
 
 // The page's lead, its one section, and the Gmail-less instance.
-export const pageLead = "The Gmail accounts inbok gets your mail from and sends it with.";
+export const pageLead = "The Gmail accounts amplop gets your mail from and sends it with.";
 export const sectionTitle = "Gmail accounts";
 export const sectionAbout = "Each account's mail shows in your inbox, under its name.";
 export const listReadFailed = "Couldn't refresh this page, so it may be out of date.";
@@ -70,25 +70,25 @@ export const openingGoogleText = "Opening Google...";
 export const reconnectText = "Reconnect";
 export const disconnectText = "Disconnect";
 export const emptyTitle = "Connect your first account";
-export const emptyText = "inbok shows the mail of the accounts you connect.";
+export const emptyText = "amplop shows the mail of the accounts you connect.";
 // While no Google client is set up, by who can fix it: the empty state's
 // title and next step, and the sentence under the list where Connect Gmail
 // would be. The title says what can't happen, not what is missing, so a
 // member doesn't take it for their own Gmail.
 export const notOfferedTitle = "Gmail can't be connected yet";
 export const notOfferedStep = {
-  member: "Ask your administrator to set up Gmail on this inbok.",
+  member: "Ask your administrator to set up Gmail on this amplop.",
   admin:
-    'Add a Google client to this inbok, as the self-hosting guide\'s "Connecting Gmail" explains.',
+    'Add a Google client to this amplop, as the self-hosting guide\'s "Connecting Gmail" explains.',
 };
 export const notOfferedText = {
   member:
-    "Your administrator hasn't set up Gmail on this inbok, so accounts can't be connected or reconnected. Ask them to set it up.",
+    "Your administrator hasn't set up Gmail on this amplop, so accounts can't be connected or reconnected. Ask them to set it up.",
   admin:
-    "Gmail isn't set up on this inbok, so accounts can't be connected or reconnected. Add a Google client, as the self-hosting guide's \"Connecting Gmail\" explains.",
+    "Gmail isn't set up on this amplop, so accounts can't be connected or reconnected. Add a Google client, as the self-hosting guide's \"Connecting Gmail\" explains.",
 };
 
-// formatDate shows the calendar date of iso as inbok writes one, in the
+// formatDate shows the calendar date of iso as amplop writes one, in the
 // reader's time zone.
 export function formatDate(iso: string): string {
   return dayDate.format(new Date(iso));
@@ -112,7 +112,7 @@ export const disconnectTitle = { before: "Disconnect ", after: "?" };
 
 // disconnectWords are the disconnect dialog's for the account named name:
 // its button and that button's label while it waits, and its body, which
-// says inbok can't end Google's access when unreadable, i.e. the saved
+// says amplop can't end Google's access when unreadable, i.e. the saved
 // permission can no longer be read.
 export function disconnectWords(
   name: string,
@@ -123,8 +123,8 @@ export function disconnectWords(
     working: "Disconnecting...",
     description: `${
       unreadable
-        ? "inbok removes this account and everything it saved for it. It can't ask Google to end its access, so you can remove inbok in your Google Account."
-        : "inbok removes this account and everything it saved for it, and asks Google to end its access."
+        ? "amplop removes this account and everything it saved for it. It can't ask Google to end its access, so you can remove amplop in your Google Account."
+        : "amplop removes this account and everything it saved for it, and asks Google to end its access."
     } Your mail in Gmail stays as it is.`,
   };
 }
@@ -159,12 +159,12 @@ export function disconnectFailure(err: ApiError, name: string): string {
 }
 
 // The banner on every signed-in page while syncing has stopped on this
-// inbok, e.g. as no worker runs: its landmark name, and its words by who
+// amplop, e.g. as no worker runs: its landmark name, and its words by who
 // can fix it.
 export const syncStoppedText = {
   label: "Mail sync stopped",
-  member: "inbok has stopped getting new mail for every account. Ask your administrator.",
-  admin: "inbok has stopped getting new mail for every account. Check that its worker is running.",
+  member: "amplop has stopped getting new mail for every account. Ask your administrator.",
+  admin: "amplop has stopped getting new mail for every account. Check that its worker is running.",
 };
 
 // What an account's row says about its sync, and its sync button's labels.
@@ -178,7 +178,7 @@ export const checkNowText = "Check now";
 export const tryAgainText = "Try again";
 export const checkingText = "Checking...";
 
-// formatMoment shows iso as a clock time as inbok writes one, in the
+// formatMoment shows iso as a clock time as amplop writes one, in the
 // reader's time zone, with its date unless it falls on the same day as now.
 export function formatMoment(iso: string, now: Date = new Date()): string {
   const at = new Date(iso);
@@ -188,12 +188,12 @@ export function formatMoment(iso: string, now: Date = new Date()): string {
 // runningText says how far a running full sync has copied.
 export function runningText(messagesSoFar: number): string {
   const messages = messagesSoFar === 1 ? "message" : "messages";
-  return `Copying your last 90 days of mail into inbok: ${formatCount(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
+  return `Copying your last 90 days of mail into amplop: ${formatCount(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
 }
 
 // failureWords returns the words around the time of failure on an account
 // with status, in the member's terms, getting their mail: before the time,
-// and after it, with why when it is inbok's, and what happens next.
+// and after it, with why when it is amplop's, and what happens next.
 export function failureWords(
   failure: SyncFailure,
   status: FailedStatus,
@@ -201,10 +201,10 @@ export function failureWords(
   if (failure !== "provider")
     return {
       before: "Couldn't get mail at",
-      after: " because of a problem on inbok's side. Ask your administrator.",
+      after: " because of a problem on amplop's side. Ask your administrator.",
     };
   const retry = status === "failed" ? " within an hour" : "";
-  return { before: "Couldn't get mail from Gmail at", after: `. inbok will try again${retry}.` };
+  return { before: "Couldn't get mail from Gmail at", after: `. amplop will try again${retry}.` };
 }
 
 // syncNotice says why a Check now of the account named name was refused,
@@ -236,7 +236,7 @@ export function syncNotice(err: ApiError, name: string): PageNotice {
       tone: "neutral",
       text: uncertainMessage(
         err,
-        `Couldn't tell whether inbok started checking ${name}. Its mail still arrives within a minute.`,
+        `Couldn't tell whether amplop started checking ${name}. Its mail still arrives within a minute.`,
       ),
     };
   return { tone: "problem", text: `Couldn't check ${name} for mail. ${userMessage(err)}` };

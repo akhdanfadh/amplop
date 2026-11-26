@@ -83,7 +83,7 @@ describe("System email", () => {
     await open(api(saved));
 
     await expect.element(page.getByText("Tested", { exact: true })).toBeVisible();
-    await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop <amplop@example.com>")).toBeVisible();
     await expect.element(page.getByText(/Last test passed/)).toBeVisible();
 
     await userEvent.click(button("Edit settings"));
@@ -102,7 +102,7 @@ describe("System email", () => {
   it("reads the settings once as it opens", async () => {
     const server = api(saved);
     await open(server);
-    await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop <amplop@example.com>")).toBeVisible();
 
     // The page uses what its loader just read rather than reading it again.
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
@@ -116,18 +116,18 @@ describe("System email", () => {
     await open(server);
     await userEvent.click(button("Edit settings"));
 
-    await userEvent.fill(field("From name"), "inbok team");
+    await userEvent.fill(field("From name"), "amplop team");
     await userEvent.click(button("Save only"));
 
     await expect.element(button("Edit settings")).toHaveFocus();
-    await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop team <amplop@example.com>")).toBeVisible();
     await expect
       .element(page.getByText("Settings saved. Send a test message to check them."))
       .toBeVisible();
     await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
     // The port goes as a number, the password left out keeps the saved one.
     expect(server.requests.flatMap(({ body }) => (body === undefined ? [] : [body]))).toEqual([
-      expect.objectContaining({ port: 465, password: "", fromName: "inbok team" }),
+      expect.objectContaining({ port: 465, password: "", fromName: "amplop team" }),
     ]);
     expect(sent(server.requests)).not.toContain("POST /api/v0/system-email/test-message");
   });
@@ -177,7 +177,7 @@ describe("System email", () => {
     await open(server);
     await userEvent.click(button("Edit settings"));
 
-    await userEvent.fill(field("From name"), "inbok team");
+    await userEvent.fill(field("From name"), "amplop team");
     const reads = () =>
       sent(server.requests).filter((request) => request === "GET /api/v0/system-email");
     const readsBefore = reads().length;
@@ -194,7 +194,7 @@ describe("System email", () => {
 
     await userEvent.click(button("Cancel"));
 
-    await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop team <amplop@example.com>")).toBeVisible();
     await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
   });
 
@@ -233,15 +233,15 @@ describe("System email", () => {
     const router = await open(api(saved));
     await userEvent.click(button("Edit settings"));
 
-    await userEvent.fill(field("From name"), "inbok team");
+    await userEvent.fill(field("From name"), "amplop team");
     void router.navigate({ to: "/settings/security" });
     await expect
       .element(page.getByRole("alertdialog", { name: "Discard your changes?" }))
       .toBeVisible();
     await userEvent.click(button("Keep editing"));
-    await expect.element(field("From name")).toHaveValue("inbok team");
+    await expect.element(field("From name")).toHaveValue("amplop team");
 
-    await userEvent.fill(field("From name"), "inbok");
+    await userEvent.fill(field("From name"), "amplop");
     await router.navigate({ to: "/settings/security" });
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
   });
@@ -250,7 +250,7 @@ describe("System email", () => {
     const server = api(saved);
     const router = await open(server);
     await userEvent.click(button("Edit settings"));
-    await userEvent.fill(field("From name"), "inbok team");
+    await userEvent.fill(field("From name"), "amplop team");
 
     server.session = undefined;
     await userEvent.click(button("Save only"));
@@ -258,7 +258,7 @@ describe("System email", () => {
     const banner = page.getByRole("region", { name: "Signed out" });
     await expect.element(banner).toBeVisible();
     expect(banner.element().textContent).toContain("Copy what you need, then sign in.");
-    await expect.element(field("From name")).toHaveValue("inbok team");
+    await expect.element(field("From name")).toHaveValue("amplop team");
     expect(router.state.location.pathname).toBe("/settings/system-email");
 
     // The leave warning asks, since the typed settings go with the page.
@@ -321,7 +321,7 @@ describe("System email", () => {
   it("keeps the summary when a refresh fails, says so, and recovers on Try again", async () => {
     const server = api(saved);
     const router = await open(server);
-    await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop <amplop@example.com>")).toBeVisible();
 
     server.on("GET", "/api/v0/system-email", () =>
       problem(fault, "/api/v0/problems/internal-error"),
@@ -331,7 +331,7 @@ describe("System email", () => {
     await expect
       .element(page.getByText(/Could not check the system email settings\./))
       .toBeVisible();
-    await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop <amplop@example.com>")).toBeVisible();
 
     server.on("GET", "/api/v0/system-email", () => data({ settings: saved }));
     await userEvent.click(button("Try again"));
@@ -352,14 +352,14 @@ describe("System email", () => {
     await expect.element(button("Sending test message...")).toBeVisible();
 
     await userEvent.click(button("Edit settings"));
-    await userEvent.fill(field("From name"), "inbok team");
+    await userEvent.fill(field("From name"), "amplop team");
     await expect.element(button("Save and send test")).toBeDisabled();
     await expect.element(button("Save only")).toBeDisabled();
 
     test.resolve();
     await expect.element(button("Save and send test")).toBeEnabled();
     await userEvent.click(button("Save and send test"));
-    await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("amplop team <amplop@example.com>")).toBeVisible();
     await vi.waitFor(() =>
       expect(
         sent(server.requests).filter(

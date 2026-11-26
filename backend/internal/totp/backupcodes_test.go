@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/passwordhash"
+	"amplop/internal/passwordhash"
 )
 
 func TestNewBackupCodes(t *testing.T) {

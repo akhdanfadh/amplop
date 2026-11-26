@@ -11,9 +11,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 const (
@@ -367,7 +367,7 @@ func totpCodeCheckProblem(err error) error {
 // ========================
 
 type backupCodesToken struct {
-	// randomsecret tokens are 43 characters; 64 bounds the body (inbok's choice).
+	// randomsecret tokens are 43 characters; 64 bounds the body (amplop's choice).
 	Token string `json:"token" writeOnly:"true" maxLength:"64" doc:"The one-time token that came with the waiting backup codes."`
 }
 

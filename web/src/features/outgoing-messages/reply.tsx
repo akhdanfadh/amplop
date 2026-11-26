@@ -11,7 +11,7 @@ import {
 } from "react";
 import { ReplyAllIcon, ReplyIcon } from "lucide-react";
 import * as z from "zod";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/amplop";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";

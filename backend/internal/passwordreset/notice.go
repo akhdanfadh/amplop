@@ -6,12 +6,12 @@ import (
 	"net/url"
 	"time"
 
-	"inbok/internal/systememail"
+	"amplop/internal/systememail"
 )
 
 const (
 	noticePurpose = "password changed notice"
-	noticeSubject = "Your inbok password was changed"
+	noticeSubject = "Your amplop password was changed"
 )
 
 // ErrNoticeNotSent means a password changed notice's send failed in a way
@@ -72,8 +72,8 @@ func (n *Notices) Send(ctx context.Context, userID int64, changedAt time.Time) (
 // noticeBody returns the plain-text email telling an account's owner that
 // its password changed at changedAt.
 func (n *Notices) noticeBody(changedAt time.Time) string {
-	return "The password of your inbok account at " + n.publicURL.String() + " was changed on " +
+	return "The password of your amplop account at " + n.publicURL.String() + " was changed on " +
 		changedAt.UTC().Format("2 January 2006 at 15:04 UTC") + ", using a password reset link sent to this email address.\n\n" +
 		"If you did this, you don't need to do anything.\n\n" +
-		"If you didn't, someone else may be able to read your email. Contact your inbok administrator.\n"
+		"If you didn't, someone else may be able to read your email. Contact your amplop administrator.\n"
 }

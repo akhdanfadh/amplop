@@ -6,7 +6,7 @@ import {
   getListOutgoingMessagesQueryKey,
   useDismissOutgoingMessage,
   useSendMessageAgain,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { repeatableWriteRetry } from "@/api/retry";
 import { RequestError } from "@/components/request-error";

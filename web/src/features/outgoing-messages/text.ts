@@ -49,17 +49,17 @@ const failures: Record<Failure, (from: string, current: string | undefined) => s
   "sending-limit": (from) =>
     `${from} reached Gmail's daily sending limit, which lifts within 24 hours. Send it again then.`,
   "needs-reconnect": (from) =>
-    `Google stopped accepting inbok's access to ${from}. Reconnect the account on the Connected accounts page, then send it again.`,
+    `Google stopped accepting amplop's access to ${from}. Reconnect the account on the Connected accounts page, then send it again.`,
   "token-unreadable": (from) =>
-    `inbok can no longer use the access it saved for ${from}. Reconnect the account on the Connected accounts page, then send it again.`,
+    `amplop can no longer use the access it saved for ${from}. Reconnect the account on the Connected accounts page, then send it again.`,
   deactivated: () =>
-    "Your inbok account was deactivated when this message was due to go out. Send it again now.",
+    "Your amplop account was deactivated when this message was due to go out. Send it again now.",
   "sender-changed": (_, current) =>
     current
       ? `Gmail now uses another address for this account. Sending it again sends it from ${current}.`
       : "Gmail now uses another address for this account. Sending it again sends it from the new address.",
   "gave-up": () =>
-    "Google didn't take this message after several tries, so inbok stopped. Send it again.",
+    "Google didn't take this message after several tries, so amplop stopped. Send it again.",
 };
 
 // MessageState is what a status page needs of a message to word it and
@@ -85,7 +85,7 @@ const statusTexts: Record<Exclude<Status, "failed">, (from: string) => string> =
   sending: () => "Sending...",
   sent: () => "Sent.",
   unknown: (from) =>
-    `inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again.`,
+    `amplop couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again.`,
 };
 
 // What the member can do with a message from its page: send it again in
@@ -117,7 +117,7 @@ export function sentSummary(
 const sentAgainTexts: Partial<Record<Status, string>> = {
   failed: `${notSentPrefix}You already tried sending it again.`,
   unknown:
-    "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
+    "amplop couldn't confirm whether Gmail sent this message. You already tried sending it again.",
 };
 
 // What a dismissed message's text ends with: why it left the count, and
@@ -255,7 +255,7 @@ export const composeAccountsUnreadable = "Could not load your connected accounts
 // noAccountText says why the compose window has no editor: no connected
 // account, or none of accounts able to send, because each needs
 // reconnecting, or else, usable as they are, because Gmail isn't set up on
-// this inbok, which the Connected accounts page it links to words for
+// this amplop, which the Connected accounts page it links to words for
 // whoever reads it.
 export function noAccountText(accounts: readonly Pick<ListedAccount, "status">[]): string {
   if (accounts.length === 0) return "Connect a Gmail account to send messages from it.";
@@ -295,7 +295,7 @@ export function invalidAddressMessage(value: string): string {
 
 // cannotSendNote says why the account that received the message can't
 // send, so no account is chosen: it needs reconnecting, or else, usable as
-// it is, no account can send until Gmail is set up on this inbok, which
+// it is, no account can send until Gmail is set up on this amplop, which
 // the Connected accounts page words for whoever reads it.
 export function cannotSendNote(account: Pick<ListedAccount, "email" | "status">): string {
   return account.status === "usable"
@@ -532,7 +532,7 @@ export const rowTo = "To";
 
 // The Outbox's heading, and its list's name for a screen reader.
 export const outboxName = "Outbox";
-export const outboxListName = "Messages sent from inbok";
+export const outboxListName = "Messages sent from amplop";
 // What the Outbox's reading pane says with no message open.
 export const noMessageOpen = "No message open.";
 // The Outbox list's sections: the messages that still need the member
@@ -540,11 +540,11 @@ export const noMessageOpen = "No message open.";
 export const outboxSections = { outstanding: "Not sent yet", done: "Done" } as const;
 // What ends the Outbox's list: what it holds, and what it doesn't.
 export const outboxEnd =
-  "inbok keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.";
+  "amplop keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.";
 // What an empty Outbox says.
-export const outboxEmptyTitle = "Nothing sent from inbok yet";
+export const outboxEmptyTitle = "Nothing sent from amplop yet";
 export const outboxEmptyText =
-  "Messages you send from inbok show here, with whether Gmail took each one. Write one with Compose.";
+  "Messages you send from amplop show here, with whether Gmail took each one. Write one with Compose.";
 // What the Outbox says while its list loads, for a screen reader.
 export const outboxLoading = "Loading messages...";
 // What the Outbox says when its list can't be read, before the reason,

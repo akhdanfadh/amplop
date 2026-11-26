@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/randomsecret"
+	"amplop/internal/randomsecret"
 )
 
 const (

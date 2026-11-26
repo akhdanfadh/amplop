@@ -22,12 +22,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/emailaddress"
-	"inbok/internal/registration"
-	"inbok/internal/session"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/emailaddress"
+	"amplop/internal/registration"
+	"amplop/internal/session"
+	"amplop/internal/systememail"
 )
 
 type fakeRegistration struct {
@@ -278,7 +278,7 @@ func TestRequestRegistrationLinkSameResponse(t *testing.T) {
 	}
 
 	// A link, a notice, and nothing were sent.
-	assert.Equal(t, []string{"Create your inbok account", "Your email address already has an inbok account"}, mailer.subjects)
+	assert.Equal(t, []string{"Create your amplop account", "Your email address already has an amplop account"}, mailer.subjects)
 	for _, response := range responses {
 		assert.Equal(t, http.StatusOK, response.Code)
 		assert.JSONEq(t, `{"data":{"status":"requested"}}`, response.Body.String())

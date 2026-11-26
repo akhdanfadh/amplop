@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/logging"
-	"inbok/internal/session"
+	"amplop/internal/logging"
+	"amplop/internal/session"
 )
 
 // A handler waiting on slow work sees its context end after the timeout.
@@ -175,7 +175,7 @@ func TestTimeoutOtherError(t *testing.T) {
 
 // A request whose client left, failing with that cancellation, is logged
 // as a closed request, 499 at info level, not as an unexpected error: its
-// cancellation is neither a timeout nor a failure of inbok's.
+// cancellation is neither a timeout nor a failure of amplop's.
 func TestTimeoutClientGone(t *testing.T) {
 	a, out := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
 		<-ctx.Done()
@@ -197,7 +197,7 @@ func TestTimeoutClientGone(t *testing.T) {
 	assert.Equal(t, "client closed request", lines[0]["msg"])
 }
 
-// A failure of inbok's own while the client leaves stays an unexpected
+// A failure of amplop's own while the client leaves stays an unexpected
 // 500, logged as an error.
 func TestTimeoutClientGoneOtherError(t *testing.T) {
 	a, out := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
@@ -216,7 +216,7 @@ func TestTimeoutClientGoneOtherError(t *testing.T) {
 	assert.Equal(t, "unexpected error", lines[0]["msg"])
 }
 
-// A failure of inbok's own joined with the cancellation, as some clients
+// A failure of amplop's own joined with the cancellation, as some clients
 // return both, stays an unexpected 500 when the client leaves.
 func TestTimeoutClientGoneJoined(t *testing.T) {
 	a, out := timeoutAPI(t, time.Minute, func(ctx context.Context) error {

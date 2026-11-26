@@ -9,11 +9,11 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/registration"
-	"inbok/internal/session"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/registration"
+	"amplop/internal/session"
+	"amplop/internal/systememail"
 )
 
 const (
@@ -87,7 +87,7 @@ func (h registrationHandler) handleGetRegistration(ctx context.Context, _ *struc
 // ========================
 
 type registrationSettings struct {
-	Status            registration.Status `json:"status" enum:"closed,open,paused" doc:"Closed: visitors cannot register. Open: anyone who can reach this inbok can register. Paused: opened, but the system email settings in use have not passed a test, so visitors cannot register until one does."`
+	Status            registration.Status `json:"status" enum:"closed,open,paused" doc:"Closed: visitors cannot register. Open: anyone who can reach this amplop can register. Paused: opened, but the system email settings in use have not passed a test, so visitors cannot register until one does."`
 	SystemEmailTested bool                `json:"systemEmailTested" doc:"Whether the system email settings in use passed a test, which opening registration needs."`
 	// Listed here, so every client offers only what the service accepts
 	// instead of restating its rule (AGENTS.md, "API contract").
@@ -147,7 +147,7 @@ const systemEmailNotTestedType = problemPrefix + "system-email-not-tested"
 
 // newRegistrationSettings is the save request body.
 type newRegistrationSettings struct {
-	Open bool `json:"open" doc:"True opens registration to anyone who can reach this inbok; false closes it."`
+	Open bool `json:"open" doc:"True opens registration to anyone who can reach this amplop; false closes it."`
 }
 
 func registerRegistrationSave(api huma.API, handler registrationHandler) {

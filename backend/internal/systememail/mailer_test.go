@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/logging"
+	"amplop/internal/emailaddress"
+	"amplop/internal/logging"
 )
 
 // testMailer sends with sender, decrypts with keys, and logs to logs as
-// inbok's root logger does.
+// amplop's root logger does.
 func testMailer(storage *memoryStorage, keys *fakeKeyring, sender *fakeSender, logs *bytes.Buffer) *Mailer {
 	return NewMailer(storage, keys, sender, logging.New(logs))
 }
@@ -33,10 +33,10 @@ func TestMailerSend(t *testing.T) {
 
 	assert.Equal(t, int64(3), revision)
 	assert.Equal(t, 1, sender.sent)
-	assert.Equal(t, Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "inbok@example.com"}, sender.server)
+	assert.Equal(t, Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "amplop@example.com"}, sender.server)
 	assert.Equal(t, "app password", sender.password)
 	assert.Equal(t, Message{
-		FromAddress: "inbok@example.com", FromName: "inbok", To: "admin@example.org",
+		FromAddress: "amplop@example.com", FromName: "amplop", To: "admin@example.org",
 		Subject: "Verify", Body: "Open the link.\n",
 	}, sender.message)
 }
@@ -129,7 +129,7 @@ func TestMailerSendFailed(t *testing.T) {
 	assert.Equal(t, ReasonRecipient, failed.Reason)
 	assert.Equal(t, int64(3), revision)
 	assert.Contains(t, logs.String(), `msg="system email send failed" purpose="email verification" `+
-		"reason=recipient host=smtp.example.com port=587 security=starttls username=inbok@example.com")
+		"reason=recipient host=smtp.example.com port=587 security=starttls username=amplop@example.com")
 	assert.Contains(t, logs.String(), "request_id=req-1", "the warning names the request that sent it")
 	assert.Contains(t, logs.String(), "550 5.1.1")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
@@ -180,7 +180,7 @@ func TestMailerSendUnconfirmed(t *testing.T) {
 	_, err := testMailer(&memoryStorage{record: savedSignIn()}, &fakeKeyring{}, sender, &logs).Send(t.Context(), testOutgoing())
 	require.Error(t, err)
 
-	assert.Contains(t, logs.String(), "reason=timeout host=smtp.example.com port=587 security=starttls username=inbok@example.com unconfirmed=true")
+	assert.Contains(t, logs.String(), "reason=timeout host=smtp.example.com port=587 security=starttls username=amplop@example.com unconfirmed=true")
 }
 
 // Errors the server did not cause, e.g. the caller giving up, are returned

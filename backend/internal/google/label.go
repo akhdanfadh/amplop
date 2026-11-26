@@ -13,14 +13,14 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/label"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/label"
+	"amplop/internal/mailsync"
 )
 
 // Gmail's limits on a label's whole name, with the names of the labels it is
 // under: it refuses one over 225 characters with a 400, and fails one over
-// 255 bytes of UTF-8 with a 500 (checked against Gmail, 2026-11-16). inbok
+// 255 bytes of UTF-8 with a 500 (checked against Gmail, 2026-11-16). amplop
 // checks both before calling, so a long name is the member's to fix rather
 // than a failure. It counts characters as Unicode code points; whether Gmail
 // counts one outside the Basic Multilingual Plane, e.g. an emoji, as one or
@@ -144,7 +144,7 @@ func (c *Client) EditMailbox(ctx context.Context, token connectedaccount.AccessT
 //
 // DESIGN: Gmail's API deletes only the label asked, leaving the labels nested
 // under it at the top, while its web app deletes them too (checked against
-// Gmail, 2026-11-16). inbok deletes them, as the web app does, the deepest
+// Gmail, 2026-11-16). amplop deletes them, as the web app does, the deepest
 // first, as JMAP asks a client to remove a mailbox's children before it
 // (mailboxHasChild, RFC 8621 section 2.5): a delete that stops part way
 // leaves every label above the one that failed, and asking again finds the

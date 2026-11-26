@@ -8,22 +8,22 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/outgoingmessage"
+	"amplop/internal/outgoingmessage"
 )
 
 // outgoingMessageWorkflow names the send job in DBOS's tables, where
 // enqueued runs outlive the code that made them. Its runs use
 // [googleSendQueue].
-const outgoingMessageWorkflow = "inbok.outgoing-message"
+const outgoingMessageWorkflow = "amplop.outgoing-message"
 
 // checkDelay is how long the send job waits after an unanswered send before
 // looking for the message in Sent, so a request Gmail is still working on
-// lands first. Google promises no bound; this is inbok's choice.
+// lands first. Google promises no bound; this is amplop's choice.
 var checkDelay = 2 * time.Minute
 
 // giveUpDelay is how long the send job waits before trying again to end a
 // message whose give up step kept failing, e.g. while the database is down:
-// the message must not stay waiting or sending for good. inbok's choice.
+// the message must not stay waiting or sending for good. amplop's choice.
 var giveUpDelay = 15 * time.Minute
 
 // OutgoingMessageInput is the send workflow's input: the message to send.

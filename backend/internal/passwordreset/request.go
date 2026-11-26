@@ -6,9 +6,9 @@ import (
 	"net/netip"
 	"time"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/clientprefix"
-	"inbok/internal/emailaddress"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/clientprefix"
+	"amplop/internal/emailaddress"
 )
 
 // Product policy, the same as registration's email and client limits. The

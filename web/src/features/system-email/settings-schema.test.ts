@@ -7,10 +7,10 @@ const saved: SystemEmailSettings = {
   host: "smtp.example.com",
   port: 587,
   security: "starttls",
-  username: "inbok@example.com",
+  username: "amplop@example.com",
   hasPassword: true,
-  fromAddress: "inbok@example.com",
-  fromName: "inbok",
+  fromAddress: "amplop@example.com",
+  fromName: "amplop",
   testedAt: null,
 };
 const values = settingsValues(saved);
@@ -31,10 +31,10 @@ describe("settingsValues", () => {
       host: "smtp.example.com",
       security: "starttls",
       port: "587",
-      username: "inbok@example.com",
+      username: "amplop@example.com",
       password: "",
-      fromAddress: "inbok@example.com",
-      fromName: "inbok",
+      fromAddress: "amplop@example.com",
+      fromName: "amplop",
     });
   });
 
@@ -87,7 +87,7 @@ describe("settingsSchema", () => {
 
   it("keeps the saved password for the same server and username, as Go compares them", () => {
     expect(
-      issues({ ...values, host: " smtp.example.com ", username: " inbok@example.com " }),
+      issues({ ...values, host: " smtp.example.com ", username: " amplop@example.com " }),
     ).toEqual([]);
   });
 
@@ -95,7 +95,7 @@ describe("settingsSchema", () => {
     ["host", { host: "smtp.other.example" }],
     ["port", { port: "465" }],
     ["username", { username: "other@example.com" }],
-    ["username case", { username: "Inbok@example.com" }],
+    ["username case", { username: "Amplop@example.com" }],
   ])("needs the password again for another %s", (_, change) => {
     expect(issues({ ...values, ...change })).toEqual([
       { path: ["password"], message: "Enter the password for this server and username." },
@@ -147,7 +147,7 @@ describe("settingsSchema", () => {
     ["port", { port: "" }, "Enter a whole number from 1 to 65535."],
     ["port", { port: "1e3" }, "Enter a whole number from 1 to 65535."],
     ["port", { port: "4.5" }, "Enter a whole number from 1 to 65535."],
-    ["fromAddress", { fromAddress: "inbok" }, "Enter an email address, like name@example.com."],
+    ["fromAddress", { fromAddress: "amplop" }, "Enter an email address, like name@example.com."],
     ["fromName", { fromName: "n".repeat(65) }, "Must be at most 64 characters."],
     ["password", { password: "p".repeat(256) }, "Must be at most 255 characters."],
   ])("applies the contract's limit on %s", (field, change, message) => {

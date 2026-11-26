@@ -33,7 +33,7 @@ import { localStore } from "@/lib/local-store";
 
 // The localStorage key that holds whether the sidebar is open, "true" or
 // "false"; absent means open.
-const openKey = "inbok-sidebar-open";
+const openKey = "amplop-sidebar-open";
 
 // The wordmark is a link to the start page, as in most apps.
 const wordmarkClass =
@@ -110,7 +110,7 @@ export function Frame({
         <SidebarHeader className="flex-row items-center gap-2">
           <SidebarTrigger />
           <Link to="/" className={cn(wordmarkClass, "group-data-[collapsible=icon]:hidden")}>
-            inbok
+            amplop
           </Link>
         </SidebarHeader>
         <SidebarContent>{nav}</SidebarContent>
@@ -163,7 +163,7 @@ function TopBar({ slotRef }: { slotRef: (box: HTMLElement | null) => void }): Re
           "group-has-[[data-slot=top-bar-slot]:not(:empty)]/top-bar:hidden",
         )}
       >
-        inbok
+        amplop
       </Link>
       <div
         ref={slotRef}

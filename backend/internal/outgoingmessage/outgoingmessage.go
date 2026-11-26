@@ -13,8 +13,8 @@ import (
 	"time"
 	"uuid"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/connectedaccount"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/connectedaccount"
 )
 
 // Errors a caller shows the member. None includes an address or any other
@@ -131,7 +131,7 @@ const (
 	FailureSendingLimit Failure = "sending-limit"
 	// FailureNeedsReconnect is Google refusing the account's token.
 	FailureNeedsReconnect Failure = "needs-reconnect"
-	// FailureTokenUnreadable is a token inbok can no longer decrypt, e.g. its
+	// FailureTokenUnreadable is a token amplop can no longer decrypt, e.g. its
 	// key was removed; reconnecting saves a new one.
 	FailureTokenUnreadable Failure = "token-unreadable"
 	// FailureDeactivated is the account's member being deactivated.
@@ -167,7 +167,7 @@ type Draft struct {
 
 // Message is an outgoing message as saved.
 type Message struct {
-	// ID is inbok's own, random, so a URL that names the message tells
+	// ID is amplop's own, random, so a URL that names the message tells
 	// nothing of how many there are.
 	ID uuid.UUID
 	// ConnectedAccountID is the sending account, whose owner owns the message.
@@ -176,11 +176,11 @@ type Message struct {
 	// kept though a reconnect may change the account's.
 	From string
 	Content
-	// InbokMessageID is the ID inbok gave the message, an RFC 5322
-	// Message-ID with its angle brackets, sent as its X-Inbok-Message-Id and
+	// AmplopMessageID is the ID amplop gave the message, an RFC 5322
+	// Message-ID with its angle brackets, sent as its X-Amplop-Message-Id and
 	// Message-ID headers. Gmail replaces the Message-ID; synchronized mail
 	// keeps the one Gmail sent.
-	InbokMessageID string
+	AmplopMessageID string
 	Threading
 	Status Status
 	// Failure is set only when [Message.Status] is [StatusFailed].
@@ -255,7 +255,7 @@ type Sender struct {
 }
 
 // Reply reports whether m answers another message: it carries threading
-// headers. A reply to a message with no Message-ID inbok may write has none,
+// headers. A reply to a message with no Message-ID amplop may write has none,
 // and threads only by Gmail's thread ID, when sent from the answered
 // message's account.
 func (m Message) Reply() bool {
@@ -295,7 +295,7 @@ type NewMessage struct {
 	// From is the sending account's address.
 	From string
 	Content
-	InbokMessageID string
+	AmplopMessageID string
 	Threading
 	// ProviderThreadID is the Gmail thread a reply is sent into, or empty.
 	ProviderThreadID string
@@ -719,7 +719,7 @@ func newMessage(sender Sender, attempts []time.Time, now time.Time, content Cont
 	if err != nil {
 		return NewMessage{}, err
 	}
-	return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID, Threading: Threading{References: []string{}}}, nil
+	return NewMessage{From: sender.Email, Content: content, AmplopMessageID: messageID, Threading: Threading{References: []string{}}}, nil
 }
 
 // sameAnswered reports whether a and b name the same answered message, or

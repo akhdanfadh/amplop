@@ -6,9 +6,9 @@ import (
 	"net/netip"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/totp"
 )
 
 // SignInStep identifies whether password proof completes sign-in.

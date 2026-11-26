@@ -4,7 +4,7 @@
 -- to its account's owner, as synchronized mail does, so deleting the account,
 -- or its user, deletes it. Names follow synchronized mail's.
 CREATE TABLE outgoing_messages (
-    -- inbok's own and random, so a URL that names the message tells nothing
+    -- amplop's own and random, so a URL that names the message tells nothing
     -- of how many there are, as for synchronized messages.
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connected_account_id bigint NOT NULL REFERENCES connected_accounts (id) ON DELETE CASCADE,
@@ -22,16 +22,16 @@ CREATE TABLE outgoing_messages (
                          AND jsonb_array_length(bcc_addresses) <= 100),
     subject              text NOT NULL CHECK (char_length(subject) <= 500),
     body                 text NOT NULL CHECK (char_length(body) <= 100000), -- plain text
-    -- The ID inbok gave the message, with angle brackets, sent as its
-    -- X-Inbok-Message-Id and Message-ID headers. Gmail replaces the
+    -- The ID amplop gave the message, with angle brackets, sent as its
+    -- X-Amplop-Message-Id and Message-ID headers. Gmail replaces the
     -- Message-ID with its own, which synchronized mail keeps as
     -- internet_message_id; the X- header stays, so a check after an
     -- unanswered send finds the message by it.
-    inbok_message_id     text NOT NULL UNIQUE CHECK (inbok_message_id LIKE '<%@%>'),
+    amplop_message_id     text NOT NULL UNIQUE CHECK (amplop_message_id LIKE '<%@%>'),
     -- A reply's threading headers (RFC 5322 section 3.6.4), worked out from
     -- the answered message when the reply is saved, so sending it needs that
     -- message no more: In-Reply-To, NULL when the answered message has no
-    -- Message-ID inbok may write (msgid.Writable), and References, oldest
+    -- Message-ID amplop may write (msgid.Writable), and References, oldest
     -- first, empty for a new message.
     in_reply_to          text CHECK (in_reply_to LIKE '<%>'),
     internet_references  text[] NOT NULL DEFAULT '{}' CHECK (cardinality(internet_references) <= 50),

@@ -10,7 +10,7 @@ import (
 const (
 	// unusedAge is how old content no part names must be before
 	// [Cleanup] deletes it, so a sweep never deletes content whose row is
-	// still to commit; inbok's choice.
+	// still to commit; amplop's choice.
 	unusedAge = 24 * time.Hour
 
 	// cleanupBatch is the most content one [Cleanup.DeleteExpired] checks

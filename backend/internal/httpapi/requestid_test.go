@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/logging"
+	"amplop/internal/logging"
 )
 
 // Every log line of one request carries the ID returned to the client.

@@ -134,7 +134,7 @@ export function DateChooser({
 
   const chosen = filters.date ?? (filters.since || filters.before ? null : "any");
   return (
-    // Days in inbok's British English, as every date it writes: 14/11/2026,
+    // Days in amplop's British English, as every date it writes: 14/11/2026,
     // months named as "14 Nov 2026" names them, weeks from Monday.
     <I18nProvider locale="en-GB">
       <div className="flex max-w-[calc(100vw-2rem)] flex-col gap-3 p-1 sm:flex-row">

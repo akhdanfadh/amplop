@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
+	"amplop/internal/totp"
 )
 
 // RFC 6238's SHA-1 secret matches code 287082 at Unix second 59.

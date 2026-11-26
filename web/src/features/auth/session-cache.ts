@@ -4,7 +4,7 @@ import {
   getGetSetupStatusQueryKey,
   getGetTOTPStatusQueryKey,
   getListSessionsQueryKey,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { closeToasts } from "@/components/ui/toast";
 import { forgetMailHref } from "@/features/mail/places";
 
@@ -22,10 +22,10 @@ export function onAccountCacheClear(clear: (client: QueryClient) => void): () =>
   return () => clearers.delete(clear);
 }
 
-// The channel to this browser's other inbok tabs, opened on first use.
+// The channel to this browser's other amplop tabs, opened on first use.
 let channel: BroadcastChannel | undefined;
 
-// otherTabs returns the channel that tells this browser's other inbok tabs
+// otherTabs returns the channel that tells this browser's other amplop tabs
 // that one member's data ended here; undefined where the browser lacks
 // one, and other tabs then find out from their next 401, as before.
 //
@@ -34,7 +34,7 @@ let channel: BroadcastChannel | undefined;
 // build from ever exiting.
 function otherTabs(): BroadcastChannel | undefined {
   if (!channel && typeof BroadcastChannel !== "undefined") {
-    channel = new BroadcastChannel("inbok-account");
+    channel = new BroadcastChannel("amplop-account");
   }
   return channel;
 }
@@ -50,7 +50,7 @@ export function onAccountEndedElsewhere(ended: () => void): () => void {
 }
 
 // clearAccountCache ends what the app holds for one member, as
-// clearTabAccountData does, and tells the browser's other inbok tabs.
+// clearTabAccountData does, and tells the browser's other amplop tabs.
 // Every sign-in, sign-out, and ended session calls it.
 export function clearAccountCache(client: QueryClient): void {
   // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel takes no origin; it reaches this site's tabs only.

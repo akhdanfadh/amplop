@@ -31,7 +31,7 @@ function setEnded(value: boolean): void {
   for (const listener of listeners) listener();
 }
 
-// watchSessionEnd applies inbok's one rule for a session that ends while a
+// watchSessionEnd applies amplop's one rule for a session that ends while a
 // signed-in page is open (web/README.md "Routes"), whenever a request gets
 // a 401 there: with nothing held (useHeldWork), it clears the member's
 // data and opens sign-in, which says the session ended and returns to the

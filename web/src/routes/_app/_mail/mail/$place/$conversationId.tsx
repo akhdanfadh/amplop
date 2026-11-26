@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { createFileRoute, linkOptions, notFound } from "@tanstack/react-router";
 import * as z from "zod";
 import { cachedRead } from "@/api/cached-read";
-import { getGetConversationQueryOptions } from "@/api/generated/inbok";
+import { getGetConversationQueryOptions } from "@/api/generated/amplop";
 import { ApiError } from "@/api/transport";
 import { conversationIdSchema } from "@/features/mail/address";
 import { currentMail } from "@/features/mail/conversations";

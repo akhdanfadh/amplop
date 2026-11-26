@@ -36,7 +36,7 @@ export function validationMessage(iss: z.core.$ZodRawIssue): string {
 // own checks, e.g. an empty field reads "Enter an email address, like
 // name@example.com." without "Must be 3 to 254 characters." too.
 //
-// DESIGN: the server decides what an address is (Go's net/mail and inbok's
+// DESIGN: the server decides what an address is (Go's net/mail and amplop's
 // own checks), so this rule is never stricter than the server's, except
 // that it allows at most 64 characters before the @, the most RFC 5321
 // allows (section 4.5.3.1.1). Orval generates no check for "idn-email",

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/systememail"
+	"amplop/internal/emailaddress"
+	"amplop/internal/systememail"
 )
 
 // NoticeOutcome is how a recovery notice ended without an error worth
@@ -110,11 +110,11 @@ func (n *RecoveryNotices) Send(ctx context.Context, recoveredID int64, recovered
 	}
 	if recoveredID == recipientID {
 		outgoing.Purpose = "recovery notice"
-		outgoing.Subject = "Your inbok administrator account was recovered"
+		outgoing.Subject = "Your amplop administrator account was recovered"
 		outgoing.Body = n.ownBody(state.RecoveredEmail, recoveredAt)
 	} else {
 		outgoing.Purpose = "recovery alert"
-		outgoing.Subject = "An inbok administrator account was recovered"
+		outgoing.Subject = "An amplop administrator account was recovered"
 		outgoing.Body = n.alertBody(state.RecoveredEmail, recoveredAt)
 	}
 
@@ -133,7 +133,7 @@ func (n *RecoveryNotices) Send(ctx context.Context, recoveredID int64, recovered
 
 	failed, isSendError := errors.AsType[*systememail.SendError](err)
 	// A recipient refused with a 5xx reply would only be refused again and
-	// hold up the next administrators. Other 5xx refusals are about inbok's
+	// hold up the next administrators. Other 5xx refusals are about amplop's
 	// settings, which an administrator can fix while the send retries.
 	if isSendError && failed.Reason == systememail.ReasonRecipient && failed.Permanent {
 		return NoticeRefused, nil
@@ -143,7 +143,7 @@ func (n *RecoveryNotices) Send(ctx context.Context, recoveredID int64, recovered
 	// unconfirmed send included, and a second copy of this notice costs
 	// less than none.
 	if isSendError {
-		// The server's reply can quote what inbok sent it, the SMTP password
+		// The server's reply can quote what amplop sent it, the SMTP password
 		// included, and DBOS keeps this error with the run; the mailer has
 		// logged the reply already.
 		state := ""
@@ -170,7 +170,7 @@ func (n *RecoveryNotices) ownBody(email string, recoveredAt time.Time) string {
 
 	var b strings.Builder
 	b.WriteString(on(recoveredAt))
-	b.WriteString(", someone with access to the server that runs inbok at ")
+	b.WriteString(", someone with access to the server that runs amplop at ")
 	b.WriteString(n.publicURL.String())
 	b.WriteString(" used host recovery on your administrator account, ")
 	b.WriteString(email)
@@ -181,11 +181,11 @@ func (n *RecoveryNotices) ownBody(email string, recoveredAt time.Time) string {
 	b.WriteString("If you asked for this, sign in with the new password:\n\n")
 	b.WriteString(signIn.String())
 	b.WriteString("\n\n")
-	b.WriteString("Then set up two-factor authentication again: inbok asks for it as soon as you sign in, and until you do, your account can do nothing else. It opens here too:\n\n")
+	b.WriteString("Then set up two-factor authentication again: amplop asks for it as soon as you sign in, and until you do, your account can do nothing else. It opens here too:\n\n")
 	b.WriteString(security.String())
 	b.WriteString("\n\n")
 	b.WriteString("If you did not ask for this, someone else may now control your administrator account. " +
-		"Contact the people who run your inbok server right away: they can run host recovery again to help you get your account back.\n\n")
+		"Contact the people who run your amplop server right away: they can run host recovery again to help you get your account back.\n\n")
 	b.WriteString("This email contains no password or code.\n")
 	return b.String()
 }
@@ -201,7 +201,7 @@ func (n *RecoveryNotices) alertBody(email string, recoveredAt time.Time) string 
 
 	var b strings.Builder
 	b.WriteString(on(recoveredAt))
-	b.WriteString(", someone with access to the server that runs inbok at ")
+	b.WriteString(", someone with access to the server that runs amplop at ")
 	b.WriteString(n.publicURL.String())
 	b.WriteString(" used host recovery on ")
 	b.WriteString(account)
@@ -209,7 +209,7 @@ func (n *RecoveryNotices) alertBody(email string, recoveredAt time.Time) string 
 	b.WriteString("disconnected its authenticator app, deleted its backup codes, and signed it out everywhere.\n\n")
 	b.WriteString("You are getting this because you are also an administrator. If you expected this, there is nothing to do.\n\n")
 	b.WriteString("If you did not expect this, someone else may now control that account. " +
-		"Check with its owner, and contact the people who run your inbok server right away.\n\n")
+		"Check with its owner, and contact the people who run your amplop server right away.\n\n")
 	b.WriteString("This email contains no password or code.\n")
 	return b.String()
 }

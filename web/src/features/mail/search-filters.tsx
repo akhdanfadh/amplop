@@ -1,6 +1,6 @@
 import { useEffect, useId, type ReactElement } from "react";
 import { Button as AriaButton, type Selection } from "react-aria-components";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/amplop";
 import { searchConversationsParamsFromMax } from "@/api/generated/model/searchConversationsParams.zod";
 import { AccountMark, accountName } from "@/components/account-mark";
 import { Button } from "@/components/ui/button";
@@ -325,7 +325,7 @@ function capitalized(words: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-// dayWords returns day, a YYYY-MM-DD date, as inbok writes a day, e.g.
+// dayWords returns day, a YYYY-MM-DD date, as amplop writes a day, e.g.
 // "14 Nov 2026".
 export function dayWords(day: string | undefined): string | undefined {
   if (!day) return undefined;

@@ -18,8 +18,8 @@ export function labelFold(place: string): FoldKey {
 
 // The sessionStorage key of this tab's folds, and the localStorage key of
 // the folds the member last chose in any tab.
-const tabKey = "inbok-sidebar-folds";
-const lastKey = "inbok-sidebar-last-folds";
+const tabKey = "amplop-sidebar-folds";
+const lastKey = "amplop-sidebar-last-folds";
 
 // tabStorage returns this tab's sessionStorage, kept in memory as well.
 // Once the browser refuses it (a private window, blocked site data, a full
@@ -94,7 +94,7 @@ function isRow(encoded: string, row: unknown): boolean {
 }
 
 // storageParser reads and writes the kept rows as JSON. Reading drops
-// anything else, e.g. text an older inbok left: the collection refuses a
+// anything else, e.g. text an older amplop left: the collection refuses a
 // value it cannot read, which would fail the sidebar, so a bad one folds
 // everything instead.
 const storageParser = {

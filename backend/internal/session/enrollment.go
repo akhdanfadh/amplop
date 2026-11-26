@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/totp"
+	"amplop/internal/totp"
 )
 
 // EnrollmentState is loaded while the user and current session are locked.

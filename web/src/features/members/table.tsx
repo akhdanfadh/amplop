@@ -6,7 +6,7 @@ import {
   getListMembersQueryKey,
   useDeactivateMember,
   useReactivateMember,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { Member, ResponseChangedMember, ResponseListedMembers } from "@/api/generated/model";
 import { ConfirmDialog, type Failure } from "@/components/confirm-dialog";
 import {

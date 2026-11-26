@@ -6,7 +6,7 @@ import { VerifyEmail } from "@/features/email-verification/verify-email";
 
 export const Route = createFileRoute("/_auth/verify-email")({
   component: VerifyEmailPage,
-  head: () => ({ meta: [{ title: "Verify your email address - inbok" }] }),
+  head: () => ({ meta: [{ title: "Verify your email address - amplop" }] }),
 });
 
 function VerifyEmailPage(): ReactElement {

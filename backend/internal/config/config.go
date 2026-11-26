@@ -14,54 +14,54 @@ import (
 
 	"golang.org/x/net/idna"
 
-	"inbok/internal/encryption"
+	"amplop/internal/encryption"
 )
 
 const (
-	envHTTPAddr     = "INBOK_HTTP_ADDR"
+	envHTTPAddr     = "AMPLOP_HTTP_ADDR"
 	defaultHTTPAddr = "127.0.0.1:8080"
 
 	// The worker's default differs from serve's, so both run on one
 	// machine without settings.
 	defaultWorkerHTTPAddr = "127.0.0.1:8081"
 
-	envEncryptionKeys = "INBOK_ENCRYPTION_KEYS"
+	envEncryptionKeys = "AMPLOP_ENCRYPTION_KEYS"
 
-	envDatabaseURL    = "INBOK_DATABASE_URL"
-	envTrustedProxies = "INBOK_TRUSTED_PROXIES"
+	envDatabaseURL    = "AMPLOP_DATABASE_URL"
+	envTrustedProxies = "AMPLOP_TRUSTED_PROXIES"
 
-	envSetupToken = "INBOK_SETUP_TOKEN"
-	// minSetupTokenLength is inbok's own floor against a short, guessable
+	envSetupToken = "AMPLOP_SETUP_TOKEN"
+	// minSetupTokenLength is amplop's own floor against a short, guessable
 	// token; openssl rand -base64 32 gives 44 characters.
 	minSetupTokenLength = 32
 
-	envPublicURL = "INBOK_PUBLIC_URL"
+	envPublicURL = "AMPLOP_PUBLIC_URL"
 
-	envSearchURL = "INBOK_MEILISEARCH_URL"
-	envSearchKey = "INBOK_MEILISEARCH_KEY"
+	envSearchURL = "AMPLOP_MEILISEARCH_URL"
+	envSearchKey = "AMPLOP_MEILISEARCH_KEY"
 
-	envS3Endpoint        = "INBOK_S3_ENDPOINT"
-	envS3AccessKeyID     = "INBOK_S3_ACCESS_KEY_ID"
-	envS3SecretAccessKey = "INBOK_S3_SECRET_ACCESS_KEY"
+	envS3Endpoint        = "AMPLOP_S3_ENDPOINT"
+	envS3AccessKeyID     = "AMPLOP_S3_ACCESS_KEY_ID"
+	envS3SecretAccessKey = "AMPLOP_S3_SECRET_ACCESS_KEY"
 
-	envWorkerID     = "INBOK_WORKER_ID"
+	envWorkerID     = "AMPLOP_WORKER_ID"
 	defaultWorkerID = "worker"
-	// maxWorkerID and [notWorkerIDRune] are inbok's own limits: DBOS stores
+	// maxWorkerID and [notWorkerIDRune] are amplop's own limits: DBOS stores
 	// any text as an executor ID.
 	maxWorkerID = 64
 
-	envGoogleClientID     = "INBOK_GOOGLE_CLIENT_ID"
-	envGoogleClientSecret = "INBOK_GOOGLE_CLIENT_SECRET"
-	envGoogleBaseURL      = "INBOK_GOOGLE_BASE_URL"
+	envGoogleClientID     = "AMPLOP_GOOGLE_CLIENT_ID"
+	envGoogleClientSecret = "AMPLOP_GOOGLE_CLIENT_SECRET"
+	envGoogleBaseURL      = "AMPLOP_GOOGLE_BASE_URL"
 )
 
 // errNoDatabaseURL has no default on purpose: a server deployed without
 // the setting must stop, not try a local database.
-var errNoDatabaseURL = errors.New(envDatabaseURL + " is required, e.g. postgres://user:password@127.0.0.1:5432/inbok")
+var errNoDatabaseURL = errors.New(envDatabaseURL + " is required, e.g. postgres://user:password@127.0.0.1:5432/amplop")
 
 // Errors for an unusable public URL. None includes the value.
 var (
-	errNoPublicURL     = errors.New(envPublicURL + " is required: the address users open inbok at, e.g. https://mail.example.com")
+	errNoPublicURL     = errors.New(envPublicURL + " is required: the address users open amplop at, e.g. https://mail.example.com")
 	errPublicURLScheme = errors.New(envPublicURL + " must use https, or http only for localhost and loopback addresses")
 	errPublicURLShape  = errors.New(envPublicURL + " must be only a scheme, a host name or IP address, and an optional port, e.g. https://mail.example.com")
 )
@@ -76,7 +76,7 @@ var (
 var (
 	errGoogleClientPair   = errors.New(envGoogleClientID + " and " + envGoogleClientSecret + " must be set together; leave both empty to not offer Gmail")
 	errGoogleBaseNoClient = errors.New(envGoogleBaseURL + " needs " + envGoogleClientID + " and " + envGoogleClientSecret)
-	errGoogleBaseURLHost  = errors.New(envGoogleBaseURL + " must be an http or https address on this machine, e.g. http://127.0.0.1:4000: it points inbok at a local emulator, never at another server")
+	errGoogleBaseURLHost  = errors.New(envGoogleBaseURL + " must be an http or https address on this machine, e.g. http://127.0.0.1:4000: it points amplop at a local emulator, never at another server")
 	errGoogleBaseURLShape = errors.New(envGoogleBaseURL + " must be only a scheme, localhost or a loopback address, and an optional port, e.g. http://127.0.0.1:4000")
 )
 
@@ -86,12 +86,12 @@ var (
 	errOriginShape  = errors.New("not an origin")
 )
 
-// Config holds settings for inbok serve.
+// Config holds settings for amplop serve.
 type Config struct {
 	Encryption     *encryption.Keyring // validated keys for stored secrets
 	Google         *Google             // nil: Gmail is not offered
 	HTTPAddr       string              // host:port to listen on, e.g. 0.0.0.0:8080
-	PublicURL      *url.URL            // where users open inbok: scheme, host, and port only
+	PublicURL      *url.URL            // where users open amplop: scheme, host, and port only
 	S3             S3                  // where message content is kept
 	SetupToken     string              // empty disables first-admin setup
 	TrustedProxies []string            // CIDRs; empty ignores forwarded client addresses
@@ -108,7 +108,7 @@ type Google struct {
 }
 
 // S3 names the S3-compatible service that holds message content and the
-// keys inbok signs in with.
+// keys amplop signs in with.
 type S3 struct {
 	Endpoint        *url.URL // scheme, host, and port only, e.g. http://seaweedfs:8333
 	AccessKeyID     string
@@ -194,7 +194,7 @@ func S3Settings() (S3, error) {
 
 // parseS3Endpoint returns value as a URL with only an http or https
 // scheme, a host, and an optional port. It returns an error naming
-// INBOK_S3_ENDPOINT when value is empty or is not such an origin.
+// AMPLOP_S3_ENDPOINT when value is empty or is not such an origin.
 func parseS3Endpoint(value string) (*url.URL, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -213,7 +213,7 @@ func parseS3Endpoint(value string) (*url.URL, error) {
 	return origin, nil
 }
 
-// PublicURL reads the address users open inbok at, which has no default.
+// PublicURL reads the address users open amplop at, which has no default.
 // Returns an error naming the setting if it is missing or not an origin.
 func PublicURL() (*url.URL, error) {
 	return parsePublicURL(os.Getenv(envPublicURL))
@@ -247,7 +247,7 @@ func WorkerHTTPAddr() (string, error) {
 	return httpAddr(defaultWorkerHTTPAddr)
 }
 
-// httpAddr reads INBOK_HTTP_ADDR, or returns fallback when it is empty.
+// httpAddr reads AMPLOP_HTTP_ADDR, or returns fallback when it is empty.
 // Returns an error naming the setting if the value is not host:port.
 func httpAddr(fallback string) (string, error) {
 	addr := os.Getenv(envHTTPAddr)
@@ -328,7 +328,7 @@ func notWorkerIDRune(r rune) bool {
 }
 
 // parsePublicURL returns value as a URL with only a scheme, host, and
-// optional port. It returns an error naming INBOK_PUBLIC_URL when value is
+// optional port. It returns an error naming AMPLOP_PUBLIC_URL when value is
 // empty or is not such an origin.
 func parsePublicURL(value string) (*url.URL, error) {
 	value = strings.TrimSpace(value)

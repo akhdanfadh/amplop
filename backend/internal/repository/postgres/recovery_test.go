@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/passwordhash"
-	"inbok/internal/passwordreset"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/passwordhash"
+	"amplop/internal/passwordreset"
+	"amplop/internal/session"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"

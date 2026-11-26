@@ -6,10 +6,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"inbok/internal/emailaddress"
+	"amplop/internal/emailaddress"
 )
 
-// Limits on a message's content, all inbok's choices.
+// Limits on a message's content, all amplop's choices.
 const (
 	// MaxRecipients bounds each of To, Cc, and Bcc, so a limit belongs to one
 	// field a form can mark; 300 in all stays under the 500 Google allows a

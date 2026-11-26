@@ -1,9 +1,9 @@
 #!/bin/sh
-# Upgrades a running inbok to the checked-out code: builds a candidate
+# Upgrades a running amplop to the checked-out code: builds a candidate
 # image, migrates the database with it while the old server keeps serving,
-# then starts the services that do not run the inbok image, e.g. the search
+# then starts the services that do not run the amplop image, e.g. the search
 # index, deletes the search index's volumes of other Meilisearch versions,
-# makes the candidate the inbok image, replaces the worker and then the
+# makes the candidate the amplop image, replaces the worker and then the
 # server, and rebuilds the search index with the new release. If the
 # build, the migration, or one of those services fails, the old server
 # keeps running. If the new worker or server does not become healthy, the
@@ -36,21 +36,21 @@ for arg in "$@"; do
 done
 
 # 1. Build the candidate.
-INBOK_IMAGE=inbok:candidate docker compose --project-directory "$dir" "$@" build
+AMPLOP_IMAGE=amplop:candidate docker compose --project-directory "$dir" "$@" build
 
 # 2. Migrate with it while the old server keeps serving.
-INBOK_IMAGE=inbok:candidate docker compose --project-directory "$dir" "$@" run --rm migrate
+AMPLOP_IMAGE=amplop:candidate docker compose --project-directory "$dir" "$@" run --rm migrate
 
-# 3. Start every service the inbok image does not run, e.g. Meilisearch.
+# 3. Start every service the amplop image does not run, e.g. Meilisearch.
 # Going back to the previous image cannot repair one, so its failure stops
-# here, before the switch. Caddy waits for inbok, so it starts in step 4.
+# here, before the switch. Caddy waits for amplop, so it starts in step 4.
 # A service an override adds, or a profile turns off, is covered or left
 # out by config --services.
-others=$(docker compose --project-directory "$dir" "$@" config --services | grep -v -x -e migrate -e inbok -e worker -e caddy || true)
+others=$(docker compose --project-directory "$dir" "$@" config --services | grep -v -x -e migrate -e amplop -e worker -e caddy || true)
 # $others is unquoted on purpose: service names have no spaces, so word
 # splitting passes one argument per service.
 if [ -n "$others" ] && ! docker compose --project-directory "$dir" "$@" up -d --wait $others; then
-	echo "upgrade.sh: a service above is not healthy, so the inbok image is unchanged; docker compose logs <service> shows why" >&2
+	echo "upgrade.sh: a service above is not healthy, so the amplop image is unchanged; docker compose logs <service> shows why" >&2
 	exit 1
 fi
 
@@ -95,12 +95,12 @@ done
 # on a field only the new settings allow, never meets an index without
 # them. Meanwhile the old server keeps serving, and the jobs it queues wait
 # for the new worker.
-previous=$(docker image inspect --format '{{.Id}}' inbok:local 2>/dev/null || true)
-docker tag inbok:candidate inbok:local
+previous=$(docker image inspect --format '{{.Id}}' amplop:local 2>/dev/null || true)
+docker tag amplop:candidate amplop:local
 if ! docker compose --project-directory "$dir" "$@" up -d --wait --no-deps worker; then
 	if [ -n "$previous" ]; then
 		echo "upgrade.sh: the new worker is not healthy; starting the previous image's worker again" >&2
-		docker tag "$previous" inbok:local
+		docker tag "$previous" amplop:local
 		docker compose --project-directory "$dir" "$@" up -d --wait --no-deps worker
 	fi
 	exit 1
@@ -110,12 +110,12 @@ fi
 if ! docker compose --project-directory "$dir" "$@" up -d --wait; then
 	if [ -n "$previous" ]; then
 		echo "upgrade.sh: the new server is not healthy; starting the previous image again, the server first" >&2
-		docker tag "$previous" inbok:local
+		docker tag "$previous" amplop:local
 		# The server before the worker, the forward order reversed: the
 		# previous worker applies its own settings, which the new server,
 		# were it still running, could not search with. When the previous
 		# server fails too, the new worker and its settings stay.
-		if docker compose --project-directory "$dir" "$@" up -d --wait --no-deps inbok; then
+		if docker compose --project-directory "$dir" "$@" up -d --wait --no-deps amplop; then
 			docker compose --project-directory "$dir" "$@" up -d --wait
 		else
 			echo "upgrade.sh: the previous server is not healthy either; the new worker keeps running" >&2
@@ -128,7 +128,7 @@ fi
 # documents differently or bring a new, empty Meilisearch. After the switch,
 # not before: the rebuild must run the new code. Going back to the
 # previous image would not undo a failed rebuild, so the new release stays.
-if ! docker compose --project-directory "$dir" "$@" exec -T worker inbok search rebuild; then
-	echo "upgrade.sh: the new release is running, but the search index was not rebuilt; run docker compose exec worker inbok search rebuild, with the same arguments" >&2
+if ! docker compose --project-directory "$dir" "$@" exec -T worker amplop search rebuild; then
+	echo "upgrade.sh: the new release is running, but the search index was not rebuilt; run docker compose exec worker amplop search rebuild, with the same arguments" >&2
 	exit 1
 fi

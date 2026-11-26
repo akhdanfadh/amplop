@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { ShieldCheckIcon } from "lucide-react";
-import { useGetTOTPStatus } from "@/api/generated/inbok";
+import { useGetTOTPStatus } from "@/api/generated/amplop";
 import { userMessage } from "@/api/problem";
 import { cn } from "@/lib/cn";
 import { ReadError } from "@/components/read-error";

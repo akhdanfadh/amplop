@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/conversation"
-	"inbok/internal/mailsync"
+	"amplop/internal/account"
+	"amplop/internal/conversation"
+	"amplop/internal/mailsync"
 )
 
 type fakeConversations struct {
@@ -416,7 +416,7 @@ func TestApplyActionInvalid(t *testing.T) {
 	}
 }
 
-// Without a Google client, inbok cannot reach Gmail, so an action is
+// Without a Google client, amplop cannot reach Gmail, so an action is
 // refused whole.
 func TestApplyActionNoGmail(t *testing.T) {
 	api := newActionsAPI(nil)

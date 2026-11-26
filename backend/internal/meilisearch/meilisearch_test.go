@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/search"
-	"inbok/internal/search/searchtest"
+	"amplop/internal/search"
+	"amplop/internal/search/searchtest"
 )
 
 const (

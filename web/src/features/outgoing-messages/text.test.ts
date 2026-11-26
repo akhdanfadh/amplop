@@ -66,7 +66,7 @@ describe("nextSteps", () => {
 
   it("says the account to check for an unknown outcome", () => {
     expect(nextSteps({ ...waiting, status: "unknown" }).text).toBe(
-      "inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of me@example.com in Gmail before sending it again.",
+      "amplop couldn't confirm whether Gmail sent this message. Check the Sent folder of me@example.com in Gmail before sending it again.",
     );
   });
 
@@ -78,7 +78,7 @@ describe("nextSteps", () => {
     ],
     ["needs-reconnect", "Reconnect the account on the Connected accounts page"],
     ["token-unreadable", "Reconnect the account on the Connected accounts page"],
-    ["deactivated", "Your inbok account was deactivated"],
+    ["deactivated", "Your amplop account was deactivated"],
     ["gave-up", "Google didn't take this message after several tries"],
   ])("words %s", (failure, words) => {
     const { text } = nextSteps(failed(failure));
@@ -163,7 +163,7 @@ describe("nextSteps", () => {
     [
       "unknown",
       { ...waiting, status: "unknown", sentAgainAs: copy },
-      "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
+      "amplop couldn't confirm whether Gmail sent this message. You already tried sending it again.",
     ],
   ])("offers nothing more for a %s message already sent again", (_, message, text) => {
     // The API still allows it, as it returns the same copy.
@@ -185,7 +185,7 @@ describe("nextSteps", () => {
     [
       "unknown",
       { ...waiting, status: "unknown", allowedActions: ["send-again"] },
-      `inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again. You dismissed it, so the Outbox no longer counts it.`,
+      `amplop couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again. You dismissed it, so the Outbox no longer counts it.`,
       ["send-again"],
     ],
   ])("keeps a dismissed %s message's reason and offers", (_, message, text, offers) => {

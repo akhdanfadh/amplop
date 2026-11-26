@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
-	"inbok/internal/systememail"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
+	"amplop/internal/systememail"
 )
 
 var ErrRecoveryForbidden = errors.New("recovery requires an administrator")

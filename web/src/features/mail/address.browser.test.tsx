@@ -4,7 +4,7 @@ import { appRouter } from "@/test/app-router";
 import {
   getListConnectedAccountsQueryKey,
   getListConnectedAccountsQueryOptions,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { refreshMail } from "@/features/mail/conversations";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 

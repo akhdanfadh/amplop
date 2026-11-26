@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useGetRegistration } from "@/api/generated/inbok";
+import { useGetRegistration } from "@/api/generated/amplop";
 import { SignInForm } from "@/features/auth/sign-in-form";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
@@ -18,7 +18,7 @@ const noticeId = "sign-in-notice";
 export const Route = createFileRoute("/_auth/_signed-out/sign-in")({
   validateSearch: signInSearch,
   component: SignIn,
-  head: () => ({ meta: [{ title: "Sign in to inbok" }] }),
+  head: () => ({ meta: [{ title: "Sign in to amplop" }] }),
 });
 
 function SignIn(): ReactElement {
@@ -72,7 +72,7 @@ function SignIn(): ReactElement {
 
   return (
     <SignedOutPage
-      title={step === "code" ? "Verify your sign-in" : "Sign in to inbok"}
+      title={step === "code" ? "Verify your sign-in" : "Sign in to amplop"}
       // The code step's instruction is its field's description: the field
       // takes focus there (DESIGN.md "Focus").
       lead={step === "code" ? undefined : "Use your email address and password."}

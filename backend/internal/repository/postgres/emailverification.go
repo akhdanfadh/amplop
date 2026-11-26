@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/account"
-	"inbok/internal/emailverification"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/account"
+	"amplop/internal/emailverification"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // RequestEmailVerification implements [emailverification.Storage.RequestEmailVerification].

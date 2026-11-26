@@ -11,22 +11,22 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/googleemulator"
-	"inbok/internal/randomsecret"
+	"amplop/internal/googleemulator"
+	"amplop/internal/randomsecret"
 )
 
 // testNow is the clock stub clients read.
 var testNow = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 
 const (
-	testClientID = "inbok-test.apps.googleusercontent.com"
+	testClientID = "amplop-test.apps.googleusercontent.com"
 	testSecret   = "test-secret"
 	testRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 	alexSubject  = "100000000000000000001"
 )
 
 // startEmulator starts an emulator with alex, an unverified account, and
-// inbok's client, and returns a client pointed at it.
+// amplop's client, and returns a client pointed at it.
 func startEmulator(t *testing.T) (*googleemulator.Emulator, *Client) {
 	t.Helper()
 	e := googleemulator.Start(t, googleemulator.Seed{

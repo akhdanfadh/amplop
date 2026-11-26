@@ -16,8 +16,8 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
 )
 
 // Gmail's per-user quota and what each fetch costs of it (Gmail's usage
@@ -33,7 +33,7 @@ const (
 
 const (
 	// fetchUnitsPerMinute is the share of [userUnitsPerMinute] one account's
-	// fetches spend, inbok's choice: four fifths, leaving room for the same
+	// fetches spend, amplop's choice: four fifths, leaving room for the same
 	// account's sends (100 units each), polls, and the messages its member
 	// opens meanwhile. That paces metadata fetches at 4 a second, full ones
 	// at 4 every 3 seconds. The pace is this process's: the worker runs
@@ -41,17 +41,17 @@ const (
 	// fetches for a member who opens a message share its own process's
 	// pace, inside the room left.
 	fetchUnitsPerMinute = userUnitsPerMinute * 4 / 5
-	// fetchConcurrency bounds one call's fetches in flight, inbok's choice.
+	// fetchConcurrency bounds one call's fetches in flight, amplop's choice.
 	// Gmail also limits a user's concurrent requests, at a number it does
 	// not publish (Gmail's "Resolve errors" guide).
 	fetchConcurrency = 4
-	// listPageSize is how many IDs one listing page holds, inbok's choice:
+	// listPageSize is how many IDs one listing page holds, amplop's choice:
 	// fetched at four a second, one page's metadata takes about 25
 	// seconds, a bounded step. Gmail allows up to 500.
 	listPageSize = 100
 )
 
-// Gmail's own fields for the answers inbok reads, so it sends nothing
+// Gmail's own fields for the answers amplop reads, so it sends nothing
 // else (Gmail's performance tips, "Partial response").
 const (
 	listFields     = "messages/id,nextPageToken"
@@ -183,7 +183,7 @@ type fetchResult struct {
 }
 
 // paceIdle is how long an account's pace is kept after its last call
-// ends, inbok's choice: by then its bucket has long refilled, so a new
+// ends, amplop's choice: by then its bucket has long refilled, so a new
 // one paces the same.
 const paceIdle = time.Minute
 
@@ -311,7 +311,7 @@ var metadataHeaders = []string{
 	headerMessageID, headerInReplyTo, headerReferences,
 }
 
-// messages.get's formats inbok asks for.
+// messages.get's formats amplop asks for.
 //
 // NOTE: Google's Go client exports none of these as constants; only its doc
 // comments list them, as text. A name Google changed would not fail the
@@ -327,7 +327,7 @@ func isNotFound(err error) bool {
 	return ok && refused.Code == http.StatusNotFound
 }
 
-// messageFromGmail returns m as inbok keeps it: its labels as mailboxes
+// messageFromGmail returns m as amplop keeps it: its labels as mailboxes
 // and flags, its headers decoded, and its snippet as text.
 func messageFromGmail(m *gmail.Message) mailsync.Message {
 	var h headers
@@ -356,7 +356,7 @@ func messageFromGmail(m *gmail.Message) mailsync.Message {
 	return message
 }
 
-// labelState returns a message's labelIDs as inbok keeps them: every label
+// labelState returns a message's labelIDs as amplop keeps them: every label
 // but UNREAD and STARRED as its mailboxes, nil for none, and those two as
 // whether it is seen and flagged.
 func labelState(labelIDs []string) (mailboxes []string, seen, flagged bool) {

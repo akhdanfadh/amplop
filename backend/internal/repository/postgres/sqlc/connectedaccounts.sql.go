@@ -216,7 +216,7 @@ func (q *Queries) ListConnectedAccounts(ctx context.Context, userID int64) ([]Li
 }
 
 const lockAccountColors = `-- name: LockAccountColors :exec
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.account-color:' || ($1::bigint)::text, 0))
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.account-color:' || ($1::bigint)::text, 0))
 `
 
 // Holds the user's account colours until the transaction ends, so two

@@ -10,9 +10,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/session"
 )
 
 const setupPath = "/setup"
@@ -199,7 +199,7 @@ func firstAdminProblem(err error) error {
 	case errors.Is(err, account.ErrSetupDone):
 		return newProblem(http.StatusConflict, setupDoneType, "Setup complete", "An administrator has already been created.")
 	case errors.Is(err, account.ErrSetupUnconfigured):
-		return newProblem(http.StatusConflict, setupUnconfiguredType, "Setup unavailable", "Configure INBOK_SETUP_TOKEN to enable setup.")
+		return newProblem(http.StatusConflict, setupUnconfiguredType, "Setup unavailable", "Configure AMPLOP_SETUP_TOKEN to enable setup.")
 	case errors.Is(err, account.ErrSetupTokenInvalid):
 		return newProblem(http.StatusForbidden, setupTokenInvalidType, "Setup token invalid", "The setup token is invalid.")
 	case errors.Is(err, emailaddress.ErrInvalid):

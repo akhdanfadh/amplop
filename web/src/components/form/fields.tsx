@@ -38,7 +38,7 @@ type FieldProps = {
 
 // Whose credentials a field holds: "ignore" keeps password managers out of
 // a field holding another service's, e.g. a mail server's username and
-// password, so they neither fill in the member's inbok sign-in nor offer
+// password, so they neither fill in the member's amplop sign-in nor offer
 // to save the field as one.
 type PasswordManagers = "ignore";
 
@@ -107,7 +107,7 @@ export function TextField({
 
 // EmailField is the current field as an email address input. autoComplete
 // tells the browser which address it holds: "username" for one that signs
-// in to inbok, so a password manager saves it with the password, "email" for
+// in to amplop, so a password manager saves it with the password, "email" for
 // another of the member's own, "off" for anyone else's.
 export function EmailField({
   autoComplete,

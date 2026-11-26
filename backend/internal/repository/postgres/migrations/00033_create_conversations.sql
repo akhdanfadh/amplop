@@ -7,11 +7,11 @@
 -- they come from; a write to that mail anywhere else leaves them stale.
 
 -- A conversation: an account's messages that share the provider's thread
--- ID, as one list row. id is inbok's own and random, as a message's, so
+-- ID, as one list row. id is amplop's own and random, as a message's, so
 -- URLs can name it.
 --
 -- The row is made from the conversation's visible messages: those in neither
--- Spam nor Trash, nor drafts, which inbok does not show. A conversation with
+-- Spam nor Trash, nor drafts, which amplop does not show. A conversation with
 -- none is made from its Spam and Trash messages; one with only drafts has no
 -- row. Like messages, the row references the account's sync state, so a write
 -- to it locks the sync state first, as every write to the account's mail

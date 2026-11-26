@@ -62,10 +62,10 @@ func TestMigrate(t *testing.T) {
 	assert.Equal(t, int64(0), users)
 }
 
-// A database migrated before inbok used DBOS, e.g. a running install
+// A database migrated before amplop used DBOS, e.g. a running install
 // upgrading, gets the workflow tables from its next [Migrate].
 func TestMigrateUpgrade(t *testing.T) {
-	// Given a database with inbok's tables but no workflow tables.
+	// Given a database with amplop's tables but no workflow tables.
 	url := newDatabase(t)
 	db, err := sql.Open("pgx", url)
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func requireWorkflowTables(t *testing.T, url string) {
 // It returns DBOS's error, e.g. for tables that are missing or too old.
 func openWorkflowTables(ctx context.Context, url string) error {
 	dbosCtx, err := dbos.NewContext(ctx, dbos.Config{
-		AppName:        "inbok",
+		AppName:        "amplop",
 		DatabaseURL:    url,
 		Logger:         discard,
 		SkipMigrations: true,

@@ -13,7 +13,7 @@ const badgeVariants = cva(
         // page's fill.
         secondary: "border-border bg-accent text-foreground",
         destructive: "bg-destructive/8 text-destructive dark:bg-destructive/12",
-        // inbok's status tones, on destructive's tint (DESIGN.md "Colour").
+        // amplop's status tones, on destructive's tint (DESIGN.md "Colour").
         info: "bg-info/8 text-info dark:bg-info/12",
         success: "bg-success/8 text-success dark:bg-success/12",
         warning: "bg-warning/8 text-warning dark:bg-warning/12",

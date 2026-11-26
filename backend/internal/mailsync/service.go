@@ -5,20 +5,20 @@ import (
 	"errors"
 	"time"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/connectedaccount"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/connectedaccount"
 )
 
 const (
 	// requestWindow is how often a member may start an account's sync by
-	// hand, inbok's choice: one sync runs per account at a time, but a
+	// hand, amplop's choice: one sync runs per account at a time, but a
 	// poll that finds nothing ends in about a second, so without it a
 	// script could start a run, and leave its records, every second; a
 	// minute would refuse a member's second click while waiting for a
 	// mail.
 	requestWindow = 15 * time.Second
 	// stoppedAfter is how long without a successful run of the minute's
-	// schedule means syncing has stopped, inbok's choice: five missed
+	// schedule means syncing has stopped, amplop's choice: five missed
 	// minutes, so a worker's restart or one failed run shows nothing.
 	stoppedAfter = 5 * time.Minute
 )
@@ -85,7 +85,7 @@ func (s *Service) Reports(ctx context.Context, accountIDs []int64) ([]Report, er
 	return s.storage.Reports(ctx, accountIDs)
 }
 
-// Stopped reports whether syncing has stopped on this inbok: no run of the
+// Stopped reports whether syncing has stopped on this amplop: no run of the
 // minute's schedule succeeded within stoppedAfter, e.g. as no worker runs,
 // or it runs without a Google client.
 func (s *Service) Stopped(ctx context.Context) (bool, error) {

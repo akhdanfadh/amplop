@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/totp"
 )
 
 func totpAttemptUser(t *testing.T, conn *pgx.Conn, email string) int64 {

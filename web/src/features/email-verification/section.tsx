@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { CircleCheckIcon, CircleDashedIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetCurrentSessionQueryKey, useRequestEmailVerification } from "@/api/generated/inbok";
+import { getGetCurrentSessionQueryKey, useRequestEmailVerification } from "@/api/generated/amplop";
 import { StatusBadge } from "@/components/status-badge";
 import { SettingsSection } from "@/features/settings/page";
 import { Button } from "@/components/ui/button";

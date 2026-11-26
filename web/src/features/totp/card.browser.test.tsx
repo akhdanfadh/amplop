@@ -2,7 +2,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
+import { getGetCurrentSessionQueryKey } from "@/api/generated/amplop";
 import type { CurrentSession } from "@/api/generated/model";
 import { appRouter } from "@/test/app-router";
 import { held, memberSession, problem } from "@/test/server";
@@ -28,7 +28,7 @@ const fault = 500;
 // A session read earlier, which still says two-factor must be set up.
 const setupSession: CurrentSession = { ...memberSession, role: "admin", totpRequired: true };
 
-const signIn = () => page.getByRole("heading", { name: "Sign in to inbok" });
+const signIn = () => page.getByRole("heading", { name: "Sign in to amplop" });
 
 // openCard renders the app at the setup card for api's member, an
 // administrator, and returns the router. stale puts a session read
@@ -89,7 +89,7 @@ describe("two-factor setup card", () => {
     await expect
       .element(
         page.getByText(
-          "Setup canceled. Remove the inbok entry from your authenticator app if you added it.",
+          "Setup canceled. Remove the amplop entry from your authenticator app if you added it.",
         ),
       )
       .toBeVisible();

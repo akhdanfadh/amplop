@@ -1,4 +1,4 @@
-import { useGetMessageContent } from "@/api/generated/inbok";
+import { useGetMessageContent } from "@/api/generated/amplop";
 import type { MessageContentOutput } from "@/api/generated/model/messageContent.zod";
 import type { Attachment } from "./attachments";
 import type { MessageBody, MessageContent } from "./view";

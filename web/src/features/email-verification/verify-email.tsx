@@ -4,7 +4,7 @@ import {
   getGetCurrentSessionQueryKey,
   useGetCurrentSession,
   useRedeemEmailVerification,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ApiError } from "@/api/transport";
 import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";

@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/encryption"
-	"inbok/internal/systememail"
+	"amplop/internal/encryption"
+	"amplop/internal/systememail"
 )
 
 // uniqueViolation is PostgreSQL's error code for a duplicate key.
@@ -57,11 +57,11 @@ func systemEmailInput() systememail.Input {
 			Host:     "smtp.example.com",
 			Port:     587,
 			Security: systememail.SecuritySTARTTLS,
-			Username: "inbok@example.com",
+			Username: "amplop@example.com",
 		},
 		Password:    "app password",
-		FromAddress: "inbok@example.com",
-		FromName:    "inbok",
+		FromAddress: "amplop@example.com",
+		FromName:    "amplop",
 	}
 }
 
@@ -85,10 +85,10 @@ func TestSystemEmailStorage(t *testing.T) {
 	require.NotNil(t, record)
 	require.NotNil(t, record.Password)
 	assert.NotContains(t, string(record.Password.Ciphertext), "app password")
-	opened, err := ring.Open(record.Password.KeyID, record.Password.Ciphertext, `system-email:"smtp.example.com":587:"inbok@example.com"`)
+	opened, err := ring.Open(record.Password.KeyID, record.Password.Ciphertext, `system-email:"smtp.example.com":587:"amplop@example.com"`)
 	require.NoError(t, err)
 	assert.Equal(t, "app password", string(opened))
-	_, err = ring.Open(record.Password.KeyID, record.Password.Ciphertext, `system-email:"smtp.attacker.example":587:"inbok@example.com"`)
+	_, err = ring.Open(record.Password.KeyID, record.Password.Ciphertext, `system-email:"smtp.attacker.example":587:"amplop@example.com"`)
 	require.Error(t, err, "the password does not decrypt for another server")
 	settings, err = service.Settings(t.Context())
 	require.NoError(t, err)
@@ -128,9 +128,9 @@ func TestSystemEmailUpdate(t *testing.T) {
 	admin := systemEmailAdmin(t, conn)
 	tested := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	want := systememail.Record{
-		Server:      systememail.Server{Host: "smtp.example.com", Port: 465, Security: systememail.SecurityTLS, Username: "inbok"},
+		Server:      systememail.Server{Host: "smtp.example.com", Port: 465, Security: systememail.SecurityTLS, Username: "amplop"},
 		Password:    &systememail.Password{KeyID: "1", Ciphertext: []byte("sealed")},
-		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested,
+		FromAddress: "amplop@example.com", FromName: "amplop", TestedAt: &tested,
 		Revision: 99, // Storage clears the tested time and numbers the revisions.
 	}
 
@@ -141,7 +141,7 @@ func TestSystemEmailUpdate(t *testing.T) {
 	var got *systememail.Record
 	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(current *systememail.Record) (systememail.Record, error) {
 		got = current
-		return systememail.Record{Server: systememail.Server{Host: "localhost", Port: 1025, Security: systememail.SecurityNone}, FromAddress: "inbok@localhost", FromName: "inbok"}, nil
+		return systememail.Record{Server: systememail.Server{Host: "localhost", Port: 1025, Security: systememail.SecurityNone}, FromAddress: "amplop@localhost", FromName: "amplop"}, nil
 	}))
 	var rows int
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM system_email").Scan(&rows))
@@ -169,7 +169,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 	releaseFirst := sync.OnceFunc(func() { close(release) })
 	defer releaseFirst()
 	firstDone, secondDone := make(chan error, 1), make(chan error, 1)
-	first := systememail.Record{Server: systememail.Server{Host: "first.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
+	first := systememail.Record{Server: systememail.Server{Host: "first.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "amplop@example.com", FromName: "amplop"}
 	var seen *systememail.Record
 
 	go func() {
@@ -220,7 +220,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 func TestSystemEmailSaveRejected(t *testing.T) {
 	db, conn := setupStorage(t)
 	admin := systemEmailAdmin(t, conn)
-	original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
+	original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "amplop@example.com", FromName: "amplop"}
 	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 
 	err := db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) {
@@ -245,7 +245,7 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			db, conn := setupStorage(t)
 			admin := systemEmailAdmin(t, conn)
-			original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
+			original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "amplop@example.com", FromName: "amplop"}
 			require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 			_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_system_email() RETURNS trigger LANGUAGE plpgsql AS
   $$ BEGIN RAISE EXCEPTION 'forced system email failure'; END $$`)
@@ -273,8 +273,8 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 func TestSystemEmailChecks(t *testing.T) {
 	conn := migrated(t)
 	const insert = `INSERT INTO system_email (host, port, security, username, password_key_id, password_ciphertext, from_address, from_name)
-		VALUES ('smtp.example.com', $1, $2, $3, $4, $5, 'inbok@example.com', 'inbok')`
-	user, empty, key, none := "inbok", "", "1", ""
+		VALUES ('smtp.example.com', $1, $2, $3, $4, $5, 'amplop@example.com', 'amplop')`
+	user, empty, key, none := "amplop", "", "1", ""
 	sealed := []byte("sealed")
 
 	cases := []struct {
@@ -314,7 +314,7 @@ func TestSystemEmailChecks(t *testing.T) {
 	var pgErr *pgconn.PgError
 	require.ErrorAs(t, err, &pgErr, "a second row is rejected")
 	assert.Equal(t, uniqueViolation, pgErr.Code)
-	_, err = conn.Exec(t.Context(), "INSERT INTO system_email (id, host, port, security, from_address, from_name) VALUES (false, 'localhost', 25, 'none', 'inbok@localhost', 'inbok')")
+	_, err = conn.Exec(t.Context(), "INSERT INTO system_email (id, host, port, security, from_address, from_name) VALUES (false, 'localhost', 25, 'none', 'amplop@localhost', 'amplop')")
 	require.ErrorAs(t, err, &pgErr, "only the true key is allowed")
 	assert.Equal(t, checkViolation, pgErr.Code)
 }
@@ -368,7 +368,7 @@ func TestSystemEmailSendTestMessage(t *testing.T) {
 func TestSystemEmailUpdateTestedAt(t *testing.T) {
 	db, conn := setupStorage(t)
 	admin := systemEmailAdmin(t, conn)
-	original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
+	original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "amplop@example.com", FromName: "amplop"}
 	save := func() {
 		require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 	}

@@ -12,15 +12,15 @@ const (
 	// failedRetryAfter is how long after a failed full sync the schedule
 	// starts another.
 	failedRetryAfter = time.Hour
-	// checkConcurrency bounds the position checks in flight at once, inbok's
+	// checkConcurrency bounds the position checks in flight at once, amplop's
 	// choice: enough to check an installation's accounts in seconds, few
 	// enough to stay a small share of the provider's requests.
 	checkConcurrency = 10
-	// checkTimeout bounds one account's check, inbok's choice, so one slow
+	// checkTimeout bounds one account's check, amplop's choice, so one slow
 	// account cannot hold the schedule; a check that times out starts a
 	// sync, whose own retries take over.
 	checkTimeout = 20 * time.Second
-	// checkBudget bounds all of one run's checks, inbok's choice: under the
+	// checkBudget bounds all of one run's checks, amplop's choice: under the
 	// minute between runs, so runs do not overlap and checkConcurrency
 	// holds. Accounts not checked in time wait for the next run, which
 	// starts at another account.

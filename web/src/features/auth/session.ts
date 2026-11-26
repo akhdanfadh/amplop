@@ -1,4 +1,4 @@
-import { useGetCurrentSession } from "@/api/generated/inbok";
+import { useGetCurrentSession } from "@/api/generated/amplop";
 import type { CurrentSession } from "@/api/generated/model";
 
 // A session read this recent counts as fresh: a page that mounts right

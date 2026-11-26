@@ -14,7 +14,7 @@ import (
 )
 
 // errGarbledReply stands for a malformed reply after the sign-in, whose
-// text inbok does not keep.
+// text amplop does not keep.
 var errGarbledReply = errors.New("server sent a reply that cannot be read")
 
 // recordingClient is a SASL client that records each response it gives,
@@ -45,7 +45,7 @@ func (c *recordingClient) record(response []byte) {
 	}
 }
 
-// redaction holds what inbok sent that a later reply must not carry into
+// redaction holds what amplop sent that a later reply must not carry into
 // an error: the sign-in's Base64 lines and the recipient's address.
 type redaction struct {
 	credentials []string
@@ -55,7 +55,7 @@ type redaction struct {
 // redact returns err with each sign-in line replaced by [credentials] and
 // the recipient's address, in any letter case, by [recipient]. A refusal
 // stays an [*gosmtp.SMTPError] with its codes, a malformed reply becomes
-// [errGarbledReply], and any other err, whose text is Go's or inbok's, is
+// [errGarbledReply], and any other err, whose text is Go's or amplop's, is
 // returned as is.
 //
 // DESIGN: the mailer logs a reply that is not private, so an administrator
@@ -74,7 +74,7 @@ func (r redaction) redact(err error) error {
 		return &redacted
 	}
 	// Go quotes a malformed reply with escapes, e.g. \ue000, which matching
-	// the strings inbok sent can miss, so none of its text is kept.
+	// the strings amplop sent can miss, so none of its text is kept.
 	if _, ok := errors.AsType[textproto.ProtocolError](err); ok {
 		return errGarbledReply
 	}

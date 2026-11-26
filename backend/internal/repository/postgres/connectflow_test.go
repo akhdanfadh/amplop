@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/google"
-	"inbok/internal/googleemulator"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/google"
+	"amplop/internal/googleemulator"
 )
 
 const (
-	flowClientID = "inbok-test.apps.googleusercontent.com"
+	flowClientID = "amplop-test.apps.googleusercontent.com"
 	flowSecret   = "test-secret"
 	flowRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 )
@@ -151,7 +151,7 @@ func TestConnectFlowToken(t *testing.T) {
 }
 
 func TestConnectFlowTokenRevoked(t *testing.T) {
-	// Given a connected account whose member removed inbok's access at
+	// Given a connected account whose member removed amplop's access at
 	// Google.
 	f := newConnectFlowTest(t, nil)
 	account, err := f.consent(t, 0, alexIdentity.Email)

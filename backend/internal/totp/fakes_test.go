@@ -6,7 +6,7 @@ import (
 	"errors"
 	"net/netip"
 
-	"inbok/internal/account"
+	"amplop/internal/account"
 )
 
 // memoryTOTP is [Storage] in memory. It applies a [Change] the way

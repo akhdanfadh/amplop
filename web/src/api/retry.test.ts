@@ -5,7 +5,7 @@ import {
   getRequestPasswordResetLinkMutationOptions,
   getSendMessageAgainMutationOptions,
   getSendMessageMutationOptions,
-} from "./generated/inbok";
+} from "./generated/amplop";
 import type { ProblemType } from "./generated/model";
 import { repeatableWriteRetry, retryOptions } from "./retry";
 

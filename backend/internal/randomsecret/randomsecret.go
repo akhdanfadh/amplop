@@ -1,6 +1,6 @@
-// Package randomsecret makes the random secrets inbok hands out, e.g. in a
+// Package randomsecret makes the random secrets amplop hands out, e.g. in a
 // session cookie or an emailed link, and the hashes it saves instead of them.
-// TOTP secrets are not these: inbok must read them back, so it encrypts them.
+// TOTP secrets are not these: amplop must read them back, so it encrypts them.
 //
 // DESIGN: Every secret has the same format. What one authorizes depends only on
 // the table its hash is saved in.

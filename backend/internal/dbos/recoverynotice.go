@@ -9,12 +9,12 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"inbok/internal/account"
+	"amplop/internal/account"
 )
 
 // recoveryNoticeWorkflow names the recovery notice in DBOS's tables, where
 // enqueued runs outlive the code that made them. Its runs use [emailQueue].
-const recoveryNoticeWorkflow = "inbok.recovery-notice"
+const recoveryNoticeWorkflow = "amplop.recovery-notice"
 
 // RecoveryNoticeInput is the recovery notice workflow's input: the
 // recovered administrator's ID and when the recovery happened. Steps read

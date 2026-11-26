@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/session"
+	"amplop/internal/session"
 )
 
 // registerHealth adds the health operation.

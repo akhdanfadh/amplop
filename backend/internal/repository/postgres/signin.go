@@ -7,9 +7,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/account"
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
 )
 
 // StartSignIn saves the session or the TOTP challenge update returns for

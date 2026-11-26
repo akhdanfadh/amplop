@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
 )
 
 // testAccountID is the account the fetches are paced for.

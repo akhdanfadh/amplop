@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { linkOptions, useRouter } from "@tanstack/react-router";
 import { inArray, useLiveQuery } from "@tanstack/react-db";
 import { Collection, Button as AriaButton } from "react-aria-components";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/amplop";
 import { isSessionEnded } from "@/features/auth/guard";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
 import { ApiError } from "@/api/transport";

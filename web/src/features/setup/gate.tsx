@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Navigate, trimPathRight, useRouter, useRouterState } from "@tanstack/react-router";
-import { useGetSetupStatus, getGetSetupStatusQueryKey } from "@/api/generated/inbok";
+import { useGetSetupStatus, getGetSetupStatusQueryKey } from "@/api/generated/amplop";
 import type { ApiError } from "@/api/transport";
 import type { ResponseSetupStatus } from "@/api/generated/model";
 import { FailedRead, RoutePending } from "@/components/route-states";

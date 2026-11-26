@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/msgid"
+	"amplop/internal/mailsync"
+	"amplop/internal/msgid"
 )
 
 func TestDecodeText(t *testing.T) {

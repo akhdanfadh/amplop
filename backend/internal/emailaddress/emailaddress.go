@@ -1,12 +1,12 @@
 // Package emailaddress checks and normalizes email addresses. [Parse] takes
-// inbok's own: account emails, addresses compared or sent to on their behalf,
+// amplop's own: account emails, addresses compared or sent to on their behalf,
 // the system email settings, and connected Gmail accounts. [ParseRecipient]
 // takes the addresses a member sends mail to.
 //
-// DESIGN: For its own addresses inbok lowercases the ASCII letters of a whole
+// DESIGN: For its own addresses amplop lowercases the ASCII letters of a whole
 // address, local part included, and compares addresses exactly. RFC 5321
 // lets a mail server treat the local part's case as meaningful; an address
-// on such a server cannot be an inbok account's email or the system sender.
+// on such a server cannot be an amplop account's email or the system sender.
 // Non-ASCII letters keep their case, because PostgreSQL's lower() follows the
 // database's locale and could disagree with Go.
 package emailaddress
@@ -48,7 +48,7 @@ func Parse(address string) (string, error) {
 // letters' case kept. It returns [ErrInvalid] for what [Parse] refuses.
 func ParseRecipient(address string) (string, error) {
 	// A sender must keep the local part's case, which the recipient's server
-	// may treat as meaningful (RFC 5321, section 2.4); inbok accepts that
+	// may treat as meaningful (RFC 5321, section 2.4); amplop accepts that
 	// cost only for its own addresses.
 	return parse(address)
 }

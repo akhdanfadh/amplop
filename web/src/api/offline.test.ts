@@ -1,6 +1,6 @@
 import { MutationObserver, onlineManager, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { getRequestPasswordResetLinkMutationOptions } from "./generated/inbok";
+import { getRequestPasswordResetLinkMutationOptions } from "./generated/amplop";
 import { retryOptions } from "./retry";
 
 const clients: QueryClient[] = [];

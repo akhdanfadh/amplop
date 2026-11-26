@@ -5,32 +5,32 @@ import "github.com/dbos-inc/dbos-transact-golang/dbos"
 // Queues group workflows that share a limit. Enqueuers name them, so they
 // are fixed like the workflows' names.
 const (
-	// emailQueue runs every workflow that sends inbok's own email, so one
+	// emailQueue runs every workflow that sends amplop's own email, so one
 	// limit on it, e.g. sends at once, protects the SMTP account.
-	emailQueue = "inbok.email"
+	emailQueue = "amplop.email"
 
 	// googleQueue runs the workflows that call Google for background work,
 	// e.g. revoking a disconnected account's token.
-	googleQueue = "inbok.google"
+	googleQueue = "amplop.google"
 
 	// googleSendQueue runs the workflows that send members' messages through
 	// Gmail. A run keeps its place in a queue's limit until it ends, and
 	// priority orders only waiting runs, so a member's send would wait
 	// behind long runs on googleQueue were it there.
-	googleSendQueue = "inbok.google-send"
+	googleSendQueue = "amplop.google-send"
 
 	// contentQueue runs the workflows that delete message content from
 	// the content store, which call no provider.
-	contentQueue = "inbok.content"
+	contentQueue = "amplop.content"
 
 	// searchQueue runs the workflows that write to the search index, one
 	// at a time for each member and side by side for different members.
-	searchQueue = "inbok.search"
+	searchQueue = "amplop.search"
 
 	// searchRebuildQueue runs the rebuilds of every member's search index
-	// that inbok search rebuild asks for. Each waits for the members'
+	// that amplop search rebuild asks for. Each waits for the members'
 	// rebuilds on searchQueue, so it cannot run in a member's partition.
-	searchRebuildQueue = "inbok.search-rebuild"
+	searchRebuildQueue = "amplop.search-rebuild"
 )
 
 // registerSearchQueue registers [searchQueue], partitioned by member with

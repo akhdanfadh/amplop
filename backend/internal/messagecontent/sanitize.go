@@ -84,8 +84,8 @@ const maxCSS = 256 << 10
 const doctype = "<!DOCTYPE html>"
 
 // linkTarget opens a link in a new tab, as its own page: a link in a
-// sandboxed frame must never replace inbok's page, and the page it opens
-// learns nothing of inbok (rel, HTML Standard 4.6.6).
+// sandboxed frame must never replace amplop's page, and the page it opens
+// learns nothing of amplop (rel, HTML Standard 4.6.6).
 const linkTarget = ` target="_blank" rel="noopener noreferrer"`
 
 // set returns a set of elements, by the atom the tokenizer gives each.
@@ -538,11 +538,11 @@ func (s *sanitizer) note(img imageURL) {
 }
 
 // absolute returns value parsed as a URL with a scheme, or false. A
-// relative URL would resolve against inbok's own origin.
+// relative URL would resolve against amplop's own origin.
 func absolute(value string) (*url.URL, bool) {
 	value = trim(value)
 	// A scheme-relative URL, e.g. //cdn.example/a.png, takes the scheme
-	// of the page, which inbok serves over https.
+	// of the page, which amplop serves over https.
 	if strings.HasPrefix(value, "//") {
 		value = schemeHTTPS + ":" + value
 	}

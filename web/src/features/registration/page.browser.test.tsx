@@ -21,8 +21,8 @@ const systemEmail: SystemEmailSettings = {
   security: "starttls",
   username: "",
   hasPassword: false,
-  fromAddress: "inbok@example.com",
-  fromName: "inbok",
+  fromAddress: "amplop@example.com",
+  fromName: "amplop",
   testedAt,
 };
 
@@ -214,7 +214,7 @@ describe("Registration", () => {
     });
     const back = router.navigate({ to: "/settings/registration" });
     await frames();
-    expect(document.body.textContent).not.toMatch(/Anyone who can reach this inbok can create/);
+    expect(document.body.textContent).not.toMatch(/Anyone who can reach this amplop can create/);
 
     read.resolve();
     await back;
@@ -268,6 +268,6 @@ describe("Registration, when things change elsewhere", () => {
 
     // Not the old status: the read it waited for failed, and says so.
     await expect.element(button("Try again")).toBeVisible();
-    expect(document.body.textContent).not.toMatch(/Anyone who can reach this inbok can create/);
+    expect(document.body.textContent).not.toMatch(/Anyone who can reach this amplop can create/);
   });
 });

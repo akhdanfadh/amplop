@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/messagecontent"
-	"inbok/internal/repository/postgres/sqlc"
+	"amplop/internal/messagecontent"
+	"amplop/internal/repository/postgres/sqlc"
 )
 
 // errPartIndex means a part has more parts than a path's integer holds.

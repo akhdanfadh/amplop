@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/conversation"
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/conversation"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
 )
 
 // t1 is the thread of [TestChangeThread], with m2 its newest message.
@@ -20,7 +20,7 @@ var t1 = conversation.Thread{ProviderThreadID: "t1", ProviderNewestMessageID: "m
 
 // Star and Mark unread change the newest message, every other action every
 // message of the thread, and the answer is where each message it names
-// stands after, as inbok keeps it, without a version, as Gmail answers:
+// stands after, as amplop keeps it, without a version, as Gmail answers:
 // Trash by Gmail's own rules, which take the thread out of the inbox, and
 // untrash back into it.
 func TestChangeThread(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
-	"inbok/internal/session"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/mailsync"
+	"amplop/internal/session"
 )
 
 // ========================
@@ -27,10 +27,10 @@ const (
 // accountSync is where a connected account's sync stands, as raw fields the
 // web words.
 type accountSync struct {
-	Status        mailsync.Status `json:"status" enum:"waiting,running,complete,failed" doc:"waiting: the first full sync, or the next after a reconnect, has not started. running: a full sync copies the last 90 days; new mail still arrives. complete: the copy is current, and kept so every minute. failed: the last full sync failed; inbok tries again an hour later."`
+	Status        mailsync.Status `json:"status" enum:"waiting,running,complete,failed" doc:"waiting: the first full sync, or the next after a reconnect, has not started. running: a full sync copies the last 90 days; new mail still arrives. complete: the copy is current, and kept so every minute. failed: the last full sync failed; amplop tries again an hour later."`
 	MessagesSoFar *int            `json:"messagesSoFar" nullable:"true" doc:"How many messages the running full sync has copied; null unless status is running. Gmail gives no total."`
-	LastSyncedAt  *time.Time      `json:"lastSyncedAt" nullable:"true" doc:"When inbok last confirmed its copy matched Gmail: a sync finished, or the every-minute check found nothing new; null before the first."`
-	Failure       *string         `json:"failure" nullable:"true" enum:"provider,token-unreadable,internal" doc:"Why the last sync, full or poll, failed; null once one succeeds. provider: Gmail kept failing, and inbok tries again. token-unreadable: the saved permission can no longer be read. internal: inbok failed. A complete account keeps a failed poll's."`
+	LastSyncedAt  *time.Time      `json:"lastSyncedAt" nullable:"true" doc:"When amplop last confirmed its copy matched Gmail: a sync finished, or the every-minute check found nothing new; null before the first."`
+	Failure       *string         `json:"failure" nullable:"true" enum:"provider,token-unreadable,internal" doc:"Why the last sync, full or poll, failed; null once one succeeds. provider: Gmail kept failing, and amplop tries again. token-unreadable: the saved permission can no longer be read. internal: amplop failed. A complete account keeps a failed poll's."`
 	FailedAt      *time.Time      `json:"failedAt" nullable:"true" doc:"When failure happened; null exactly when it is."`
 }
 

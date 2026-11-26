@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
 )
 
 // alexMailbox is the seeded mailbox the sync tests read.

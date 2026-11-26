@@ -32,5 +32,5 @@ func withCrossOrigin() gin.HandlerFunc {
 // another site.
 func crossOriginProblem() *problem {
 	return newProblem(http.StatusForbidden, problemPrefix+"cross-origin-request",
-		"Cross-origin request blocked", "Send this request from the inbok site.")
+		"Cross-origin request blocked", "Send this request from the amplop site.")
 }

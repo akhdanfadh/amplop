@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	issuer            = "inbok"           // Identifies our service in the authenticator.
+	issuer            = "amplop"          // Identifies our service in the authenticator.
 	period            = 30                // RFC 6238 section 5.2: balance security and time to enter a code.
 	secretSize        = 20                // RFC 4226 section 4 recommends a 160-bit secret.
 	encodedSecretSize = 32                // Base32 represents 160 bits as 32 characters of 5 bits each.

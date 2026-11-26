@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/messagecontent"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/messagecontent"
 )
 
 // fakeBodies answers [fakeBodies.DueAccounts] with accounts, and each

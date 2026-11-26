@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/conversation"
-	"inbok/internal/googleemulator"
-	"inbok/internal/mailsync"
+	"amplop/internal/conversation"
+	"amplop/internal/googleemulator"
+	"amplop/internal/mailsync"
 )
 
-// An action on a synced account changes the thread at Gmail and inbok's
+// An action on a synced account changes the thread at Gmail and amplop's
 // rows to what Gmail answered, the poll that follows finds them already
 // so, and its opposite undoes it in both.
 func TestActionFlow(t *testing.T) {
@@ -62,7 +62,7 @@ func TestActionFlow(t *testing.T) {
 	archived := undo
 	row := apply(conversation.ActionRead)
 
-	// Then the answer, inbok's messages, and Gmail agree: both messages
+	// Then the answer, amplop's messages, and Gmail agree: both messages
 	// read and out of the inbox, the other thread untouched.
 	assert.False(t, row.Unread)
 	assert.False(t, row.InInbox)
@@ -78,7 +78,7 @@ func TestActionFlow(t *testing.T) {
 	assert.False(t, messages["m3"].Seen)
 
 	// And the poll that follows applies Gmail's record of the action:
-	// the labels inbok already holds, now at the record's own version,
+	// the labels amplop already holds, now at the record's own version,
 	// past the one the action wrote them at.
 	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)
 	polled := stored.messages(t, account.ID)
@@ -104,7 +104,7 @@ func TestActionFlow(t *testing.T) {
 	apply(conversation.ActionStar)
 	row = apply(conversation.ActionUnread)
 
-	// Then only the newest message is starred and unread, in inbok and at
+	// Then only the newest message is starred and unread, in amplop and at
 	// Gmail, and the row shows both.
 	assert.True(t, row.Flagged)
 	assert.True(t, row.Unread)
@@ -200,7 +200,7 @@ func TestActionFlowPartlyTrashed(t *testing.T) {
 	row := undone.Conversations[0]
 
 	// Then it is back in the inbox and out of Trash, and the reply is
-	// still unread, in inbok and at Gmail.
+	// still unread, in amplop and at Gmail.
 	assert.True(t, row.InInbox)
 	assert.False(t, row.InTrash)
 	assert.True(t, row.InAllMail)
@@ -212,7 +212,7 @@ func TestActionFlowPartlyTrashed(t *testing.T) {
 }
 
 // An action's answer written after a poll has brought in a newer change to
-// the same messages leaves that change, so inbok still matches Gmail when
+// the same messages leaves that change, so amplop still matches Gmail when
 // no later poll will name the messages again.
 func TestActionFlowLate(t *testing.T) {
 	// Given alex's synced mailbox with one unread inbox thread.
@@ -244,7 +244,7 @@ func TestActionFlowLate(t *testing.T) {
 	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)
 	require.NoError(t, f.db.UpdateMessages(t.Context(), account.ID, answer))
 
-	// Then inbok keeps the newer state: read and starred, as Gmail has it.
+	// Then amplop keeps the newer state: read and starred, as Gmail has it.
 	message := stored.messages(t, account.ID)["m1"]
 	assert.True(t, message.Seen)
 	assert.True(t, message.Flagged)

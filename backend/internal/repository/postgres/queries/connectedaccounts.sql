@@ -5,7 +5,7 @@ SELECT nextval(pg_get_serial_sequence('connected_accounts', 'id'));
 -- name: LockAccountColors :exec
 -- Holds the user's account colours until the transaction ends, so two
 -- connects of one user take colours one after the other.
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.account-color:' || (@user_id::bigint)::text, 0));
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.account-color:' || (@user_id::bigint)::text, 0));
 
 -- name: InsertConnectedAccount :one
 -- Inserts nothing, and returns no row, when the user already has the

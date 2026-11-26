@@ -39,7 +39,7 @@ var googleIssuers = []string{"https://accounts.google.com", "accounts.google.com
 type Settings struct {
 	ClientID     string
 	ClientSecret string
-	// RedirectURL is inbok's callback address.
+	// RedirectURL is amplop's callback address.
 	RedirectURL string
 	// BaseURL is one server on this machine that answers for Google, e.g.
 	// the emulator, with the emulator's paths. Nil uses Google's hosts.

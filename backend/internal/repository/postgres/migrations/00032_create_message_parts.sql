@@ -1,5 +1,5 @@
 -- +goose Up
--- The MIME parts of each synchronized message whose content inbok fetched:
+-- The MIME parts of each synchronized message whose content amplop fetched:
 -- one row per part of the tree, the bytes in the content store under blob_id.
 -- A message has rows for all its parts or none; none means its content was
 -- never fetched.

@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetRegistrationQueryKey, useRequestRegistrationLink } from "@/api/generated/inbok";
+import { getGetRegistrationQueryKey, useRequestRegistrationLink } from "@/api/generated/amplop";
 import { NewRegistrationRequest } from "@/api/generated/model";
 import { emailAddress } from "@/api/validation";
 import { useAppForm } from "@/components/form/app-form";

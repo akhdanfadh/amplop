@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"inbok/internal/repository/postgres/sqlc"
-	"inbok/internal/session"
+	"amplop/internal/repository/postgres/sqlc"
+	"amplop/internal/session"
 )
 
 // ReserveAttempt saves attempt, in one transaction, if check accepts the

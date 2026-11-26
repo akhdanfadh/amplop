@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/registration"
+	"amplop/internal/account"
+	"amplop/internal/registration"
 )
 
 // registeredEmail is the address a visitor registers in these tests.

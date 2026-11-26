@@ -1,5 +1,5 @@
 // Package mailsync copies each connected account's recent mail metadata and
-// mailboxes from the provider into inbok, and keeps the copy current. The
+// mailboxes from the provider into amplop, and keeps the copy current. The
 // provider stays authoritative: a message gone there is deleted here. It
 // holds the types later features read, a [Mailbox], a [Message], and a
 // [SyncState], the [Storage] that every synchronized write goes through, and
@@ -90,9 +90,9 @@ type Address struct {
 	Address string
 }
 
-// Message is the metadata of one provider message as inbok keeps it.
+// Message is the metadata of one provider message as amplop keeps it.
 type Message struct {
-	// ID is inbok's own, random, given when the message is first saved.
+	// ID is amplop's own, random, given when the message is first saved.
 	ID        uuid.UUID
 	AccountID int64
 	// ProviderID is the provider's ID for the message, e.g. Gmail's
@@ -157,7 +157,7 @@ const (
 	// FailureTokenUnreadable means the saved refresh token no longer opens,
 	// e.g. after a lost encryption key.
 	FailureTokenUnreadable Failure = "token-unreadable"
-	// FailureInternal means inbok failed for any other reason.
+	// FailureInternal means amplop failed for any other reason.
 	FailureInternal Failure = "internal"
 )
 
@@ -179,7 +179,7 @@ type SyncState struct {
 	// FailedAt is when [SyncState.Failure] happened; nil exactly when it is
 	// empty.
 	FailedAt *time.Time
-	// LastSyncedAt is when inbok last confirmed its copy matched the
+	// LastSyncedAt is when amplop last confirmed its copy matched the
 	// provider: when a sync, full or poll, last finished, or a check found
 	// the position unchanged; nil before the first.
 	LastSyncedAt *time.Time

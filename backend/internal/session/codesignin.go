@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"inbok/internal/account"
-	"inbok/internal/randomsecret"
-	"inbok/internal/totp"
+	"amplop/internal/account"
+	"amplop/internal/randomsecret"
+	"amplop/internal/totp"
 )
 
 const signInCodeDigits = 6 // RFC 4226 minimum; matches the authenticator settings.

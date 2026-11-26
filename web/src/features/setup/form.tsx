@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
-import { useCreateFirstAdmin } from "@/api/generated/inbok";
+import { useCreateFirstAdmin } from "@/api/generated/amplop";
 import { newSetupPasswordMax, newSetupPasswordMin, type ProblemType } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
@@ -65,7 +65,7 @@ export function SetupForm({
             {(field) => (
               <field.PasswordField
                 label="Setup token"
-                description="Enter the INBOK_SETUP_TOKEN configured on the server."
+                description="Enter the AMPLOP_SETUP_TOKEN configured on the server."
                 autoComplete="off"
               />
             )}

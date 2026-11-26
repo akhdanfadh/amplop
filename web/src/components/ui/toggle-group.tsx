@@ -11,7 +11,7 @@ import {
 // ToggleGroup is a row of choices, one or several picked, e.g. Light, Dark,
 // and System. aria-label names the choice.
 //
-// DESIGN: inbok's copy differs from shadcn's: one look, a segmented
+// DESIGN: amplop's copy differs from shadcn's: one look, a segmented
 // control (the theme choice), rather than variants and sizes; items are
 // 32 px high (44 px coarse); the chosen item has the selection tint and a
 // field-coloured outline, not a fill alone, as the current sidebar item

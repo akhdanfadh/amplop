@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/encryption"
-	"inbok/internal/randomsecret"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/encryption"
+	"amplop/internal/randomsecret"
 )
 
 func (m *memoryStorage) InsertConnectState(_ context.Context, userID int64, create func([]time.Time) (ConnectState, error)) error {
@@ -80,7 +80,7 @@ func (f *fakeGoogle) Profile(_ context.Context, accessToken AccessToken) (Profil
 
 const testCode = "code-1"
 
-// alexGrant is a grant for [alex] with everything inbok needs.
+// alexGrant is a grant for [alex] with everything amplop needs.
 func alexGrant() Grant {
 	return Grant{RefreshToken: "refresh-1", AccessToken: NewAccessToken("access-1"), Identity: alex, EmailVerified: true, GmailGranted: true}
 }
@@ -397,7 +397,7 @@ func TestFinishRefused(t *testing.T) {
 		{name: "profile fails", google: func(g *fakeGoogle) { g.profileErr = broken }, want: broken},
 		{name: "no Gmail", google: func(g *fakeGoogle) { g.profileErr = fmt.Errorf("%w: gmail api: 400", ErrNoGmail) }, want: ErrNoGmail},
 		{name: "another mailbox", google: func(g *fakeGoogle) { g.mailbox = "blair@example.com" }, want: errProfileMailbox},
-		{name: "email inbok cannot store", google: func(g *fakeGoogle) {
+		{name: "email amplop cannot store", google: func(g *fakeGoogle) {
 			g.grant.Identity.Email = "Alex <alex@example.com>"
 			g.mailbox = g.grant.Identity.Email
 		}, want: errGoogleEmail},

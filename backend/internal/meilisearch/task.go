@@ -9,7 +9,7 @@ import (
 
 	meili "github.com/meilisearch/meilisearch-go"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 const (

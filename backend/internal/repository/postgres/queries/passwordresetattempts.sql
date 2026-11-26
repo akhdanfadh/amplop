@@ -1,7 +1,7 @@
 -- name: LockPasswordResetClient :exec
 -- Serializes one client's requests, so the client limit counts every one.
 -- It also covers the first request, when there is no row to lock yet.
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.password-reset:' || @client_prefix::text, 0));
+SELECT pg_advisory_xact_lock(hashtextextended('amplop.password-reset:' || @client_prefix::text, 0));
 
 -- name: ListPasswordResetClientAttempts :many
 -- The client's requests within the longest window; the hourly cleanup

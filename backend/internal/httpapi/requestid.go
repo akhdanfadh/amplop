@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"inbok/internal/logging"
+	"amplop/internal/logging"
 )
 
 const requestIDHeader = "X-Request-ID"

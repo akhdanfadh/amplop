@@ -10,9 +10,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/session"
-	"inbok/internal/systememail"
+	"amplop/internal/emailaddress"
+	"amplop/internal/session"
+	"amplop/internal/systememail"
 )
 
 const systemEmailPath = "/system-email"

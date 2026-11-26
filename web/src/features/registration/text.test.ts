@@ -6,7 +6,7 @@ import { actionWords, offeredAction, saveErrorMessage, statusMessage } from "./t
 describe("statusMessage", () => {
   it.each([
     ["closed", "Closed. Visitors can't create accounts."],
-    ["open", "Open. Anyone who can reach this inbok can create a member account."],
+    ["open", "Open. Anyone who can reach this amplop can create a member account."],
   ] as const)("says what %s means for visitors", (status, message) => {
     expect(statusMessage(status)).toBe(message);
   });
@@ -40,7 +40,7 @@ describe("offeredAction", () => {
 
 describe("actionWords", () => {
   it("says who can join before opening", () => {
-    expect(actionWords("open").description).toMatch(/Anyone who can reach this inbok/);
+    expect(actionWords("open").description).toMatch(/Anyone who can reach this amplop/);
   });
 
   it("says what closing cancels and keeps", () => {

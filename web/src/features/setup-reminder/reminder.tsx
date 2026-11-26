@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import { MailWarningIcon, ShieldAlertIcon, type LucideIcon } from "lucide-react";
-import { useGetCurrentSession, useGetSystemEmail } from "@/api/generated/inbok";
+import { useGetCurrentSession, useGetSystemEmail } from "@/api/generated/amplop";
 import { Banner } from "@/components/banner";
 import { textLink } from "@/components/link-style";
 import { loadedFreshMs } from "@/api/cached-read";

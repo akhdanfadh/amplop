@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
-	"inbok/internal/systememail"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
+	"amplop/internal/systememail"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

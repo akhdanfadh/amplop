@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeftIcon } from "lucide-react";
-import { useGetCurrentSession, useGetTOTPStatus } from "@/api/generated/inbok";
+import { useGetCurrentSession, useGetTOTPStatus } from "@/api/generated/amplop";
 import type { ApiError } from "@/api/transport";
 import { cn } from "@/lib/cn";
 import { lineLink } from "@/components/link-style";
@@ -23,7 +23,7 @@ const unauthorized = 401;
 
 export const Route = createFileRoute("/_app/settings/security/two-factor")({
   component: TwoFactor,
-  head: () => ({ meta: [{ title: "Two-factor authentication - inbok" }] }),
+  head: () => ({ meta: [{ title: "Two-factor authentication - amplop" }] }),
 });
 
 // TwoFactor is two-factor authentication's own page, under Security: the

@@ -9,10 +9,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordreset"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordreset"
+	"amplop/internal/session"
 )
 
 const (

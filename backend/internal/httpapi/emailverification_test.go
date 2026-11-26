@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/emailverification"
-	"inbok/internal/session"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/emailverification"
+	"amplop/internal/session"
+	"amplop/internal/systememail"
 )
 
 // fakeEmailVerification records each call and answers with address and err.

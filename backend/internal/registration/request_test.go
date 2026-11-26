@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/attemptlimit"
-	"inbok/internal/emailaddress"
-	"inbok/internal/systememail"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/emailaddress"
+	"amplop/internal/systememail"
 )
 
 var testNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -117,9 +117,9 @@ func TestRequestLink(t *testing.T) {
 	sent := mailer.sent[0]
 	assert.Equal(t, "registration link", sent.Purpose)
 	assert.Equal(t, visitor, sent.To)
-	assert.Equal(t, "Create your inbok account", sent.Subject)
+	assert.Equal(t, "Create your amplop account", sent.Subject)
 	assert.True(t, sent.Private, "the body holds the secret")
-	assert.Contains(t, sent.Body, "Someone asked to create an account on inbok at https://mail.example.com with this email address.")
+	assert.Contains(t, sent.Body, "Someone asked to create an account on amplop at https://mail.example.com with this email address.")
 	assert.Contains(t, sent.Body, "The link expires in 24 hours.")
 	assert.Contains(t, sent.Body, "If you didn't ask for this, you can ignore this email.")
 
@@ -148,7 +148,7 @@ func TestRequestNotice(t *testing.T) {
 	sent := mailer.sent[0]
 	assert.Equal(t, "registration notice", sent.Purpose)
 	assert.Equal(t, visitor, sent.To)
-	assert.Equal(t, "Your email address already has an inbok account", sent.Subject)
+	assert.Equal(t, "Your email address already has an amplop account", sent.Subject)
 	assert.False(t, sent.Private, "the body holds no secret")
 	assert.Contains(t, sent.Body, "You already have an account there, so no new one was created.")
 	assert.Contains(t, sent.Body, "https://mail.example.com/sign-in\n")

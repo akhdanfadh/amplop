@@ -8,7 +8,7 @@ import { yesterday } from "./text";
 const day = { year: "numeric", month: "numeric", day: "numeric" } as const;
 const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" });
 const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
-// The day in inbok's words, the time on the browser's clock, as rows show it.
+// The day in amplop's words, the time on the browser's clock, as rows show it.
 const full = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "full",
   timeStyle: "short",

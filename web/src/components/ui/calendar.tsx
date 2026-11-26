@@ -27,7 +27,7 @@ import {
 // Calendar picks one day on a month's grid, its month and year chosen from
 // menus above it, so a day years back is two choices away.
 //
-// DESIGN: inbok's copy differs from shadcn's as its other components do: one
+// DESIGN: amplop's copy differs from shadcn's as its other components do: one
 // month, single selection only, as its one caller needs; the month and year
 // are always menus; cells take DESIGN.md's focus ring and touch size; it
 // fills its column's width, each day as wide as a seventh of it, so it lines

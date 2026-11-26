@@ -51,4 +51,4 @@ export function redeemErrorMessage(err: ApiError, verified: boolean): string {
 
 // Security's email section: its heading and what the address is for.
 export const emailTitle = "Email address";
-export const emailAbout = "You sign in with it, and inbok sends your account emails here.";
+export const emailAbout = "You sign in with it, and amplop sends your account emails here.";

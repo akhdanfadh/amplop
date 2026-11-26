@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // Fake is a [messagecontent.Store] in memory. The zero value is empty and

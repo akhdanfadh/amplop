@@ -13,18 +13,18 @@ import (
 	gomail "github.com/emersion/go-message/mail"
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/mailsync"
-	"inbok/internal/msgid"
+	"amplop/internal/mailsync"
+	"amplop/internal/msgid"
 )
 
 // Limits on header text, which the sender writes. A header longer than
 // [maxHeaderBytes] is cut before it is decoded or parsed, so a hostile one
 // costs no more than any other; the counts bound what is kept of it.
 const (
-	// maxHeaderBytes is inbok's choice: 16 times RFC 5322's 998-octet line,
+	// maxHeaderBytes is amplop's choice: 16 times RFC 5322's 998-octet line,
 	// past any real subject or recipient list.
 	maxHeaderBytes = 16 << 10
-	// maxAddresses per list is inbok's choice: Gmail's own limit on the
+	// maxAddresses per list is amplop's choice: Gmail's own limit on the
 	// recipients of a message it sends (Gmail's usage limits).
 	maxAddresses = 500
 )
@@ -59,7 +59,7 @@ func (h headers) get(name string) string {
 func (h headers) full(name string) string {
 	for _, field := range h {
 		// A second field of a name allowed once is malformed; the first is
-		// inbok's choice, as good as any.
+		// amplop's choice, as good as any.
 		if field != nil && strings.EqualFold(field.Name, name) {
 			return field.Value
 		}
@@ -99,7 +99,7 @@ var wordDecoder = &mime.WordDecoder{CharsetReader: message.CharsetReader}
 func decodeText(value string) string {
 	decoded, err := wordDecoder.DecodeHeader(value)
 	// A word in a charset go-message lacks, or malformed, fails the whole
-	// value; inbok keeps the text as sent, which still reads in part,
+	// value; amplop keeps the text as sent, which still reads in part,
 	// rather than an empty subject.
 	if err != nil {
 		return cleanText(value)
@@ -127,7 +127,7 @@ func parseAddresses(value string) []mailsync.Address {
 	if err == nil {
 		addresses = appendAddresses(addresses, parsed)
 	} else {
-		// net/mail refuses the whole list at its first bad entry; inbok parses the
+		// net/mail refuses the whole list at its first bad entry; amplop parses the
 		// entries one by one, so one bad entry loses only itself.
 		for _, entry := range splitAddresses(value) {
 			addresses = appendEntry(addresses, entry)
@@ -250,7 +250,7 @@ func appendEntry(addresses []mailsync.Address, entry string) []mailsync.Address 
 		}
 		return addresses
 	}
-	// inbok's choice, as [mailsync.Address] documents: the member still
+	// amplop's choice, as [mailsync.Address] documents: the member still
 	// sees what the sender wrote, e.g. a name without an address.
 	return append(addresses, mailsync.Address{Name: decodeText(entry)})
 }
@@ -394,7 +394,7 @@ func parseMsgIDs(value string) []string {
 		id := strings.Join(strings.Fields(value[i+1:i+1+end]), "")
 		i += 1 + end
 		// An empty <> has neither side of the @ section 3.6.4 requires. A
-		// token without an @ is kept, inbok's choice: old mailers write
+		// token without an @ is kept, amplop's choice: old mailers write
 		// them, and an unmatched ID only threads nothing.
 		if id != "" {
 			ids = append(ids, cleanText("<"+id+">"))

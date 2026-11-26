@@ -13,7 +13,7 @@ const signInLink: OutcomeLink = { to: "/sign-in", label: "Sign in" };
 
 export const Route = createFileRoute("/_auth/reset-password")({
   component: ResetPassword,
-  head: () => ({ meta: [{ title: "Choose a new password - inbok" }] }),
+  head: () => ({ meta: [{ title: "Choose a new password - amplop" }] }),
 });
 
 function ResetPassword(): ReactElement {

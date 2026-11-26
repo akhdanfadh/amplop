@@ -6,7 +6,7 @@ import {
   getGetConversationQueryKey,
   getListConnectedAccountsQueryKey,
   getListPlacesQueryKey,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import type { ConversationActionResultOutput } from "@/api/generated/model/conversationActionResult.zod";
 import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.zod";
 import {

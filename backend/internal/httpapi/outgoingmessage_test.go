@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"inbok/internal/account"
-	"inbok/internal/attemptlimit"
-	"inbok/internal/connectedaccount"
-	"inbok/internal/outgoingmessage"
-	"inbok/internal/session"
+	"amplop/internal/account"
+	"amplop/internal/attemptlimit"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/outgoingmessage"
+	"amplop/internal/session"
 )
 
 type fakeOutgoingMessages struct {
@@ -82,7 +82,7 @@ var (
 			To: []string{"Ann@example.com"}, Cc: []string{}, Bcc: []string{"cat@example.com"},
 			Subject: "Lunch", Body: "Are you free?",
 		},
-		InbokMessageID: "<abc@example.com>", Status: outgoingmessage.StatusWaiting,
+		AmplopMessageID: "<abc@example.com>", Status: outgoingmessage.StatusWaiting,
 		ProviderMessageID: "gmail-secret-id", CreatedAt: lunchCreated,
 		Account: connectedaccount.Account{ID: 3, Status: connectedaccount.StatusUsable},
 	}
@@ -127,7 +127,7 @@ func TestSendMessage(t *testing.T) {
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{`+lunchSummaryJSON+`,"body":"Are you free?"}}`, response.Body.String())
 	assert.NotContains(t, response.Body.String(), "gmail-secret-id")
-	assert.NotContains(t, response.Body.String(), "abc@example.com", "inbok's Message-ID stays on the server")
+	assert.NotContains(t, response.Body.String(), "abc@example.com", "amplop's Message-ID stays on the server")
 	assert.Equal(t, int64(42), messages.userID)
 	assert.Equal(t, outgoingmessage.Draft{ConnectedAccountID: 3, IdempotencyKey: lunchKey, Content: lunch.Content}, messages.draft)
 }

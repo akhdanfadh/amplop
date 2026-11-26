@@ -7,7 +7,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
  }
  function generateHistoryId() {
 -  const entropy = randomBytes(3).readUIntBE(0, 3).toString().padStart(8, "0");
-+  // inbok: 6 random digits, not 8. With 8 an ID has 21 digits, past an
++  // amplop: 6 random digits, not 8. With 8 an ID has 21 digits, past an
 +  // unsigned 64-bit number, which Gmail's IDs fit and its Go client decodes
 +  // them into. 19 digits stay under 2^63 and still increase.
 +  const entropy = (randomBytes(3).readUIntBE(0, 3) % 1e6).toString().padStart(6, "0");
@@ -40,7 +40,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
  function formatMessageResource(gs, message, format, metadataHeaders = []) {
    const headers = buildHeaders(message);
 -  const filteredHeaders = format === "metadata" && metadataHeaders.length > 0 ? headers.filter((header) => metadataHeaders.includes(header.name)) : headers;
-+  // inbok: Gmail matches metadataHeaders in any case, e.g. Message-ID
++  // amplop: Gmail matches metadataHeaders in any case, e.g. Message-ID
 +  // returns its Message-Id; emulate matched the exact spelling.
 +  const wanted = metadataHeaders.map((name) => name.toLowerCase());
 +  const filteredHeaders = format === "metadata" && metadataHeaders.length > 0 ? headers.filter((header) => wanted.includes(header.name.toLowerCase())) : headers;
@@ -77,7 +77,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
 -  return headers.filter((header) => Boolean(header.value));
 +  return [...headers.filter((header) => Boolean(header.value)), ...rawExtraHeaders(message.raw, headers)];
 +}
-+// inbok: the other headers of a sent, inserted, or imported message, as
++// amplop: the other headers of a sent, inserted, or imported message, as
 +// written. Gmail keeps them, e.g. an X- header a client adds, and returns
 +// them; emulate kept only the fields above.
 +function rawExtraHeaders(raw, known) {
@@ -108,7 +108,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
  var WATCH_STATE_KEY = "google.gmail.watchStates";
  function historyRoutes({ app, store }) {
    const gs = getGoogleStore(store);
-+  // inbok: users.getProfile, which inbok calls before saving a connected
++  // amplop: users.getProfile, which amplop calls before saving a connected
 +  // account. Shaped like Gmail's: the address, message and thread counts,
 +  // and the current history ID, the one history.list starts from.
 +  app.get("/gmail/v1/users/:userId/profile", (c) => {
@@ -174,7 +174,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
        pendingMap.delete(code);
        return c.json({ error: "invalid_grant", error_description: "The code is incorrect or expired." }, 400);
      }
-+    // inbok: a code works only for the client it was issued to and with the
++    // amplop: a code works only for the client it was issued to and with the
 +    // redirect URI of its authorization request, as RFC 6749 section 4.1.3
 +    // asks and Google does; emulate checked neither.
 +    if (pending.redirectUri !== redirect_uri || clientsConfigured && pending.clientId !== bodyClientId) {
@@ -214,7 +214,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
    "PATCH /gmail/v1/users/:userId/labels/:id": gmailLabels,
    "DELETE /gmail/v1/users/:userId/labels/:id": gmailLabels,
    "GET /gmail/v1/users/:userId/history": gmailRead,
-+  // inbok: getProfile's scopes. Google accepts any Gmail scope that reads
++  // amplop: getProfile's scopes. Google accepts any Gmail scope that reads
 +  // mail or composes it.
 +  "GET /gmail/v1/users/:userId/profile": [...gmailRead, ...googleScopes("gmail.compose")],
    "POST /gmail/v1/users/:userId/watch": gmailRead,
@@ -225,8 +225,8 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c8
          const nameParts = (user.name ?? "").split(/\s+/).filter(Boolean);
          gs.users.insert({
 -          uid: generateUid("goog"),
-+          // inbok: a seed may fix the ID, the ID token's sub. A Google
-+          // account keeps its sub, and inbok refuses a reconnect that
++          // amplop: a seed may fix the ID, the ID token's sub. A Google
++          // account keeps its sub, and amplop refuses a reconnect that
 +          // returns another one.
 +          uid: user.uid ?? generateUid("goog"),
            email: user.email,

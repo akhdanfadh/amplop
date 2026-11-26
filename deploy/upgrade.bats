@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Tests upgrade.sh's order and rollbacks without Docker: testdata/fake-docker,
 # first on PATH, records each call that changes something, with the image
-# inbok:local points to at that moment, answers only the questions the
+# amplop:local points to at that moment, answers only the questions the
 # script should ask, and fails the calls a test names.
 # It checks only the script's decisions; what Docker does with each call
 # is a trial stack's to check. Run it with make check-deploy.
@@ -23,8 +23,8 @@ calls_are() {
 }
 
 # The calls every upgrade makes before it switches the image.
-before_switch='INBOK_IMAGE=inbok:candidate [previous] docker compose -p probe build
-INBOK_IMAGE=inbok:candidate [previous] docker compose -p probe run --rm migrate
+before_switch='AMPLOP_IMAGE=amplop:candidate [previous] docker compose -p probe build
+AMPLOP_IMAGE=amplop:candidate [previous] docker compose -p probe run --rm migrate
 [previous] docker compose -p probe up -d --wait postgres meilisearch seaweedfs'
 
 @test "upgrade" {
@@ -32,10 +32,10 @@ INBOK_IMAGE=inbok:candidate [previous] docker compose -p probe run --rm migrate
 	[ "$status" -eq 0 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker compose -p probe up -d --wait
-[inbok:candidate] docker compose -p probe exec -T worker inbok search rebuild
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker compose -p probe up -d --wait
+[amplop:candidate] docker compose -p probe exec -T worker amplop search rebuild
 EOF
 }
 
@@ -43,8 +43,8 @@ EOF
 	FAIL='run --rm migrate' run sh "$SCRIPT" -p probe
 	[ "$status" -eq 1 ]
 	calls_are <<'EOF'
-INBOK_IMAGE=inbok:candidate [previous] docker compose -p probe build
-INBOK_IMAGE=inbok:candidate [previous] docker compose -p probe run --rm migrate
+AMPLOP_IMAGE=amplop:candidate [previous] docker compose -p probe build
+AMPLOP_IMAGE=amplop:candidate [previous] docker compose -p probe run --rm migrate
 EOF
 }
 
@@ -69,49 +69,49 @@ probe_meilisearch-dumps=meilisearch-dumps' run sh "$SCRIPT" -p probe
 $before_switch
 [previous] docker volume rm probe_meilisearch-1.55.0
 [previous] docker volume rm probe_meilisearch-1.5
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker compose -p probe up -d --wait
-[inbok:candidate] docker compose -p probe exec -T worker inbok search rebuild
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker compose -p probe up -d --wait
+[amplop:candidate] docker compose -p probe exec -T worker amplop search rebuild
 EOF
 }
 
 @test "a failed worker brings back only the previous worker" {
-	FAIL='--no-deps worker' FAIL_IMAGE=inbok:candidate run sh "$SCRIPT" -p probe
+	FAIL='--no-deps worker' FAIL_IMAGE=amplop:candidate run sh "$SCRIPT" -p probe
 	[ "$status" -eq 1 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker tag previous inbok:local
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker tag previous amplop:local
 [previous] docker compose -p probe up -d --wait --no-deps worker
 EOF
 }
 
 @test "a failed server brings back the previous server, then worker" {
-	FAIL='--wait$' FAIL_IMAGE=inbok:candidate run sh "$SCRIPT" -p probe
+	FAIL='--wait$' FAIL_IMAGE=amplop:candidate run sh "$SCRIPT" -p probe
 	[ "$status" -eq 1 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker compose -p probe up -d --wait
-[inbok:candidate] docker tag previous inbok:local
-[previous] docker compose -p probe up -d --wait --no-deps inbok
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker compose -p probe up -d --wait
+[amplop:candidate] docker tag previous amplop:local
+[previous] docker compose -p probe up -d --wait --no-deps amplop
 [previous] docker compose -p probe up -d --wait
 EOF
 }
 
 @test "a failed previous server keeps the new worker" {
-	FAIL='--wait$|--no-deps inbok' run sh "$SCRIPT" -p probe
+	FAIL='--wait$|--no-deps amplop' run sh "$SCRIPT" -p probe
 	[ "$status" -eq 1 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker compose -p probe up -d --wait
-[inbok:candidate] docker tag previous inbok:local
-[previous] docker compose -p probe up -d --wait --no-deps inbok
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker compose -p probe up -d --wait
+[amplop:candidate] docker tag previous amplop:local
+[previous] docker compose -p probe up -d --wait --no-deps amplop
 EOF
 }
 
@@ -120,10 +120,10 @@ EOF
 	[ "$status" -eq 1 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker compose -p probe up -d --wait
-[inbok:candidate] docker compose -p probe exec -T worker inbok search rebuild
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker compose -p probe up -d --wait
+[amplop:candidate] docker compose -p probe exec -T worker amplop search rebuild
 EOF
 }
 
@@ -141,10 +141,10 @@ EOF
 	[ "$status" -eq 0 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
-[inbok:candidate] docker compose -p probe up -d --wait
-[inbok:candidate] docker compose -p probe exec -T worker inbok search rebuild
+[previous] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
+[amplop:candidate] docker compose -p probe up -d --wait
+[amplop:candidate] docker compose -p probe exec -T worker amplop search rebuild
 EOF
 }
 
@@ -169,24 +169,24 @@ EOF
 }
 
 @test "a failed candidate tag replaces nothing" {
-	FAIL='^tag inbok:candidate' run sh "$SCRIPT" -p probe
+	FAIL='^tag amplop:candidate' run sh "$SCRIPT" -p probe
 	[ "$status" -eq 1 ]
 	calls_are <<EOF
 $before_switch
-[previous] docker tag inbok:candidate inbok:local
+[previous] docker tag amplop:candidate amplop:local
 EOF
 }
 
 # A first deploy has no previous image to go back to.
 @test "a first deploy whose worker fails restores nothing" {
 	echo none > "$WORK/image"
-	PREVIOUS='' FAIL='--no-deps worker' FAIL_IMAGE=inbok:candidate run sh "$SCRIPT" -p probe
+	PREVIOUS='' FAIL='--no-deps worker' FAIL_IMAGE=amplop:candidate run sh "$SCRIPT" -p probe
 	[ "$status" -eq 1 ]
 	calls_are <<'EOF'
-INBOK_IMAGE=inbok:candidate [none] docker compose -p probe build
-INBOK_IMAGE=inbok:candidate [none] docker compose -p probe run --rm migrate
+AMPLOP_IMAGE=amplop:candidate [none] docker compose -p probe build
+AMPLOP_IMAGE=amplop:candidate [none] docker compose -p probe run --rm migrate
 [none] docker compose -p probe up -d --wait postgres meilisearch seaweedfs
-[none] docker tag inbok:candidate inbok:local
-[inbok:candidate] docker compose -p probe up -d --wait --no-deps worker
+[none] docker tag amplop:candidate amplop:local
+[amplop:candidate] docker compose -p probe up -d --wait --no-deps worker
 EOF
 }

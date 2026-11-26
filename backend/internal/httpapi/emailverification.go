@@ -9,10 +9,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"inbok/internal/account"
-	"inbok/internal/emailverification"
-	"inbok/internal/session"
-	"inbok/internal/systememail"
+	"amplop/internal/account"
+	"amplop/internal/emailverification"
+	"amplop/internal/session"
+	"amplop/internal/systememail"
 )
 
 type emailVerificationService interface {

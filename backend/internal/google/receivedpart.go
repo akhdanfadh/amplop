@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/api/gmail/v1"
 
-	"inbok/internal/messagecontent"
+	"amplop/internal/messagecontent"
 )
 
 // errNoPart means messages.get answered without a part where one belongs,

@@ -16,8 +16,8 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"inbok/internal/connectedaccount"
-	"inbok/internal/outgoingmessage"
+	"amplop/internal/connectedaccount"
+	"amplop/internal/outgoingmessage"
 )
 
 // Gmail's names for what a send and its check use, from its API reference.
@@ -31,8 +31,8 @@ const (
 	historyMessageAdded = "messageAdded"
 )
 
-// inbokMessageIDHeader is the header compose writes the message's ID in.
-const inbokMessageIDHeader = "X-Inbok-Message-Id"
+// amplopMessageIDHeader is the header compose writes the message's ID in.
+const amplopMessageIDHeader = "X-Amplop-Message-Id"
 
 // The 403 reasons Gmail gives for limits that pass ("Resolve errors").
 // dailyLimitExceeded is the Google project's quota, which lasts until the
@@ -58,7 +58,7 @@ const sendingLimitFragment = "Mail sending"
 
 // maxCheckPages bounds how many pages of history a check reads, 100 changes
 // each by Gmail's default; a mailbox that sent more since is not searched
-// further. inbok's choice: a send's check looks minutes back.
+// further. amplop's choice: a send's check looks minutes back.
 const maxCheckPages = 10
 
 // Mailbox returns the address of the mailbox accessToken reaches and its
@@ -123,7 +123,7 @@ func (c *Client) Send(ctx context.Context, accessToken connectedaccount.AccessTo
 		return outgoingmessage.Sent{}, fmt.Errorf("%w: %w", outgoingmessage.ErrNotSent, redactGmail(err))
 	}
 	if err == nil {
-		// A 200 without an ID: Gmail took the message, but inbok cannot
+		// A 200 without an ID: Gmail took the message, but amplop cannot
 		// name it, so the check finds it.
 		err = errors.New("gmail answered without a message id")
 	}
@@ -161,12 +161,12 @@ func hasReason(refused *googleapi.Error, reasons ...string) bool {
 }
 
 // FindSent returns the message Gmail added to Sent after historyID, in the
-// mailbox accessToken reaches, whose X-Inbok-Message-Id is inbokMessageID.
+// mailbox accessToken reaches, whose X-Amplop-Message-Id is amplopMessageID.
 // It returns [outgoingmessage.ErrSentNotFound] when it read every such
 // message and none matched, and [outgoingmessage.ErrCheckIncomplete] when
 // one could not be read, Gmail no longer keeps changes since historyID, or
 // there were more than it reads.
-func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.AccessToken, historyID, inbokMessageID string) (outgoingmessage.Sent, error) {
+func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.AccessToken, historyID, amplopMessageID string) (outgoingmessage.Sent, error) {
 	start, err := strconv.ParseUint(historyID, 10, 64)
 	if err != nil {
 		return outgoingmessage.Sent{}, fmt.Errorf("%w: history id is not a number", outgoingmessage.ErrCheckIncomplete)
@@ -187,7 +187,7 @@ func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.Acce
 	// so it might have been this message.
 	for _, id := range added {
 		message, err := service.Users.Messages.Get(gmailUser, id).Format(formatMetadata).
-			MetadataHeaders(inbokMessageIDHeader).Context(ctx).Do()
+			MetadataHeaders(amplopMessageIDHeader).Context(ctx).Do()
 		if isNotFound(err) {
 			complete = false
 			continue
@@ -195,7 +195,7 @@ func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.Acce
 		if err != nil {
 			return outgoingmessage.Sent{}, redactGmail(err)
 		}
-		if headerValue(message.Payload, inbokMessageIDHeader) == inbokMessageID {
+		if headerValue(message.Payload, amplopMessageIDHeader) == amplopMessageID {
 			return outgoingmessage.Sent{
 				ProviderMessageID: message.Id,
 				ProviderThreadID:  message.ThreadId,

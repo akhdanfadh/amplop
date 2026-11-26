@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"inbok/internal/emailaddress"
-	"inbok/internal/passwordhash"
+	"amplop/internal/emailaddress"
+	"amplop/internal/passwordhash"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

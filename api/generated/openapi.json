@@ -46,7 +46,7 @@
             ]
           },
           "failure": {
-            "description": "Why the last sync, full or poll, failed; null once one succeeds. provider: Gmail kept failing, and inbok tries again. token-unreadable: the saved permission can no longer be read. internal: inbok failed. A complete account keeps a failed poll's.",
+            "description": "Why the last sync, full or poll, failed; null once one succeeds. provider: Gmail kept failing, and amplop tries again. token-unreadable: the saved permission can no longer be read. internal: amplop failed. A complete account keeps a failed poll's.",
             "enum": [
               "provider",
               "token-unreadable",
@@ -59,7 +59,7 @@
             ]
           },
           "lastSyncedAt": {
-            "description": "When inbok last confirmed its copy matched Gmail: a sync finished, or the every-minute check found nothing new; null before the first.",
+            "description": "When amplop last confirmed its copy matched Gmail: a sync finished, or the every-minute check found nothing new; null before the first.",
             "format": "date-time",
             "type": [
               "string",
@@ -75,7 +75,7 @@
             ]
           },
           "status": {
-            "description": "waiting: the first full sync, or the next after a reconnect, has not started. running: a full sync copies the last 90 days; new mail still arrives. complete: the copy is current, and kept so every minute. failed: the last full sync failed; inbok tries again an hour later.",
+            "description": "waiting: the first full sync, or the next after a reconnect, has not started. running: a full sync copies the last 90 days; new mail still arrives. complete: the copy is current, and kept so every minute. failed: the last full sync failed; amplop tries again an hour later.",
             "enum": [
               "waiting",
               "running",
@@ -98,7 +98,7 @@
         "additionalProperties": false,
         "properties": {
           "url": {
-            "description": "Google's consent page. Open it in the same browser tab; Google then sends the browser back to inbok, which ends on the web app's /connected-accounts page with an outcome. The address works once, for 10 minutes, and only for this session.",
+            "description": "Google's consent page. Open it in the same browser tab; Google then sends the browser back to amplop, which ends on the web app's /connected-accounts page with an outcome. The address works once, for 10 minutes, and only for this session.",
             "format": "uri",
             "type": "string"
           }
@@ -210,7 +210,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.",
+            "description": "Whether amplop can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key amplop has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.",
             "enum": [
               "usable",
               "needs-reconnect",
@@ -242,7 +242,7 @@
             "type": "array"
           },
           "syncStopped": {
-            "description": "Whether syncing has stopped on this inbok: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it.",
+            "description": "Whether syncing has stopped on this amplop: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it.",
             "type": "boolean"
           }
         },
@@ -433,7 +433,7 @@
             ]
           },
           "attachments": {
-            "description": "Whether it has an attachment. inbok knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then.",
+            "description": "Whether it has an attachment. amplop knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then.",
             "type": "boolean"
           },
           "cc": {
@@ -696,7 +696,7 @@
         "additionalProperties": false,
         "properties": {
           "deleted": {
-            "description": "The ids of the labels deleted: the label and each label inside it that inbok had.",
+            "description": "The ids of the labels deleted: the label and each label inside it that amplop had.",
             "items": {
               "format": "uuid",
               "type": "string"
@@ -978,7 +978,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.",
+            "description": "Whether amplop can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key amplop has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.",
             "enum": [
               "usable",
               "needs-reconnect",
@@ -1457,7 +1457,7 @@
         "additionalProperties": false,
         "properties": {
           "open": {
-            "description": "True opens registration to anyone who can reach this inbok; false closes it.",
+            "description": "True opens registration to anyone who can reach this amplop; false closes it.",
             "type": "boolean"
           }
         },
@@ -1673,7 +1673,7 @@
             ]
           },
           "failure": {
-            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.",
+            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which amplop has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.",
             "enum": [
               "refused",
               "sending-limit",
@@ -1714,7 +1714,7 @@
             ]
           },
           "sentAt": {
-            "description": "When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.",
+            "description": "When Gmail took the message: Gmail's own time for it when amplop found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.",
             "format": "date-time",
             "type": [
               "string",
@@ -1722,7 +1722,7 @@
             ]
           },
           "status": {
-            "description": "waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again.",
+            "description": "waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and amplop cannot tell; check the account's Sent folder before sending it again.",
             "enum": [
               "waiting",
               "sending",
@@ -1807,7 +1807,7 @@
             ]
           },
           "failure": {
-            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.",
+            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which amplop has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.",
             "enum": [
               "refused",
               "sending-limit",
@@ -1848,7 +1848,7 @@
             ]
           },
           "sentAt": {
-            "description": "When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.",
+            "description": "When Gmail took the message: Gmail's own time for it when amplop found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.",
             "format": "date-time",
             "type": [
               "string",
@@ -1856,7 +1856,7 @@
             ]
           },
           "status": {
-            "description": "waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again.",
+            "description": "waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and amplop cannot tell; check the account's Sent folder before sending it again.",
             "enum": [
               "waiting",
               "sending",
@@ -2221,7 +2221,7 @@
             "type": "array"
           },
           "status": {
-            "description": "Closed: visitors cannot register. Open: anyone who can reach this inbok can register. Paused: opened, but the system email settings in use have not passed a test, so visitors cannot register until one does.",
+            "description": "Closed: visitors cannot register. Open: anyone who can reach this amplop can register. Paused: opened, but the system email settings in use have not passed a test, so visitors cannot register until one does.",
             "enum": [
               "closed",
               "open",
@@ -3119,20 +3119,20 @@
       "challengeCookie": {
         "description": "Temporary password proof. Grants no session access.",
         "in": "cookie",
-        "name": "__Host-inbok-challenge",
+        "name": "__Host-amplop-challenge",
         "type": "apiKey"
       },
       "sessionCookie": {
         "description": "Browser session cookie issued after complete sign-in. Browsers send it automatically on subsequent requests.",
         "in": "cookie",
-        "name": "__Host-inbok-session",
+        "name": "__Host-amplop-session",
         "type": "apiKey"
       }
     }
   },
   "info": {
     "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nAn administrator without two-factor authentication gets a 15-minute session\nthat can only set it up: Get Current Session, Sign Out, Get Two-Factor\nStatus, Start Two-Factor Enrollment, Check Two-Factor Enrollment Code, Show\nWaiting Backup Codes, Finish Two-Factor Enrollment, and Cancel Two-Factor\nEnrollment. Every other operation that needs a session answers 403 with type\ntotp-required.\n\nThe server checks every write itself. Where it refuses some actions on some\nitems, the item lists the ones it accepts now in allowedActions, e.g. a\nmember's deactivate and reactivate, which an administrator's account lacks;\noffer only those. A listed action can still be refused when the item changed\nsince it was read; the refusal's type says why. Ignore values you don't know.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/account-needs-reconnect` | 409 | Account needs reconnecting | Connected Accounts, Labels, Messages |\n| `/api/v0/problems/backup-codes-not-waiting` | 409 | Backup codes not waiting | Two-Factor Authentication |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts, Conversations, Labels |\n| `/api/v0/problems/conversation-not-found` | 404 | Conversation not found | Conversations |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts, Conversations, Labels, Outgoing Messages |\n| `/api/v0/problems/idempotency-key-reused` | 422 | Idempotency key reused | Outgoing Messages |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-password` | 422 | Incorrect password | Two-Factor Authentication |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/label-not-found` | 404 | Label not found | Conversations, Labels |\n| `/api/v0/problems/mail-provider-busy` | 503 | Mail provider busy | Labels, Messages |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/message-not-found` | 404 | Message not found | Messages, Outgoing Messages |\n| `/api/v0/problems/message-part-not-found` | 404 | Part not found | Messages |\n| `/api/v0/problems/message-unreadable` | 502 | Message can't be shown | Messages |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-dismissible` | 409 | Message not dismissible | Outgoing Messages |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/not-sendable-again` | 409 | Message not sendable again | Outgoing Messages |\n| `/api/v0/problems/outgoing-message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/search-unavailable` | 503 | Search unavailable | Conversations |\n| `/api/v0/problems/searches-running` | 429 | Too many searches | Conversations |\n| `/api/v0/problems/send-throttled` | 429 | Too many messages | Outgoing Messages |\n| `/api/v0/problems/sending-account-needs-reconnect` | 409 | Account needs reconnecting | Outgoing Messages |\n| `/api/v0/problems/sent-again-otherwise` | 409 | Message sent again otherwise | Outgoing Messages |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions, Two-Factor Authentication |\n| `/api/v0/problems/sync-throttled` | 429 | Sync requested recently | Connected Accounts |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-code-checked` | 409 | Code already checked | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-enrollment-expired` | 409 | Enrollment expired | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Conversations, Labels, Messages, Outgoing Messages |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Conversations, Labels, Messages, Outgoing Messages |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
-    "title": "inbok",
+    "title": "amplop",
     "version": "0.0.0"
   },
   "openapi": "3.1.0",
@@ -3282,7 +3282,7 @@
     },
     "/connected-accounts": {
       "get": {
-        "description": "Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this inbok.",
+        "description": "Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this amplop.",
         "operationId": "listConnectedAccounts",
         "responses": {
           "200": {
@@ -3474,12 +3474,12 @@
         "operationId": "finishGoogleConnect",
         "parameters": [
           {
-            "description": "The state inbok sent to Google.",
+            "description": "The state amplop sent to Google.",
             "explode": false,
             "in": "query",
             "name": "state",
             "schema": {
-              "description": "The state inbok sent to Google.",
+              "description": "The state amplop sent to Google.",
               "type": "string"
             }
           },
@@ -3614,7 +3614,7 @@
     },
     "/connected-accounts/{id}": {
       "delete": {
-        "description": "Deletes a connected account and everything inbok keeps for it. Afterwards inbok asks Google to end its permission, unless another member connected the same Google account.",
+        "description": "Deletes a connected account and everything amplop keeps for it. Afterwards amplop asks Google to end its permission, unless another member connected the same Google account.",
         "operationId": "disconnectConnectedAccount",
         "parameters": [
           {
@@ -3715,7 +3715,7 @@
         ]
       },
       "patch": {
-        "description": "Sets the name the web app shows for a connected account instead of its email, or clears it. Only inbok keeps the name; Google's account is unchanged.",
+        "description": "Sets the name the web app shows for a connected account instead of its email, or clears it. Only amplop keeps the name; Google's account is unchanged.",
         "operationId": "renameConnectedAccount",
         "parameters": [
           {
@@ -4302,7 +4302,7 @@
     },
     "/conversations/actions": {
       "post": {
-        "description": "Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. Nothing changes in inbok that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. Opening a conversation does not mark it read; send read.",
+        "description": "Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. Nothing changes in amplop that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. Opening a conversation does not mark it read; send read.",
         "operationId": "applyConversationAction",
         "requestBody": {
           "content": {
@@ -4375,7 +4375,7 @@
                 }
               }
             },
-            "description": "No Google client is configured, so inbok can't reach Gmail."
+            "description": "No Google client is configured, so amplop can't reach Gmail."
           },
           "422": {
             "content": {
@@ -4500,7 +4500,7 @@
                 }
               }
             },
-            "description": "No Google client is configured, so inbok can't reach Gmail."
+            "description": "No Google client is configured, so amplop can't reach Gmail."
           },
           "422": {
             "content": {
@@ -4754,12 +4754,12 @@
             }
           },
           {
-            "description": "attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.",
+            "description": "attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content amplop has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.",
             "explode": false,
             "in": "query",
             "name": "has",
             "schema": {
-              "description": "attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.",
+              "description": "attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content amplop has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.",
               "enum": [
                 "attachment"
               ],
@@ -5184,7 +5184,7 @@
     },
     "/labels": {
       "post": {
-        "description": "Makes a label in one of the signed-in account's connected accounts, at its provider, and returns it as the provider saved it. inbok then lists the account's labels at the provider and saves them, as a sync does.",
+        "description": "Makes a label in one of the signed-in account's connected accounts, at its provider, and returns it as the provider saved it. amplop then lists the account's labels at the provider and saves them, as a sync does.",
         "operationId": "createLabel",
         "requestBody": {
           "content": {
@@ -5285,7 +5285,7 @@
                 }
               }
             },
-            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
+            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
           },
           "422": {
             "content": {
@@ -5367,7 +5367,7 @@
                 }
               }
             },
-            "description": "The name or parent is refused, by inbok or by the provider; errors[].location names the field."
+            "description": "The name or parent is refused, by amplop or by the provider; errors[].location names the field."
           },
           "503": {
             "content": {
@@ -5523,7 +5523,7 @@
                 }
               }
             },
-            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
+            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
           },
           "503": {
             "content": {
@@ -5687,7 +5687,7 @@
                 }
               }
             },
-            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
+            "description": "The account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Or no Google client is configured, so Gmail is not offered. The account's allowedActions in List Connected Accounts says whether its labels can change now."
           },
           "422": {
             "content": {
@@ -5769,7 +5769,7 @@
                 }
               }
             },
-            "description": "The name or parent is refused, by inbok or by the provider; errors[].location names the field."
+            "description": "The name or parent is refused, by amplop or by the provider; errors[].location names the field."
           },
           "503": {
             "content": {
@@ -6188,7 +6188,7 @@
     },
     "/messages/{id}/bodies/{part}": {
       "get": {
-        "description": "Returns an HTML body of one of the signed-in account's messages as a document for a frame on inbok's own pages; its url in the message's content names it. Only a frame loads it.",
+        "description": "Returns an HTML body of one of the signed-in account's messages as a document for a frame on amplop's own pages; its url in the message's content names it. Only a frame loads it.",
         "operationId": "getMessageBody",
         "parameters": [
           {
@@ -6833,7 +6833,7 @@
                       "type": "/api/v0/problems/sending-account-needs-reconnect",
                       "status": 409,
                       "title": "Account needs reconnecting",
-                      "detail": "inbok can't open the permission it saved for the sending account. Reconnect it to send."
+                      "detail": "amplop can't open the permission it saved for the sending account. Reconnect it to send."
                     }
                   }
                 },
@@ -6842,7 +6842,7 @@
                 }
               }
             },
-            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now."
+            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now."
           },
           "422": {
             "content": {
@@ -6950,7 +6950,7 @@
     },
     "/outgoing-messages": {
       "get": {
-        "description": "Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
+        "description": "Lists at most 50 messages the signed-in account sent from amplop, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
         "operationId": "listOutgoingMessages",
         "responses": {
           "200": {
@@ -7118,7 +7118,7 @@
                       "type": "/api/v0/problems/sending-account-needs-reconnect",
                       "status": 409,
                       "title": "Account needs reconnecting",
-                      "detail": "inbok can't open the permission it saved for the sending account. Reconnect it to send."
+                      "detail": "amplop can't open the permission it saved for the sending account. Reconnect it to send."
                     }
                   }
                 },
@@ -7127,7 +7127,7 @@
                 }
               }
             },
-            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now."
+            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now."
           },
           "422": {
             "content": {
@@ -7597,7 +7597,7 @@
                       "type": "/api/v0/problems/sending-account-needs-reconnect",
                       "status": 409,
                       "title": "Account needs reconnecting",
-                      "detail": "inbok can't open the permission it saved for the sending account. Reconnect it to send."
+                      "detail": "amplop can't open the permission it saved for the sending account. Reconnect it to send."
                     }
                   }
                 },
@@ -7606,7 +7606,7 @@
                 }
               }
             },
-            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now. Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again. Or it was already sent again with other content than the body's; sentAgainAs names that copy."
+            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key amplop has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now. Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again. Or it was already sent again with other content than the body's; sentAgainAs names that copy."
           },
           "422": {
             "content": {
@@ -9270,7 +9270,7 @@
                       "type": "/api/v0/problems/setup-unconfigured",
                       "status": 409,
                       "title": "Setup unavailable",
-                      "detail": "Configure INBOK_SETUP_TOKEN to enable setup."
+                      "detail": "Configure AMPLOP_SETUP_TOKEN to enable setup."
                     }
                   }
                 },

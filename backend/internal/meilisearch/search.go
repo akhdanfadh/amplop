@@ -13,11 +13,11 @@ import (
 
 	meili "github.com/meilisearch/meilisearch-go"
 
-	"inbok/internal/search"
+	"amplop/internal/search"
 )
 
 // excerptWords is how many words of body text a hit's excerpt holds,
-// inbok's choice: about two lines of a wide list.
+// amplop's choice: about two lines of a wide list.
 const excerptWords = 20
 
 // The marks Meilisearch puts around each match, which Go takes out again:

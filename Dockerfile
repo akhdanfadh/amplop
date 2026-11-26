@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# The inbok image: the Go binary with the built web app inside, on a
+# The amplop image: the Go binary with the built web app inside, on a
 # distroless base with no shell or package manager. Build it with
 # `make image`; backend/README.md explains running it.
 
@@ -23,9 +23,9 @@ FROM ${PNPM_IMAGE} AS web
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 COPY web/patches/ ./patches/
-# Cache ids are shared by every build on the machine; inbok's own id keeps
+# Cache ids are shared by every build on the machine; amplop's own id keeps
 # its package store apart from other projects'.
-RUN --mount=type=cache,id=inbok-pnpm,target=/var/cache/pnpm \
+RUN --mount=type=cache,id=amplop-pnpm,target=/var/cache/pnpm \
     pnpm install --frozen-lockfile --store-dir /var/cache/pnpm
 COPY web/ ./
 # The build pre-renders the shell through a preview server on localhost.
@@ -43,25 +43,25 @@ WORKDIR /src/backend
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 COPY backend/ ./
 COPY --from=web /src/web/dist/client/ internal/webapp/dist/
-RUN --mount=type=cache,id=inbok-gomod,target=/go/pkg/mod \
-    --mount=type=cache,id=inbok-gobuild,target=/root/.cache/go-build \
-    go build -trimpath -ldflags="-s -w" -o /out/inbok ./cmd/inbok
+RUN --mount=type=cache,id=amplop-gomod,target=/go/pkg/mod \
+    --mount=type=cache,id=amplop-gobuild,target=/root/.cache/go-build \
+    go build -trimpath -ldflags="-s -w" -o /out/amplop ./cmd/amplop
 
 FROM ${RUNTIME_IMAGE}
-COPY --from=backend /out/inbok /usr/local/bin/inbok
+COPY --from=backend /out/amplop /usr/local/bin/amplop
 # Release mode stops Gin printing its routes at startup. Inside a container,
 # 127.0.0.1 is unreachable from other containers, e.g. the proxy. On
 # 0.0.0.0, containers on the same network reach it, and the host's network
 # only if the port is published.
 ENV GIN_MODE=release \
-    INBOK_HTTP_ADDR=0.0.0.0:8080
+    AMPLOP_HTTP_ADDR=0.0.0.0:8080
 EXPOSE 8080
 # The uid of distroless's nonroot user, as a number so a runtime can check it
 # is not root.
 USER 65532:65532
-# Exec form: there is no shell. inbok health gives up after 3 seconds,
+# Exec form: there is no shell. amplop health gives up after 3 seconds,
 # inside this 5-second timeout.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --start-interval=2s --retries=3 \
-    CMD ["/usr/local/bin/inbok", "health"]
-ENTRYPOINT ["/usr/local/bin/inbok"]
+    CMD ["/usr/local/bin/amplop", "health"]
+ENTRYPOINT ["/usr/local/bin/amplop"]
 CMD ["serve"]

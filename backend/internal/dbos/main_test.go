@@ -14,7 +14,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"inbok/internal/repository/postgres"
+	"amplop/internal/repository/postgres"
 )
 
 // testImage matches compose.yaml, like repository/postgres's tests.
@@ -67,7 +67,7 @@ func newDatabase(t *testing.T) string {
 }
 
 // migrated returns the URL of a new database with every migration
-// applied, as inbok migrate leaves it.
+// applied, as amplop migrate leaves it.
 func migrated(t *testing.T) string {
 	t.Helper()
 

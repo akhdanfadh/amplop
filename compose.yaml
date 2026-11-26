@@ -3,13 +3,13 @@ services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_USER: ${INBOK_POSTGRES_USER:?copy .env.example to .env}
-      POSTGRES_PASSWORD: ${INBOK_POSTGRES_PASSWORD:?copy .env.example to .env}
-      POSTGRES_DB: ${INBOK_POSTGRES_DB:?copy .env.example to .env}
+      POSTGRES_USER: ${AMPLOP_POSTGRES_USER:?copy .env.example to .env}
+      POSTGRES_PASSWORD: ${AMPLOP_POSTGRES_PASSWORD:?copy .env.example to .env}
+      POSTGRES_DB: ${AMPLOP_POSTGRES_DB:?copy .env.example to .env}
 
     # Only this machine can connect, not the network.
     ports:
-      - 127.0.0.1:${INBOK_POSTGRES_PORT:?copy .env.example to .env}:5432
+      - 127.0.0.1:${AMPLOP_POSTGRES_PORT:?copy .env.example to .env}:5432
 
     # PostgreSQL 18 and newer keep data under /var/lib/postgresql/18/docker;
     # mount the parent so data survives recreating the container.
@@ -35,37 +35,37 @@ services:
     # Only this machine can connect. The defaults keep a .env from before
     # Mailpit working.
     ports:
-      - 127.0.0.1:${INBOK_MAILPIT_SMTP_PORT:-1025}:1025
-      - 127.0.0.1:${INBOK_MAILPIT_WEB_PORT:-8025}:8025
+      - 127.0.0.1:${AMPLOP_MAILPIT_SMTP_PORT:-1025}:1025
+      - 127.0.0.1:${AMPLOP_MAILPIT_WEB_PORT:-8025}:8025
 
   # Google OAuth and Gmail for connecting accounts without a Google
-  # project: seeded mailboxes and inbok's development OAuth client, defined
+  # project: seeded mailboxes and amplop's development OAuth client, defined
   # in google-emulator/emulate.config.mjs. backend/README.md explains using
   # it. Built here from google-emulator/; state lives in memory, so a
   # restart empties the mailboxes back to the seed and refuses every
   # refresh token handed out before.
   google-emulator:
     build: google-emulator
-    image: inbok-google-emulator:local
+    image: amplop-google-emulator:local
     environment:
-      # The address the browser and Go reach it at, the one inbok is given,
+      # The address the browser and Go reach it at, the one amplop is given,
       # so the two cannot drift apart. It is also the ID token's issuer.
       # The defaults keep a .env from before Gmail working.
-      EMULATE_BASE_URL: ${INBOK_GOOGLE_BASE_URL:-http://127.0.0.1:${INBOK_GOOGLE_EMULATOR_PORT:-4000}}
-      # For the redirect URI it registers for inbok's client.
-      INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:-http://localhost:5173}
+      EMULATE_BASE_URL: ${AMPLOP_GOOGLE_BASE_URL:-http://127.0.0.1:${AMPLOP_GOOGLE_EMULATOR_PORT:-4000}}
+      # For the redirect URI it registers for amplop's client.
+      AMPLOP_PUBLIC_URL: ${AMPLOP_PUBLIC_URL:-http://localhost:5173}
 
     # Only this machine can connect. The image's own healthcheck tells
     # --wait when it is ready.
     ports:
-      - 127.0.0.1:${INBOK_GOOGLE_EMULATOR_PORT:-4000}:4000
+      - 127.0.0.1:${AMPLOP_GOOGLE_EMULATOR_PORT:-4000}:4000
 
   # The search index, pinned like deploy/compose.yaml's; change both
   # together with the image in backend/internal/meilisearch's tests.
   meilisearch:
     image: getmeili/meilisearch:v1.56.1@sha256:b7ba431bf6f9b26cc86132798f3640964147a699cf23f026b74c6c05dbb1d60d
     environment:
-      MEILI_MASTER_KEY: ${INBOK_MEILISEARCH_KEY:?add INBOK_MEILISEARCH_KEY to .env from .env.example}
+      MEILI_MASTER_KEY: ${AMPLOP_MEILISEARCH_KEY:?add AMPLOP_MEILISEARCH_KEY to .env from .env.example}
       # Development serves a web dashboard at the published port, which
       # asks for the key.
       MEILI_ENV: development
@@ -74,7 +74,7 @@ services:
 
     # Only this machine can connect: serve and the worker run on the host.
     ports:
-      - 127.0.0.1:${INBOK_MEILISEARCH_PORT:-7700}:7700
+      - 127.0.0.1:${AMPLOP_MEILISEARCH_PORT:-7700}:7700
 
     # NOTE: Named after the image's version, as in deploy/compose.yaml: a
     # Meilisearch version refuses to open data another version wrote, so a
@@ -101,14 +101,14 @@ services:
     # SeaweedFS makes these its admin identity when it has no S3
     # configuration file.
     environment:
-      AWS_ACCESS_KEY_ID: ${INBOK_S3_ACCESS_KEY_ID:?add INBOK_S3_ACCESS_KEY_ID to .env from .env.example}
-      AWS_SECRET_ACCESS_KEY: ${INBOK_S3_SECRET_ACCESS_KEY:?add INBOK_S3_SECRET_ACCESS_KEY to .env from .env.example}
+      AWS_ACCESS_KEY_ID: ${AMPLOP_S3_ACCESS_KEY_ID:?add AMPLOP_S3_ACCESS_KEY_ID to .env from .env.example}
+      AWS_SECRET_ACCESS_KEY: ${AMPLOP_S3_SECRET_ACCESS_KEY:?add AMPLOP_S3_SECRET_ACCESS_KEY to .env from .env.example}
 
     # Only the S3 port, which checks the keys, and only to this machine.
     # SeaweedFS's other ports let anyone read and write, so none is
     # published.
     ports:
-      - 127.0.0.1:${INBOK_SEAWEEDFS_PORT:-8333}:8333
+      - 127.0.0.1:${AMPLOP_SEAWEEDFS_PORT:-8333}:8333
     volumes:
       - seaweedfs:/data
     healthcheck:

@@ -13,7 +13,7 @@ import {
   getListConnectedAccountsQueryOptions,
   getListPlacesQueryOptions,
   useListConnectedAccounts,
-} from "@/api/generated/inbok";
+} from "@/api/generated/amplop";
 import { isPlace } from "@/features/mail/address";
 import { LabelGone } from "@/features/mail/label-gone";
 import { PlacePage } from "@/features/mail/place-page";
@@ -86,7 +86,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
     if (account !== label.accountId) {
       throw redirect({ href: `${location.pathname}?account=${label.accountId}`, replace: true });
     }
-    // A nested label is named with its parents, joined by "/", inbok's
+    // A nested label is named with its parents, joined by "/", amplop's
     // separator for every provider's; ownName is its own, e.g. for an
     // empty list's words.
     return { name: labelPath(places?.data.places ?? [], place).join("/"), ownName: label.name };
@@ -95,7 +95,8 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
   notFoundComponent: PlaceNotFound,
   // head also runs for an address that is no place, which shows Page not
   // found and names itself.
-  head: ({ loaderData }) => (loaderData ? { meta: [{ title: `${loaderData.name} - inbok` }] } : {}),
+  head: ({ loaderData }) =>
+    loaderData ? { meta: [{ title: `${loaderData.name} - amplop` }] } : {},
 });
 
 function Place(): ReactElement {
