@@ -199,7 +199,7 @@ func TestSaveSystemEmailInvalid(t *testing.T) {
 		{"long host", `"host":"smtp.example.com"`, `"host":"` + strings.Repeat("a", 254) + `"`, "body.host", "Use at most 253 characters."},
 		{"port zero", `"port":587`, `"port":0`, "body.port", "Enter a whole number from 1 to 65535."},
 		{"unknown security", `"security":"starttls"`, `"security":"ssl"`, "body.security", "Enter a valid value."},
-		{"from address", `"fromAddress":"inbok@example.com"`, `"fromAddress":"Inbok <inbok@example.com>"`, "body.fromAddress", "Enter an email address, like name@example.com."},
+		{"from address", `"fromAddress":"inbok@example.com"`, `"fromAddress":"inbok <inbok@example.com>"`, "body.fromAddress", "Enter an email address, like name@example.com."},
 		{"blank from name", `"fromName":"inbok"`, `"fromName":""`, "body.fromName", "Enter a valid value."},
 		{"long password", `"password":"app password 7f3c"`, `"password":"` + strings.Repeat("p", 256) + `"`, "body.password", "Use at most 255 characters."},
 	} {

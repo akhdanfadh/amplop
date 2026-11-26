@@ -14,7 +14,7 @@ function uriReference(value: string): boolean {
 }
 
 // RFC 9457 standard members are optional; incorrectly typed members are ignored.
-// This is deliberately separate from the stricter generated Inbok output schema.
+// This is deliberately separate from the stricter generated inbok output schema.
 export const ReceivedProblem = z.object({
   type: z.string().refine(uriReference).optional().catch(undefined),
   status: z.int().min(minHttpStatus).max(maxHttpStatus).optional().catch(undefined),

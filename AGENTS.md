@@ -100,7 +100,7 @@ The web app reads these from the contract; keep them stable:
   `body.items[3].tags`; only that marks the field in a form.
 - Received Problem Details can omit members and use relative URI references.
   Parse them with `web/src/api/received-problem.ts`.
-- Inbok problems require `type`, `status`, `title`, and `detail`. Types use
+- inbok problems require `type`, `status`, `title`, and `detail`. Types use
   versioned URI references, e.g. `/api/v0/problems/validation-error`.
   `instance` is initially omitted. Tracing uses `X-Request-ID`.
 - A second 409 meaning on one operation needs its own `type` URI so the
@@ -158,6 +158,19 @@ The web app reads these from the contract; keep them stable:
   one with `make web-add-ui NAME=dialog`.
 - Before upgrading `vite-plus` or adding a Vite plugin, read the NOTE
   comments in `web/pnpm-workspace.yaml`.
+
+## Docs
+
+- The code is the source of truth. A fact lives in one place: in code or
+  its comment, or in the technical doc section that owns it. Any other doc
+  describes the behaviour and links to that place instead of copying it.
+- `README.md` says what inbok is and does, how to run it, what it cannot
+  do, and where the docs are. It copies no version, number, limit,
+  schedule, or implementation detail that the code or `backend/README.md`,
+  `web/README.md`, or `deploy/README.md` holds; it links there. It may
+  name the technologies and standards a design decision chose, and keeps
+  the quick start's commands and steps, which a self-hoster needs first.
+- A doc that changes with the code changes in the same commit.
 
 ## Comments
 

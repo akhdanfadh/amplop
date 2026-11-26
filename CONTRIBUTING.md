@@ -2,6 +2,45 @@
 
 How to set up a development machine and change inbok. The Go server is
 described in `backend/README.md`, the browser app in `web/README.md`.
+`AGENTS.md` lists the repository's rules for code, comments, the API
+contract, and docs, for people and coding agents alike.
+
+## Requirements
+
+- Go, at the version `backend/go.mod` names or newer
+- pnpm, which downloads the pinned pnpm and Node.js versions itself
+- Docker, for PostgreSQL, Mailpit, Meilisearch, SeaweedFS, the Google
+  emulator, and the Go tests that start their own copies of them
+- A C compiler, e.g. gcc, for SQLC, which `make generate` and
+  `make check` run
+- GNU Make
+
+## Quick start
+
+From the repository root:
+
+```sh
+make services-start  # Docker services, listed below; creates .env
+make db-migrate      # create the tables
+make dev             # Go on 127.0.0.1:8080, the web app on localhost:5173
+```
+
+`make services-start` runs PostgreSQL, Mailpit, Meilisearch, SeaweedFS,
+and the Google emulator. Open `http://localhost:5173`. Ctrl+C stops the
+servers; `make services-stop` stops the Docker services and keeps their
+data.
+
+To create the first administrator, follow
+[First administrator setup](backend/README.md#first-administrator-setup),
+then open `http://localhost:5173/setup`. After setup, sign in at
+`http://localhost:5173/sign-in`.
+
+## The name
+
+Write inbok in lowercase, even at the start of a sentence, in docs,
+comments, and the interface alike. Code identifiers, environment
+variables, header names, recorded fixtures, and test data that exercises
+letter case keep their own spelling.
 
 ## Make
 
