@@ -17,7 +17,7 @@ import (
 	"inbok/internal/search"
 )
 
-// Meilisearch's own matching works on the fields ADR005 lists: typos,
+// Meilisearch's own matching works on the fields the index searches: typos,
 // prefixes, quoted phrases, excluded words, and parts of an address.
 func TestSearchText(t *testing.T) {
 	index := newIndex(t)

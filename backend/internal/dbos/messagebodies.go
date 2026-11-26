@@ -34,7 +34,7 @@ const maxBodyBatches = 50
 //
 // DESIGN: The account's data is the list of what to fetch: messages
 // without parts. The input names no message, so a lost or repeated run
-// changes nothing but when the bodies arrive (ADR009, "Fetching content").
+// changes nothing but when the bodies arrive.
 type MessageBodiesInput struct {
 	AccountID int64
 }
@@ -121,7 +121,7 @@ func runMessageBodies(ctx dbos.Context, bodies bodyFetches, input MessageBodiesI
 // DESIGN: A schedule of its own, not a step of the sync schedule's run,
 // whose success is the heartbeat that tells members syncing works: body
 // work that stalls, e.g. behind a lock on message_parts, must not make
-// healthy syncing look stopped (ADR009, "Fetching content").
+// healthy syncing look stopped.
 func (w *Worker) registerMessageBodiesSchedule(bodies bodyFetches) error {
 	if bodies == nil {
 		return dbos.DeleteSchedule(w.ctx, messageBodiesSchedule)
@@ -147,8 +147,7 @@ func (w *Worker) registerMessageBodiesSchedule(bodies bodyFetches) error {
 // DESIGN: A minute's schedule, rather than the end of a sync run or a job
 // saved with each page: bodies never share the account's pace with a full
 // sync's copy, and a quiet account, which gets no sync run, still has a
-// run that ended at its limit or failed started again within a minute
-// (ADR009, "Fetching content").
+// run that ended at its limit or failed started again within a minute.
 func startDueBodies(ctx dbos.Context, bodies bodyFetches, logger *slog.Logger) (int, error) {
 	accounts, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) ([]int64, error) {
 		return bodies.DueAccounts(stepCtx)

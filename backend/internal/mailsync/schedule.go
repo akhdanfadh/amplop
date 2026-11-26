@@ -10,7 +10,7 @@ import (
 
 const (
 	// failedRetryAfter is how long after a failed full sync the schedule
-	// starts another (ADR001, "Full sync").
+	// starts another.
 	failedRetryAfter = time.Hour
 	// checkConcurrency bounds the position checks in flight at once, inbok's
 	// choice: enough to check an installation's accounts in seconds, few
@@ -32,7 +32,7 @@ const (
 var errStopped = errors.New("account's provider work stopped")
 
 // Schedule picks the accounts whose sync run should start now, for a
-// workflow that runs it every minute (ADR001, "Polling").
+// workflow that runs it every minute.
 type Schedule struct {
 	storage  Storage
 	provider Provider
@@ -60,7 +60,7 @@ func NewSchedule(storage Storage, provider Provider, access accountAccess, now f
 // stopped account refuses starts nothing, and complete accounts not checked
 // within checkBudget wait for the next run. A complete account with no
 // failure whose position did not move is recorded as synced when the
-// provider answered (ADR001, "Polling"), after every check.
+// provider answered, after every check.
 //
 // DESIGN: a running account is started again because a run can end without
 // recording how, e.g. when storage stayed down past the last step's

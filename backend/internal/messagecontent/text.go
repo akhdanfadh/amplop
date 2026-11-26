@@ -20,7 +20,7 @@ var bomUTF8 = []byte{0xEF, 0xBB, 0xBF}
 // iso-8859-1 read as windows-1252, which senders often mean, and a charset the
 // standard calls unsafe, e.g. iso-2022-kr, reads as one U+FFFD. Like a browser,
 // it garbles UTF-8 that is labelled windows-1252, or undeclared after a first
-// kilobyte of plain ASCII (ADR009).
+// kilobyte of plain ASCII.
 func DecodeText(part Part, content []byte) []byte {
 	// NOTE: Without a declared charset, DetermineEncoding drops a last
 	// multi-byte character as if cut off, so "caf\xc3\xa9" alone reads as

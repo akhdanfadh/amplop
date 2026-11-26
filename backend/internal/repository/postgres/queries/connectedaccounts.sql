@@ -86,7 +86,7 @@ DELETE FROM account_removals WHERE id = @id;
 
 -- name: ReadConnectedAccountAccess :one
 -- The share lock waits for a deactivation in progress, so the member's flag
--- is read as ADR029 asks before provider work.
+-- is read after it, before provider work.
 SELECT ca.user_id, ca.refresh_token_key_id, ca.refresh_token_ciphertext,
     (ca.needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect,
     (u.deactivated_at IS NOT NULL)::boolean AS deactivated

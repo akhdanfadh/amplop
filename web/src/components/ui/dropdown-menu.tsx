@@ -48,8 +48,8 @@ function DropdownMenu({
       <MenuPrimitive
         // overscroll-contain: scrolling past a long menu's end leaves the
         // page behind still, as React Aria's iOS rule would, which the
-        // Content-Security-Policy blocks (DEBT.md, "Recheck React Aria's
-        // inline styles after an upgrade").
+        // Content-Security-Policy blocks. Recheck this workaround after a
+        // React Aria upgrade.
         className="max-h-[inherit] overflow-x-hidden overflow-y-auto overscroll-contain outline-hidden"
         {...props}
       >

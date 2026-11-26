@@ -1,12 +1,12 @@
 -- +goose Up
--- The MIME parts of each synchronized message whose content inbok fetched
--- (ADR009, "What is stored"): one row per part of the tree, the bytes in
--- the content store under blob_id. A message has rows for all its parts
--- or none; none means its content was never fetched.
+-- The MIME parts of each synchronized message whose content inbok fetched:
+-- one row per part of the tree, the bytes in the content store under blob_id.
+-- A message has rows for all its parts or none; none means its content was
+-- never fetched.
 --
 -- Rows are written in a transaction that first locks the account's sync
 -- state, as a sync write does, so the foreign key on messages joins the
--- lock order of ADR001: sync state, then message, then parts.
+-- lock order: sync state, then message, then parts.
 CREATE TABLE message_parts (
     connected_account_id bigint NOT NULL,
     message_id           uuid NOT NULL,

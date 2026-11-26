@@ -20,7 +20,7 @@ var ErrMessageNotFound = errors.New("messagecontent: message not found")
 const saveLimit = time.Hour
 
 // Storage keeps the part rows that describe each message's stored
-// content (ADR009, "What is stored").
+// content.
 type Storage interface {
 	// SaveMessageParts saves root, each part with its [Part.BlobID], as the
 	// part tree of account accountID's message messageID, unless the
@@ -71,13 +71,12 @@ func NewContents(store Store, storage Storage) *Contents {
 // hour. It returns [ErrMessageNotFound] when the account has no such
 // message, and the store's or storage's error.
 //
-// DESIGN: The store and PostgreSQL share no transaction, so content is
-// stored before the row that names it: a row never names content that was
-// never stored, and a failure leaves at worst content no row names, which
-// [Cleanup] deletes a day later (ADR009, "Writing and deleting"). A retry
-// before the rows commit stores the content again under new IDs: a job's
-// step output may not hold mail, so the IDs could not be recorded before
-// the fetch that tells how many there are.
+// DESIGN: The store and PostgreSQL share no transaction, so content is stored
+// before the row that names it: a row never names content that was never
+// stored, and a failure leaves at worst content no row names, which [Cleanup]
+// deletes a day later. A retry before the rows commit stores the content
+// again under new IDs: a job's step output may not hold mail, so the IDs
+// could not be recorded before the fetch that tells how many there are.
 func (c *Contents) Save(ctx context.Context, accountID int64, messageID uuid.UUID, root Part, texts []Text) error {
 	ctx, cancel := context.WithTimeout(ctx, saveLimit)
 	defer cancel()

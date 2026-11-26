@@ -64,12 +64,11 @@ export type Picker = "move" | "labels";
 // labelable returns the conversations, of conversations, whose labels
 // their rows show: those with a message outside Spam and Trash.
 //
-// DESIGN: a workaround, not a rule. Gmail keeps a trashed message's
-// labels, and the API changes them, but a row wholly in Spam or Trash
-// lists no labels, as the server keeps one list of places for both which
-// lists hold a row and which labels it has (ADR031, "Labels as built";
-// DEBT.md, "Keep a conversation's labels apart from the lists that hold
-// it"). Labels there would change what no screen shows.
+// DESIGN: a workaround, not a rule. Gmail keeps a trashed message's labels,
+// and the API changes them, but a row wholly in Spam or Trash lists no
+// labels, as the server keeps one list of places for both which lists hold a
+// row and which labels it has. Labels there would change what no screen
+// shows.
 export function labelable(conversations: readonly Conversation[]): Conversation[] {
   return conversations.filter((c) => c.allMail);
 }
@@ -117,15 +116,14 @@ export function LabelMenuItems({
 }
 
 // LabelPicker is the open picker, of picker, under More's button
-// (triggerRef), in More's place, so it fits any width (ADR031, "Labels as
-// built"): conversations' accounts' labels, one section per account,
-// headed by its name when headings is set, e.g. a list of every
-// account's. labels are the member's, as the screen reads them; onAct
-// runs what the member chose on the conversations it changes; onClose
-// closes it, which Escape and a press outside also do, sending nothing.
-// accountName names an account; canChange reports whether an account's
-// labels can change, as its allowedActions say, where typing a name no
-// label has offers New label, which opens its dialog over the picker
+// (triggerRef), in More's place, so it fits any width: conversations'
+// accounts' labels, one section per account, headed by its name when headings
+// is set, e.g. a list of every account's. labels are the member's, as the
+// screen reads them; onAct runs what the member chose on the conversations it
+// changes; onClose closes it, which Escape and a press outside also do,
+// sending nothing. accountName names an account; canChange reports whether an
+// account's labels can change, as its allowedActions say, where typing a name
+// no label has offers New label, which opens its dialog over the picker
 // (LabelDialog): from Labels the label made comes back ticked, waiting for
 // Apply; from Move to, the dialog's button moves there once it is made.
 export function LabelPicker({

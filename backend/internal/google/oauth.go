@@ -29,8 +29,8 @@ const errorInvalidToken = "invalid_token"
 // its error code.
 const maxRevokeError = 4 << 10
 
-// scopes are what inbok asks for (ADR006): who the account is, and Gmail
-// without permanent deletion.
+// scopes are what inbok asks for: who the account is, and Gmail without
+// permanent deletion.
 var scopes = []string{"openid", "email", gmail.GmailModifyScope}
 
 // AuthCodeURL returns Google's consent page address for state, asking for a
@@ -38,7 +38,7 @@ var scopes = []string{"openid", "email", gmail.GmailModifyScope}
 func (c *Client) AuthCodeURL(state, verifier string) string {
 	return c.oauth.AuthCodeURL(state,
 		// Offline access and consent every time, so every connect, a
-		// reconnect included, returns a refresh token (ADR006).
+		// reconnect included, returns a refresh token.
 		oauth2.AccessTypeOffline, oauth2.ApprovalForce,
 		oauth2.S256ChallengeOption(verifier))
 }

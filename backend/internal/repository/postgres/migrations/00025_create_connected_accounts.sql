@@ -1,8 +1,7 @@
 -- +goose Up
--- Email accounts members connect (ADR006), so far only Gmail. Each belongs to
--- one user and holds only the refresh token, sealed by connectedaccount and
--- bound to the user and the row's id, so storage hands out an id before the
--- insert.
+-- Email accounts members connect, so far only Gmail. Each belongs to one user
+-- and holds only the refresh token, sealed by connectedaccount and bound to
+-- the user and the row's id, so storage hands out an id before the insert.
 CREATE TABLE connected_accounts (
     id                       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id                  bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,

@@ -1,8 +1,8 @@
-// Package outgoingmessage owns the messages members send from their
-// connected accounts (US015), new ones and replies (US009). [Service] checks
-// a member's draft, gives it a Message-ID, and saves it for the job that
-// sends it, sends a failed message again as a copy, and reads back a
-// member's own messages with their status.
+// Package outgoingmessage owns the messages members send from their connected
+// accounts, new ones and replies. [Service] checks a member's draft, gives it
+// a Message-ID, and saves it for the job that sends it, sends a failed
+// message again as a copy, and reads back a member's own messages with their
+// status.
 package outgoingmessage
 
 import (
@@ -79,7 +79,7 @@ var Actions = []Action{ActionSendAgain, ActionDismiss}
 var ErrKeyExists = errors.New("a message with this idempotency key exists")
 
 // The member's send limit counts every message saved to send, from any of
-// their accounts, including one sent again (ADR006).
+// their accounts, including one sent again.
 //
 // DESIGN: Gmail limits each account, but not what the members of one
 // instance share: its Google client's quota and standing, and the send
@@ -552,7 +552,7 @@ func (s *Service) repeated(ctx context.Context, userID int64, request Request, c
 //
 // DESIGN: Edit and send is Send again with edits, so one operation links
 // a failed message to whatever replaced it, and its page and the Outbox
-// count follow that link (ADR006, "Sending again").
+// count follow that link.
 func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID, edits *Content) (Message, error) {
 	// 1. Refuse content that cannot be sent before any storage.
 	if edits != nil {

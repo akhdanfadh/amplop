@@ -21,7 +21,7 @@ const stateLifetime = 10 * time.Minute
 // startLimit bounds a member's unfinished starts: a finished flow deletes
 // its state, so only abandoned ones count, and each counts until it
 // expires. inbok's choice, so one member cannot fill the table between
-// cleanups (ADR006).
+// cleanups.
 var startLimit = attemptlimit.Limit{Window: stateLifetime, Max: 5}
 
 // errorAccessDenied is the error Google's redirect carries when the member
@@ -222,7 +222,7 @@ func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UU
 // DESIGN: a grant that is not saved is left alone at Google, not revoked.
 // Revoking any token ends the Google account's whole grant to inbok's
 // Google project, which another connection of the same account in the
-// instance may be using (ADR006).
+// instance may be using.
 func (c *Connections) Finish(ctx context.Context, userID int64, sessionID uuid.UUID, callback Callback) (Account, error) {
 	// 1. Take the state, so it cannot be used again whatever follows.
 	hash, err := randomsecret.Hash(callback.State)
@@ -267,7 +267,7 @@ func (c *Connections) Finish(ctx context.Context, userID int64, sessionID uuid.U
 	case !grant.GmailGranted:
 		return Account{}, ErrGmailNotGranted
 	// inbok's choice: the member never types the email, so it must be one
-	// Google vouches for (ADR006).
+	// Google vouches for.
 	case !grant.EmailVerified:
 		return Account{}, ErrEmailNotVerified
 	}

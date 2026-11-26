@@ -59,7 +59,7 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 		}
 
 		// 5. Save the sync state and its first sync, a full one, in this
-		// transaction, so no account is connected without them (ADR001).
+		// transaction, so no account is connected without them.
 		if err := queries.InsertSyncState(ctx, id); err != nil {
 			return fmt.Errorf("insert sync state: %w", err)
 		}
@@ -157,7 +157,7 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 		}
 
 		// 2. Keep its credential for the job, which then needs only the
-		// removal's ID (ADR003).
+		// removal's ID.
 		removalID, err := queries.InsertAccountRemoval(ctx, sqlc.InsertAccountRemovalParams{
 			UserID:                 row.UserID,
 			AccountID:              row.ID,

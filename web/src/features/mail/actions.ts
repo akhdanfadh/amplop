@@ -132,8 +132,7 @@ const inFlight = new WeakMap<PlaceCounts, { running: number; overlapped: boolean
 //
 // DESIGN: each answer's counts are the whole of List Places as the server
 // had them then, and answers arrive in any order, so an older answer's
-// would overwrite a newer one's (ADR031, "Mail actions as built",
-// checkpoint 7c).
+// would overwrite a newer one's.
 //
 // DESIGN: the session can end during any wait, and the query client then
 // holds the next member's reads under the same keys, so it checks that
@@ -262,8 +261,8 @@ async function runAfter(
   before: Promise<unknown>,
 ): Promise<ActionResult> {
   // A guess that changes nothing records no change, and TanStack DB then
-  // never runs the request (ADR031, TanStack DB gate, rule 5), e.g. a row
-  // starred elsewhere since this one drew: send it directly.
+  // never runs the request, e.g. a row starred elsewhere since this one drew:
+  // send it directly.
   const changing = idsOf(request).some((id) => {
     const conversation = mail.conversations.get(id);
     return conversation !== undefined && guessChanges(conversation, request);

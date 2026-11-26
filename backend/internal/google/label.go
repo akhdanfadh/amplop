@@ -83,7 +83,7 @@ func (c *Client) CreateMailbox(ctx context.Context, token connectedaccount.Acces
 // itself, whose refusal, e.g. a taken name, then changes nothing. A label
 // inside it that fails stays at the top under its old name, as Gmail shows
 // a label whose parent is gone, which the member can move; asking again
-// does not find it (ADR007).
+// does not find it.
 func (c *Client) EditMailbox(ctx context.Context, token connectedaccount.AccessToken, id, parentID, name string) error {
 	service, err := c.gmail(ctx, token)
 	if err != nil {

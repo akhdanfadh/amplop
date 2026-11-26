@@ -56,9 +56,9 @@ func (w *Worker) registerContentDeletion(store contentStore) {
 // many it deleted. When the store keeps failing past the retries, it logs
 // to logger and returns the store's error.
 //
-// DESIGN: Content no part names is also what the scheduled cleanup's
-// sweep deletes a day later (ADR009), so a run that gives up leaves the
-// content only that long.
+// DESIGN: Content no part names is also what the scheduled cleanup's sweep
+// deletes a day later, so a run that gives up leaves the content only that
+// long.
 func runContentDeletion(ctx dbos.Context, store contentStore, input ContentDeletionInput, logger *slog.Logger) (int, error) {
 	refs := make([]messagecontent.Ref, len(input.BlobIDs))
 	for i, id := range input.BlobIDs {

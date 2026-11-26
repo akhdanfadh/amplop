@@ -122,7 +122,7 @@ export const savedNotice = {
 };
 
 // What a save whose answer was lost says, after the cause. Saving replaces
-// every setting, so saving the same values again is safe (ADR022).
+// every setting, so saving the same values again is safe.
 export const lostSave = "We couldn't confirm the settings were saved. Save again to make sure.";
 
 // Leaving with changes in the open form loses them.

@@ -25,7 +25,7 @@ const (
 )
 
 // accountSync is where a connected account's sync stands, as raw fields the
-// web words (ADR001, "Polling").
+// web words.
 type accountSync struct {
 	Status        mailsync.Status `json:"status" enum:"waiting,running,complete,failed" doc:"waiting: the first full sync, or the next after a reconnect, has not started. running: a full sync copies the last 90 days; new mail still arrives. complete: the copy is current, and kept so every minute. failed: the last full sync failed; inbok tries again an hour later."`
 	MessagesSoFar *int            `json:"messagesSoFar" nullable:"true" doc:"How many messages the running full sync has copied; null unless status is running. Gmail gives no total."`
@@ -93,8 +93,8 @@ func registerAccountSync(api huma.API, handler connectedAccountHandler) {
 
 func (h connectedAccountHandler) handleSyncAccount(ctx context.Context, in *connectedAccountInput) (*output[accountSync], error) {
 	// 1. Refuse before the request is saved: without the client no worker
-	// syncs Gmail, so an accepted request would wait forever (ADR001,
-	// "Polling"). Gmail is the only provider, so the account is Gmail's.
+	// syncs Gmail, so an accepted request would wait forever. Gmail is the
+	// only provider, so the account is Gmail's.
 	if !h.providers.offered(connectedaccount.ProviderGmail) {
 		return nil, accountSyncProblem(errGmailNotConfigured)
 	}

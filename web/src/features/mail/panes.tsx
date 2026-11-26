@@ -10,8 +10,7 @@ import { useLayout } from "@/hooks/use-layout";
 //
 // DESIGN: no divider to drag: the fluid width covers what a member would
 // drag for, and a divider needs a way to resize without dragging
-// (WCAG 2.5.7), a handle visible at rest, and its width in pixels; ADR031
-// keeps resizing in the backlog with those needs.
+// (WCAG 2.5.7), a handle visible at rest, and its width in pixels.
 export function MailPanes({
   list,
   reader,

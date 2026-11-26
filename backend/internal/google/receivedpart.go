@@ -83,7 +83,7 @@ const dataUTF8 = "utf-8"
 // charset, its <meta> charset, or else Latin-1, yet keeps the part's
 // Content-Type as sent, and its size the length as sent. Bytes from
 // messages.attachments.get, e.g. a long body's or a file's, come as sent
-// (observed on real Gmail, 2026-11-12; ADR009, "What Gmail sends").
+// (observed on real Gmail, 2026-11-12).
 func dataCharset(part *gmail.MessagePart) string {
 	if part.Body == nil || part.Body.AttachmentId != "" || !strings.HasPrefix(strings.ToLower(part.MimeType), "text/") {
 		return ""

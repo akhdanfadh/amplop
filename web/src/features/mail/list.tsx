@@ -123,9 +123,9 @@ export function ConversationList({
     [labels, place],
   );
 
-  // One live query per list, with its own key (ADR031, TanStack DB gate,
-  // rule 4); the collection's ID tells one member's lists, or a list
-  // started again (restartMail), from the ones before.
+  // One live query per list, with its own key; the collection's ID tells one
+  // member's lists, or a list started again (restartMail), from the ones
+  // before.
   const list = useLiveInfiniteQuery(
     (q) =>
       q
@@ -140,8 +140,7 @@ export function ConversationList({
   // wait behind the "N new conversations" button. null shows them all.
   //
   // DESIGN: applied here, never in the query: as a date bound in the
-  // query, TanStack DB reads the whole place each time it moves (ADR031,
-  // TanStack DB gate, rule 1).
+  // query, TanStack DB reads the whole place each time it moves.
   const [anchor, setAnchor] = useState<number | null>(null);
   const rows = useMemo(
     () =>
@@ -158,13 +157,12 @@ export function ConversationList({
   const { size: rowSize, probe } = useRowSize();
   const keepPlace = useKeepPlace(rows, rowSize);
 
-  // An action in the reading pane that sent the member back to this list
-  // asks it, once the pane has closed, to focus the row that took its
-  // conversation's place, or that row itself while it stays (ADR031, "Mail
-  // actions as built", checkpoint 7c); the picking bar's action that took
-  // every picked row away asks it at once, as the bar goes: scrolled into
-  // view first, as only the rows on screen are drawn. With no row left,
-  // the heading takes it, as focus would fall to the page.
+  // An action in the reading pane that sent the member back to this list asks
+  // it, once the pane has closed, to focus the row that took its
+  // conversation's place, or that row itself while it stays; the picking
+  // bar's action that took every picked row away asks it at once, as the bar
+  // goes: scrolled into view first, as only the rows on screen are drawn.
+  // With no row left, the heading takes it, as focus would fall to the page.
   const listBox = useRef<HTMLDivElement>(null);
   const focusKey = listKey(place, account);
   const focusRequest = useRowFocusRequest(focusKey);
@@ -273,8 +271,8 @@ export function ConversationList({
   };
   // A list that could not read its rows in order, e.g. as TanStack DB asked
   // for the whole place, which inbok refuses, says so, never that the place
-  // is empty (ADR031, TanStack DB gate, rule 9); so does one whose first
-  // page met an ended session on a page kept to copy from.
+  // is empty; so does one whose first page met an ended session on a page
+  // kept to copy from.
   const unordered = error instanceof WholePlaceRefused;
   const firstPageFailed = list.isLoadingError && error instanceof ApiError;
   if ((firstPageFailed || unordered) && list.data.length === 0) {
@@ -392,7 +390,7 @@ export function ConversationList({
                     openStore={openStore}
                     now={now}
                     // React Aria's links never preload: the router reads the
-                    // conversation ahead, as its own Link would (ADR031).
+                    // conversation ahead, as its own Link would.
                     onRest={() => readAhead.rest(conversation.id)}
                     onLeave={readAhead.leave}
                     onStar={(starred) => star(conversation, starred)}

@@ -96,24 +96,22 @@ function useSidebar(): SidebarState {
 //
 // DESIGN: inbok's copy differs from shadcn's in all of these. One left
 // sidebar that collapses to a rail: no offcanvas, floating, inset, or
-// right-hand variant, and no SidebarRail: a strip on the sidebar's edge
-// that only a mouse reaches (ADR031, "Frame").
-// The window's layout (useLayout) picks sidebar, rail, or drawer, not a
-// 768 px breakpoint, so CSS never hides what React chose. In the rail
-// layout the rail expands into the drawer, over the content, as a
-// Material 3 navigation rail expands into a modal drawer; React Aria's
-// modal then closes it on Escape or a press beside it and keeps focus in
-// it. Its owner stores the open state, so nothing goes to a cookie.
-// Sidebar is a nav landmark with a name, its menus are lists, and
-// SidebarInset is a div, since the page holds its own main. It changes
-// size at once, since DESIGN.md animates only colour, opacity, and
-// transform. It is 240 px open and 56 px as a rail (68 px coarse), with
-// 12 px padding; icons keep one column, open or as a rail, and a group's
-// label becomes a hairline there. The open item, only ever a link, has the
-// selection token, a 2 px bar, and aria-current. SidebarMenuBadge follows
-// the name inside the item rather than lying over its end, so a long name
-// gives way to it, and no variant, sm or lg size, or show-on-hover action.
-// Focus rings follow React Aria's data-focus-visible.
+// right-hand variant, and no SidebarRail: a strip on the sidebar's edge that
+// only a mouse reaches. The window's layout (useLayout) picks sidebar, rail,
+// or drawer, not a 768 px breakpoint, so CSS never hides what React chose. In
+// the rail layout the rail expands into the drawer, over the content, as a
+// Material 3 navigation rail expands into a modal drawer; React Aria's modal
+// then closes it on Escape or a press beside it and keeps focus in it. Its
+// owner stores the open state, so nothing goes to a cookie. Sidebar is a nav
+// landmark with a name, its menus are lists, and SidebarInset is a div, since
+// the page holds its own main. It changes size at once, since DESIGN.md
+// animates only colour, opacity, and transform. It is 240 px open and 56 px
+// as a rail (68 px coarse), with 12 px padding; icons keep one column, open
+// or as a rail, and a group's label becomes a hairline there. The open item,
+// only ever a link, has the selection token, a 2 px bar, and aria-current.
+// SidebarMenuBadge follows the name inside the item rather than lying over
+// its end, so a long name gives way to it, and no variant, sm or lg size, or
+// show-on-hover action. Focus rings follow React Aria's data-focus-visible.
 function SidebarProvider({
   open: fullOpen,
   onOpenChange,

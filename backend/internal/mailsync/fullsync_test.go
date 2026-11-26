@@ -448,7 +448,7 @@ func TestFullSync(t *testing.T) {
 	assert.Equal(t, []string{"mailboxes", "position", "list", "messages", "list", "messages"}, provider.calls)
 	for _, query := range provider.queries {
 		assert.Equal(t, since, query.Since)
-		assert.True(t, query.IncludeJunkAndTrash, "Spam and Trash are copied (ADR001)")
+		assert.True(t, query.IncludeJunkAndTrash, "Spam and Trash are copied")
 	}
 }
 

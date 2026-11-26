@@ -102,8 +102,8 @@ type Transition struct {
 type SendState struct {
 	Message
 	// SenderDeactivated is whether the sending account's member is
-	// deactivated, read under the member's share lock, as ADR029 asks
-	// before provider work.
+	// deactivated, read under the member's share lock, so no provider work is
+	// done for a deactivated member.
 	SenderDeactivated bool
 }
 
@@ -141,10 +141,9 @@ type Preparation struct {
 // DESIGN: the message's status is the record of where sending got, so each
 // step reads it first and a step run again after a crash does what is left.
 // [StatusSending] means a request may have reached Gmail: a send is never
-// repeated after it, only checked (ADR006, Sending). What a step that sends
-// relies on, the sender's address and an active member, is checked in that
-// step, since DBOS reuses an earlier step's result after a restart however
-// long ago it ran.
+// repeated after it, only checked. What a step that sends relies on, the
+// sender's address and an active member, is checked in that step, since DBOS
+// reuses an earlier step's result after a restart however long ago it ran.
 type Sending struct {
 	storage  SendStorage
 	tokens   tokens
@@ -236,7 +235,7 @@ func (s *Sending) Send(ctx context.Context, messageID uuid.UUID) (Status, error)
 	// 4. Mark it sending before the request, so a crash during it is
 	// checked, never sent again. The member's deactivation is read again
 	// here, under their share lock, so one that committed since the
-	// token's last read stops the send (ADR029).
+	// token's last read stops the send.
 	marked := false
 	latest, err := s.storage.UpdateOutgoingMessage(ctx, messageID, func(state SendState) (Transition, error) {
 		marked = false
@@ -305,7 +304,7 @@ func (s *Sending) Check(ctx context.Context, messageID uuid.UUID, historyID stri
 	case err == nil:
 		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: s.sentAt(sent)})
 	case errors.Is(err, ErrSentNotFound), errors.Is(err, ErrCheckIncomplete):
-		// Not finding it does not prove Gmail never took it (ADR006).
+		// Not finding it does not prove Gmail never took it.
 		return s.end(ctx, messageID, Transition{Status: StatusUnknown})
 	default:
 		return "", fmt.Errorf("find sent message: %w", err)

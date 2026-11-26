@@ -100,8 +100,7 @@ describe("Move to", () => {
       .poll(() => api.changes)
       .toEqual([[{ ids: [row.id], add: [clients], remove: [hiring] }]]);
 
-    // Opened at once, the label's list shows the row, never "empty"
-    // (ADR031, TanStack DB gate, rule 9).
+    // Opened at once, the label's list shows the row, never "empty".
     await router.navigate({
       to: "/mail/$place",
       params: { place: clients },

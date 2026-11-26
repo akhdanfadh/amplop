@@ -152,14 +152,14 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 
 		// 7. Save the job that deletes the deleted messages' blobs. A worker
 		// sees it only once this commits, and a rollback drops it, so no
-		// row ever names a deleted blob (ADR009).
+		// row ever names a deleted blob.
 		if err := db.deleteBlobsAfter(ctx, tx, accountID, deletedBlobs); err != nil {
 			return err
 		}
 
 		// 8. Save the job that brings the changed messages up to date in the
 		// search index, deleted ones included. It reads them when it runs,
-		// so it commits with them, and a rollback drops it (ADR005).
+		// so it commits with them, and a rollback drops it.
 		slices.SortFunc(changed, uuid.UUID.Compare)
 		if err := db.indexAfter(ctx, tx, accountID, slices.Compact(changed)); err != nil {
 			return err

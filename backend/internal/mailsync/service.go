@@ -15,7 +15,7 @@ const (
 	// poll that finds nothing ends in about a second, so without it a
 	// script could start a run, and leave its records, every second; a
 	// minute would refuse a member's second click while waiting for a
-	// mail (ADR001, "Polling").
+	// mail.
 	requestWindow = 15 * time.Second
 	// stoppedAfter is how long without a successful run of the minute's
 	// schedule means syncing has stopped, inbok's choice: five missed
@@ -87,7 +87,7 @@ func (s *Service) Reports(ctx context.Context, accountIDs []int64) ([]Report, er
 
 // Stopped reports whether syncing has stopped on this inbok: no run of the
 // minute's schedule succeeded within stoppedAfter, e.g. as no worker runs,
-// or it runs without a Google client (ADR001, "Polling").
+// or it runs without a Google client.
 func (s *Service) Stopped(ctx context.Context) (bool, error) {
 	succeeded, err := s.runs.SyncScheduleSucceeded(ctx, s.now().Add(-stoppedAfter))
 	if err != nil {
@@ -103,14 +103,13 @@ func (s *Service) Stopped(ctx context.Context) (bool, error) {
 // reconnecting, and an [*attemptlimit.Error] wrapping
 // [ErrRequestThrottled] when its sync was requested within requestWindow.
 //
-// DESIGN: A poll that finishes polls once more when a request came since
-// its first read (see [Poll.Recheck]), so a read of the provider starts
-// after the request, and its mail shows within seconds. The page does not
-// track when a request is answered, which would take exact bookkeeping
-// across the server's and the worker's clocks (ADR001, "Polling"). A
-// request that comes after a run's last look, while the run still ends,
-// finds the run and starts none: the next minute's check then starts its
-// poll, as without the request.
+// DESIGN: A poll that finishes polls once more when a request came since its
+// first read (see [Poll.Recheck]), so a read of the provider starts after the
+// request, and its mail shows within seconds. The page does not track when a
+// request is answered, which would take exact bookkeeping across the server's
+// and the worker's clocks. A request that comes after a run's last look,
+// while the run still ends, finds the run and starts none: the next minute's
+// check then starts its poll, as without the request.
 func (s *Service) Request(ctx context.Context, userID, accountID int64) (Report, error) {
 	return s.storage.RequestSync(ctx, userID, accountID, func(request SyncRequest) (time.Time, error) {
 		if request.NeedsReconnect {

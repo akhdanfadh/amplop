@@ -1,17 +1,16 @@
 -- +goose Up
--- Synchronized mail (ADR001): each connected account's mailboxes, the
--- metadata of its messages, which mailboxes each message is in, and where
--- its synchronization stands. The provider stays authoritative;
--- disconnecting deletes the account's sync state, and with it the rest.
+-- Synchronized mail: each connected account's mailboxes, the metadata of its
+-- messages, which mailboxes each message is in, and where its synchronization
+-- stands. The provider stays authoritative; disconnecting deletes the
+-- account's sync state, and with it the rest.
 --
--- The model follows JMAP Mail (RFC 8621), which covers both IMAP folders
--- and Gmail labels: a mailbox is a named set of messages with an optional
--- role, and a message is in a set of mailboxes, usually one for a
--- folder-based provider and any number for Gmail. Read and starred are
--- flags on the message, not mailboxes. ADR001 lists where inbok departs
--- from JMAP. Commented columns are what a later provider needs, kept here
--- so the general shape stays visible; each is added with the provider that
--- fills it.
+-- The model follows JMAP Mail (RFC 8621), which covers both IMAP folders and
+-- Gmail labels: a mailbox is a named set of messages with an optional role,
+-- and a message is in a set of mailboxes, usually one for a folder-based
+-- provider and any number for Gmail. Read and starred are flags on the
+-- message, not mailboxes. Commented columns are what a later provider needs,
+-- kept here so the general shape stays visible; each is added with the
+-- provider that fills it.
 
 -- Where an account's synchronization stands, one row per account, saved with
 -- the account. status is the full sync's, which the member sees; polls keep
@@ -91,9 +90,9 @@ CREATE TABLE mailboxes (
 CREATE UNIQUE INDEX mailboxes_account_provider_id_idx ON mailboxes (connected_account_id, provider_mailbox_id);
 
 -- A message's metadata as synchronization last read it, without its body,
--- which content storage keeps (ADR009). id is inbok's own and random, never
--- derived from mail, so it can name the message in search documents, object
--- keys, and URLs.
+-- which content storage keeps. id is inbok's own and random, never derived
+-- from mail, so it can name the message in search documents, object keys, and
+-- URLs.
 CREATE TABLE messages (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connected_account_id bigint NOT NULL REFERENCES sync_states (connected_account_id) ON DELETE CASCADE,
@@ -137,11 +136,11 @@ CREATE TABLE messages (
     -- compared.
     sync_generation      integer NOT NULL CHECK (sync_generation > 0),
     -- When fetching the message's content in the background last failed for
-    -- good: the provider no longer had it or refused it, or its answer
-    -- passed inbok's cap or could not be read (ADR009, "Fetching content").
-    -- The background fetch skips the message for a day after, so one such
-    -- message neither holds back the others nor is fetched every minute;
-    -- opening it still tries. NULL when no fetch failed.
+    -- good: the provider no longer had it or refused it, or its answer passed
+    -- inbok's cap or could not be read. The background fetch skips the
+    -- message for a day after, so one such message neither holds back the
+    -- others nor is fetched every minute; opening it still tries. NULL when
+    -- no fetch failed.
     body_failed_at       timestamptz,
     -- As mailboxes_account_id_key.
     CONSTRAINT messages_account_id_key UNIQUE (connected_account_id, id)

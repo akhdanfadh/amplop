@@ -14,8 +14,8 @@ import (
 // are Meilisearch's defaults, e.g. typo tolerance and ranking.
 func indexSettings() meili.Settings {
 	return meili.Settings{
-		// In ADR005's priority: Meilisearch ranks a match in an earlier
-		// field higher.
+		// In this order, since Meilisearch ranks a match in an earlier field
+		// higher.
 		SearchableAttributes: []string{fieldSubject, fieldFrom, fieldTo, fieldCC, fieldBodyText, fieldAltText},
 		// Only the fields today's searches filter on, and the conversation,
 		// which a search keeps one match of: Meilisearch takes only a

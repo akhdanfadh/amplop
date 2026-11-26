@@ -166,7 +166,7 @@ type ReadRecoveryNoticeRow struct {
 // One recovery notice: the recipient's current email and whether they are
 // active, and the recovered account's email, NULL when it is gone. The two
 // IDs may be the same. The share lock waits for a deactivation in progress,
-// so the flag is read as ADR029 asks of a feature that sends mail.
+// so the flag is read after it, before mail goes out.
 func (q *Queries) ReadRecoveryNotice(ctx context.Context, arg ReadRecoveryNoticeParams) (ReadRecoveryNoticeRow, error) {
 	row := q.db.QueryRow(ctx, readRecoveryNotice, arg.RecoveredID, arg.RecipientID)
 	var i ReadRecoveryNoticeRow

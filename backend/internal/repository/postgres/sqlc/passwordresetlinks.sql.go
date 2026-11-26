@@ -121,7 +121,7 @@ type ReadPasswordChangedNoticeRow struct {
 
 // The notice reads the address when it runs, which can be long after the
 // reset. FOR SHARE waits for a deactivation that holds the row, so the
-// flag is read as ADR029 asks of a feature that sends mail.
+// flag is read after it, before mail goes out.
 func (q *Queries) ReadPasswordChangedNotice(ctx context.Context, id int64) (ReadPasswordChangedNoticeRow, error) {
 	row := q.db.QueryRow(ctx, readPasswordChangedNotice, id)
 	var i ReadPasswordChangedNoticeRow

@@ -69,8 +69,7 @@ var ErrTooManyParts = errors.New("messagecontent: too many parts")
 // read raw message bytes, while Gmail's full format arrives already
 // parsed, so the Gmail adapter fills this directly. An adapter for raw
 // mail, e.g. IMAP, would fill it with one of them. Either way, kinds and
-// what to show are inbok's own rules, which neither library decides
-// (ADR009, "Message parts").
+// what to show are inbok's own rules, which neither library decides.
 type Received struct {
 	ID        string               // the provider's part ID, e.g. Gmail's partId "0.1"
 	MediaType string               // e.g. "text/html", without parameters
@@ -264,7 +263,7 @@ func unbracket(id string) string {
 }
 
 // kindOf returns part's kind from its media type, disposition, filename,
-// and Content-ID, following the terms of ADR009.
+// and Content-ID.
 func kindOf(part Part) Kind {
 	text := part.MediaType == mediaPlain || part.MediaType == mediaHTML
 	switch {

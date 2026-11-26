@@ -60,8 +60,8 @@ type Test = ReturnType<typeof eq>;
 // view or a label's ID, and of account alone when given.
 //
 // DESIGN: a label is a test on labelIds, which TanStack DB evaluates as
-// "contains" and loadConversations sends as place=<label id> (ADR031,
-// TanStack DB gate, rule 8); so rows keep labelIds.
+// "contains" and loadConversations sends as place=<label id>; so rows keep
+// labelIds.
 export function placeWhere(c: Ref<Conversation>, place: Place, account: number | undefined): Test {
   const tests: Test[] = isViewPlace(place)
     ? viewFlags[place].map((flag) => eq(c[flag], true))
@@ -81,7 +81,7 @@ export function placesOf(conversation: Conversation): Place[] {
 // The fields each action sets on a conversation, before the API answers.
 // Trash and Spam also leave every other place but the Spam or Trash they
 // share, as the server's rows show a conversation only there, so a label
-// or Sent list drops it at once (ADR031, TanStack DB gate, rule 8).
+// or Sent list drops it at once.
 const guesses: Readonly<Record<Action, Partial<Conversation>>> = {
   read: { unread: false },
   unread: { unread: true },

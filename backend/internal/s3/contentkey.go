@@ -9,8 +9,7 @@ import (
 	"inbok/internal/messagecontent"
 )
 
-// accountsPrefix starts every content key: accounts/<account>/<blob ID>
-// (ADR009).
+// accountsPrefix starts every content key: accounts/<account>/<blob ID>.
 const accountsPrefix = "accounts/"
 
 // contentKey returns the object key of ref.

@@ -1,9 +1,8 @@
 -- +goose Up
 -- An outgoing message is one a member sends from one of their connected
--- accounts (US015), kept with how far sending it has got; a job sends it.
--- It belongs to its account's owner, as synchronized mail does, so deleting
--- the account, or its user, deletes it. Names follow synchronized mail's
--- (ADR001).
+-- accounts, kept with how far sending it has got; a job sends it. It belongs
+-- to its account's owner, as synchronized mail does, so deleting the account,
+-- or its user, deletes it. Names follow synchronized mail's.
 CREATE TABLE outgoing_messages (
     -- inbok's own and random, so a URL that names the message tells nothing
     -- of how many there are, as for synchronized messages.
@@ -27,13 +26,13 @@ CREATE TABLE outgoing_messages (
     -- X-Inbok-Message-Id and Message-ID headers. Gmail replaces the
     -- Message-ID with its own, which synchronized mail keeps as
     -- internet_message_id; the X- header stays, so a check after an
-    -- unanswered send finds the message by it (ADR006).
+    -- unanswered send finds the message by it.
     inbok_message_id     text NOT NULL UNIQUE CHECK (inbok_message_id LIKE '<%@%>'),
     -- A reply's threading headers (RFC 5322 section 3.6.4), worked out from
     -- the answered message when the reply is saved, so sending it needs that
     -- message no more: In-Reply-To, NULL when the answered message has no
     -- Message-ID inbok may write (msgid.Writable), and References, oldest
-    -- first, empty for a new message (ADR006, Replies).
+    -- first, empty for a new message.
     in_reply_to          text CHECK (in_reply_to LIKE '<%>'),
     internet_references  text[] NOT NULL DEFAULT '{}' CHECK (cardinality(internet_references) <= 50),
     status               text NOT NULL DEFAULT 'waiting'
@@ -48,10 +47,10 @@ CREATE TABLE outgoing_messages (
     created_at           timestamptz NOT NULL DEFAULT now(), -- also the Date header
     sent_at              timestamptz, -- when Gmail accepted it
     -- The copy a member sent again of this failed or unknown message; set
-    -- once, so sending it again twice returns the same copy (ADR006).
+    -- once, so sending it again twice returns the same copy.
     sent_again_as        uuid UNIQUE REFERENCES outgoing_messages (id) ON DELETE SET NULL,
     -- When the member dismissed this failed or unknown message: it no
-    -- longer waits on them, though it can still be sent again (ADR006).
+    -- longer waits on them, though it can still be sent again.
     dismissed_at         timestamptz,
     CONSTRAINT outgoing_messages_recipients CHECK (
         jsonb_array_length(to_addresses) + jsonb_array_length(cc_addresses)

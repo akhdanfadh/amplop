@@ -34,8 +34,7 @@ type idClaims struct {
 // after checking its issuer, audience, expiry, subject, and email.
 //
 // DESIGN: the signature is not checked. The token came straight from
-// Google's token endpoint over HTTPS, which Google documents as enough
-// (ADR006).
+// Google's token endpoint over HTTPS, which Google documents as enough.
 func (c *Client) parseIDToken(value any) (idClaims, error) {
 	raw, ok := value.(string)
 	if !ok || raw == "" {

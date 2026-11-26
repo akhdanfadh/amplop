@@ -325,9 +325,10 @@ the member pressed says why it failed, at the button or in an action's
 error toast, in the server's words ("Sign in to continue."), as any
 failure does. Accepted: sign-in does not say the
 session ended after a reload, or when another tab's sign-out reloads this
-one, since only the open page sees it end (DEBT.md has the server type
-that would); while a page is kept signed out, pages the tab already read
-still open from memory, under the banner: a revocation stops new data,
+one, since only the open page sees it end (every 401 has the same problem
+type, so a reloaded page cannot tell an ended session from a first visit);
+while a page is kept signed out, pages the tab already read still open
+from memory, under the banner: a revocation stops new data,
 not what this tab holds, and closing the tab ends it (every API answer
 is `no-store`, so nothing stays on disk); a tab that ends with nothing
 held clears the data every tab shares, which closes another tab's
@@ -800,22 +801,21 @@ time shows its date only when it is not today. Check now, or Try again on
 a failed account, starts its sync at once; once the server accepts, the
 button keeps turning ("Checking...") until the list shows a check or
 failure newer than before, or a full sync, while the list is read every 2
-seconds for 30, which also ends the wait (`checkLanded`; ADR001,
-"Polling"). When the outcome lands, a hidden polite region in the row
-says the account's name and its line once; the 30 s ending without one
-says nothing. A 429 says "Work was checked moments ago. Check again in a
-few seconds." in grey: the limit is 15 seconds, so DESIGN.md's clock time
-rounded up to the minute would overstate it. A 409 asks to reconnect the
-account first; every outcome rereads the list. The list is read again
-every 2 seconds while a sync is waiting or copying, or after a Check now
-as above, and otherwise every minute, so the checked time stays current;
-an account inbok cannot use waits for its member, so it does not count.
-When syncing has stopped on the instance, every signed-in page shows a
-warning banner under the offline one (`SyncStopped`), which reads the
-list again every minute on any page, so it follows a stop and a recovery:
-members are asked
-to tell their administrator, an administrator to check that the worker
-is running.
+seconds for 30, which also ends the wait (`checkLanded`). When the
+outcome lands, a hidden polite region in the row says the account's name
+and its line once; the 30 s ending without one says nothing. A 429 says
+"Work was checked moments ago. Check again in a few seconds." in grey:
+the limit is 15 seconds, so DESIGN.md's clock time rounded up to the
+minute would overstate it. A 409 asks to reconnect the account first;
+every outcome rereads the list. The list is read again every 2 seconds
+while a sync is waiting or copying, or after a Check now as above, and
+otherwise every minute, so the checked time stays current; an account
+inbok cannot use waits for its member, so it does not count. When syncing
+has stopped on the instance, every signed-in page shows a warning banner
+under the offline one (`SyncStopped`), which reads the list again every
+minute on any page, so it follows a stop and a recovery: members are
+asked to tell their administrator, an administrator to check that the
+worker is running.
 
 Sign out, in the member menu, deletes the current session, then
 `clearAccountCache` clears account caches, closes any toasts, and sends
@@ -1001,7 +1001,7 @@ message's page says and what it offers, so the two cannot disagree.
 ### Reply
 
 A conversation's one reply editor answers a message through Reply to
-Message (US009). `ReplyProvider` (`src/features/outgoing-messages/reply.tsx`)
+Message. `ReplyProvider` (`src/features/outgoing-messages/reply.tsx`)
 holds it around the conversation: which message it answers, in which
 mode, and the last reply sent. The conversation view places its pieces:
 `MessageReplyActions` in each open message's header (Reply, and Reply all
@@ -1634,8 +1634,8 @@ from the registry here:
   `CheckboxField`/`CheckboxButton` (and the Radio pair), which replace the
   deprecated `Checkbox` and `Radio`. The label is the component's children.
   `switch`, built the same way, left with its last caller (Registration's
-  old switch); its first new caller restores it from git history
-  (`web/src/components/ui/switch.tsx` at d3cf22bd).
+  old switch); its first new caller restores it from the file's history
+  (`git log -- web/src/components/ui/switch.tsx`).
 - `alert-dialog`: one `AlertDialog` holds the overlay and the dialog (no
   `AlertDialogContent`); `AlertDialogDescription` is React Aria's
   description slot, so the dialog is described by it; Cancel takes focus.
@@ -1699,7 +1699,7 @@ from the registry here:
   second component library. The sidebar's drawer is shadcn's `sheet`, a
   side panel on React Aria's `ModalOverlay`. React Aria's own `Sheet`
   (1.22) adds swiping, but is new and built on scroll-driven animations,
-  which not every browser has yet (ADR031 follow-ups).
+  which not every browser has yet.
 - Enter and exit animations use DESIGN.md's easing; with reduced motion,
   `src/styles.css` keeps their fades and drops their movement.
 - Focus rings use React Aria's `data-focus-visible` and the `focus-ring`
@@ -1721,9 +1721,10 @@ write it started runs: it keeps focus, so focus has a place when the dialog
 closes, and ignores presses. Its label says what is running, e.g.
 "Disconnecting...": React Aria announces the label, not a busy state
 ([Button, Pending](https://react-aria.adobe.com/Button#pending)). Other
-buttons the write blocks get `isDisabled`. Any other button that runs its
-own request (form submits, Try again) still uses `isDisabled` until the
-forms branch moves them to one pending pattern.
+buttons the write blocks get `isDisabled`. A form's `SubmitButton` is
+pending the same way while its form sends, and disables the form's other
+submit buttons; `ReadError`'s Try again uses `isDisabled` while it reads
+again.
 
 `AlertDialogAction`, the confirming button of a dialog that asks first,
 ignores a mouse or touch press that starts within 500 ms of the dialog

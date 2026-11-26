@@ -50,15 +50,15 @@ minimumReleaseAgeExclude:
 # list broke after an action, e.g. Trash right after a Delete: the open
 # upstream report https://github.com/TanStack/db/issues/2260. The patch
 # makes it read the list's first window again instead, as it already does
-# once a page has answered (ADR031, TanStack DB gate, rule 9). Tested
-# 2026-11-15 at @tanstack/db@1.0.0-rc.1.4 against the library's own tests:
-# it fixes #2260's repro and leaves every oracle and property test
-# passing, failing only 14 spec tests that pin a full-source request
-# before the first page settles. pnpm applies it on install and fails if
-# it no longer applies: recheck it on every @tanstack/db upgrade, and drop
-# it once a release fixes #2260. To change it: pnpm patch
-# @tanstack/db@<version> --edit-dir <a folder>, edit dist/esm and dist/cjs
-# query/live/ordered-source-loader, then pnpm patch-commit <the folder>,
-# run from web/ so the pinned pnpm writes the lockfile.
+# once a page has answered. Tested 2026-11-15 at @tanstack/db@1.0.0-rc.1.4
+# against the library's own tests: it fixes #2260's repro and leaves every
+# oracle and property test passing, failing only 14 spec tests that pin a
+# full-source request before the first page settles. pnpm applies it on
+# install and fails if it no longer applies: recheck it on every
+# @tanstack/db upgrade, and drop it once a release fixes #2260. To change
+# it: pnpm patch @tanstack/db@<version> --edit-dir <a folder>, edit
+# dist/esm and dist/cjs query/live/ordered-source-loader, then pnpm
+# patch-commit <the folder>, run from web/ so the pinned pnpm writes the
+# lockfile.
 patchedDependencies:
   "@tanstack/db@1.0.0-rc.1.4": patches/@tanstack__db@1.0.0-rc.1.4.patch

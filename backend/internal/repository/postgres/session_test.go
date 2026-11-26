@@ -440,7 +440,7 @@ func TestEndOthersPersistence(t *testing.T) {
 }
 
 func TestSessionDevicesMigration(t *testing.T) {
-	// Renumber with the migration if another branch takes 00011 first.
+	// Version 10 is the one before 00011_add_session_devices.sql.
 	const beforeDevices = 10
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
@@ -472,7 +472,7 @@ func TestSessionDevicesMigration(t *testing.T) {
 }
 
 func TestSessionIDsMigration(t *testing.T) {
-	// Renumber with the migration if another branch takes 00012 first.
+	// Version 11 is the one before 00012_add_session_ids.sql.
 	const beforeIDs = 11
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)

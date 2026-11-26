@@ -68,7 +68,7 @@ function SheetOverlay({
 // welcome; the title is a dialog title (18/24, 600). It stays on React
 // Aria's ModalOverlay: React Aria's own Sheet (react-aria-components 1.22)
 // adds swiping but is new and built on scroll-driven animations, which not
-// every browser has yet (ADR031 follow-ups).
+// every browser has yet.
 function Sheet({
   className,
   children,

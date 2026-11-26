@@ -79,7 +79,7 @@ const (
 	StatusNeedsReconnect Status = "needs-reconnect"
 	// StatusTokenUnreadable is an account whose saved refresh token no
 	// configured key opens. It is worked out at each read, not saved, so
-	// restoring the key makes the account usable again (ADR006).
+	// restoring the key makes the account usable again.
 	StatusTokenUnreadable Status = "token-unreadable"
 )
 
@@ -409,7 +409,7 @@ func parseIdentity(identity Identity, refreshToken string) (string, error) {
 }
 
 // tokenOwner returns the owner that binds a sealed refresh token to its user,
-// its account, and its kind of credential (ADR006).
+// its account, and its kind of credential.
 //
 // NOTE: A ciphertext copied to another account or user fails to decrypt.
 // Changing the format makes every stored refresh token unreadable.

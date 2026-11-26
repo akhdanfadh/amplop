@@ -11,12 +11,12 @@ import (
 
 const (
 	// Window is how far back a full sync copies, by the provider's own
-	// timestamp (US026; ADR001).
+	// timestamp.
 	Window = 90 * 24 * time.Hour
 	// deleteBatch is the most earlier messages one [FullSync.DeleteEarlier]
 	// deletes, inbok's choice, so one transaction stays short however much
-	// the provider deleted, and the content and search work later branches
-	// add to it stays bounded.
+	// the provider deleted, and the content and search work each deletion
+	// adds stays bounded.
 	deleteBatch = 1000
 )
 
@@ -112,7 +112,7 @@ func FailureOf(err error) Failure {
 
 // MetadataOnlyRoles returns the roles of the mailboxes whose messages
 // inbok keeps as metadata only, never fetching their bodies in the
-// background: spam and trash (ADR001).
+// background: spam and trash.
 func MetadataOnlyRoles() []Role {
 	return []Role{RoleJunk, RoleTrash}
 }
@@ -120,14 +120,13 @@ func MetadataOnlyRoles() []Role {
 // FullSync copies the last 90 days of an account's mail from its provider,
 // newest first, in steps a workflow runs in order: [FullSync.Start], then
 // [FullSync.CopyPage] until the listing ends, then [FullSync.DeleteEarlier]
-// until none are left, then [FullSync.Finish]. The window reaches back to
-// the oldest message the copy holds, if that is older, so a full sync run
-// again after the provider lost the changes brings every stored message
-// current (ADR001, "Full sync"). A step that fails ends the
-// full sync with [FullSync.Wait] or [FullSync.Fail], as [EndingOf] says.
-// Every step is safe to repeat, and each first checks that the account's
-// provider work may still run: a step that calls the provider takes its own
-// access token, so no step's output holds one.
+// until none are left, then [FullSync.Finish]. The window reaches back to the
+// oldest message the copy holds, if that is older, so a full sync run again
+// after the provider lost the changes brings every stored message current. A
+// step that fails ends the full sync with [FullSync.Wait] or [FullSync.Fail],
+// as [EndingOf] says. Every step is safe to repeat, and each first checks
+// that the account's provider work may still run: a step that calls the
+// provider takes its own access token, so no step's output holds one.
 //
 // DESIGN: A step writes only while the account's sync state still has the
 // step's generation, so a full sync that a newer one superseded stops at its
@@ -169,7 +168,7 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	}
 
 	// 3. Read the position before any page is listed, so the first poll
-	// replays every change made while the full sync ran (ADR001).
+	// replays every change made while the full sync ran.
 	position, err := s.provider.Position(ctx, token)
 	if err != nil {
 		return Run{}, providerFailed("read position", err)
@@ -177,7 +176,7 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 
 	// 4. Reach back to the oldest stored message, so a full sync run again
 	// lists every message the copy holds and brings each current: the
-	// provider's changes since the last poll may be lost (ADR001).
+	// provider's changes since the last poll may be lost.
 	since := s.now().UTC().Add(-Window)
 	oldest, ok, err := s.storage.OldestMessage(ctx, accountID)
 	if err != nil {
@@ -217,8 +216,7 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, pageT
 	}
 
 	// 2. List the page and fetch its messages' metadata. Spam and Trash are
-	// copied too, so moving a message in or out of them is a mailbox change
-	// (ADR001).
+	// copied too, so moving a message in or out of them is a mailbox change.
 	query := ListQuery{Since: run.Since, IncludeJunkAndTrash: true, PageToken: pageToken}
 	listed, err := s.provider.ListMessages(ctx, token, query)
 	if err != nil {

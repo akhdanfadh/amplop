@@ -20,8 +20,8 @@ import {
 // through their href. Props go to React Aria's GridList.
 //
 // DESIGN: type-to-find is off: a row's text is a whole conversation, and
-// letter keys are left for app keyboard shortcuts (ADR031). Selection
-// toggles, so a click opens a row until rows are picked
+// letter keys are left for app keyboard shortcuts. Selection toggles, so a
+// click opens a row until rows are picked
 // (https://react-aria.adobe.com/selection#selection-behavior).
 function GridList<T extends object>({
   rowSize,

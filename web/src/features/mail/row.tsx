@@ -526,7 +526,7 @@ function PickBox({
 // They show and take presses only while the row is hovered or one of them
 // has keyboard focus, so the date stays while focus moves from row to
 // row. React Aria's hover ignores touch, so a touch screen never shows
-// them (ADR031, feat/row-actions 8b3).
+// them.
 function RowActions({
   conversation,
   list,

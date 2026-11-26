@@ -1,6 +1,6 @@
 // Package mailsync copies each connected account's recent mail metadata and
-// mailboxes from the provider into inbok, and keeps the copy current (ADR001).
-// The provider stays authoritative: a message gone there is deleted here. It
+// mailboxes from the provider into inbok, and keeps the copy current. The
+// provider stays authoritative: a message gone there is deleted here. It
 // holds the types later features read, a [Mailbox], a [Message], and a
 // [SyncState], the [Storage] that every synchronized write goes through, and
 // the [Provider] it reads mail from.
@@ -101,8 +101,8 @@ type Message struct {
 	// ThreadID is the provider's ID for its conversation, e.g. Gmail's thread ID.
 	ThreadID string
 	// InternalDate is the provider's own timestamp, which the window counts
-	// from (ADR001): for Gmail, when Google accepted received mail, which
-	// the Date header cannot fake, though imported mail may take its Date.
+	// from: for Gmail, when Google accepted received mail, which the Date
+	// header cannot fake, though imported mail may take its Date.
 	InternalDate time.Time
 	Subject      string
 	From         []Address

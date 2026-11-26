@@ -34,7 +34,7 @@ const (
 )
 
 // TextPart is one text part of a message, its content decoded to UTF-8 as
-// content storage keeps it (ADR009).
+// content storage keeps it.
 type TextPart struct {
 	Format  TextFormat
 	Content string
@@ -144,7 +144,7 @@ func elements(list ...atom.Atom) map[atom.Atom]bool {
 // 64 KiB, enough to cut at a word.
 //
 // DESIGN: the caller groups the parts, e.g. the ones a view shows and the
-// rest, each group becoming a field of its own (ADR005).
+// rest, each group becoming a field of its own.
 func BodyText(parts []TextPart) string {
 	text := normalizer{limit: maxBodyText}
 	count, budget := 0, maxInput
@@ -180,19 +180,18 @@ func BodyText(parts []TextPart) string {
 // following at most [maxDepth] open elements.
 //
 // DESIGN: it reads tokens rather than building the document's tree with
-// html.Parse. The parser's error recovery, which repairs misnested markup
-// as a browser does, lets a crafted document of a few kilobytes take
-// hundreds of megabytes or seconds of CPU in golang.org/x/net v0.62.0, and
-// a sender writes the HTML. HTML-to-text libraries either build the same
-// tree or run table cells' words together; ADR005 lists each one
-// considered and why it was not used. A stack of open elements is all that finding
-// where a hidden element ends needs. Without the parser's repairs, an end
-// tag closes the nearest open element of its name and is ignored when none
-// is open, and an unclosed head is closed as the parser closes it. That
-// mostly moves a space; but a hidden element whose end tag HTML lets an
-// author leave out, e.g. p, li, dd, dt, tr, td, th, option, or rp, hides
-// the text after it until an enclosing element ends. Mail hides text with
-// style, not hidden, so this is accepted.
+// html.Parse. The parser's error recovery, which repairs misnested markup as
+// a browser does, lets a crafted document of a few kilobytes take hundreds of
+// megabytes or seconds of CPU in golang.org/x/net v0.62.0, and a sender
+// writes the HTML. HTML-to-text libraries either build the same tree or run
+// table cells' words together, so none is used. A stack of open elements is
+// all that finding where a hidden element ends needs. Without the parser's
+// repairs, an end tag closes the nearest open element of its name and is
+// ignored when none is open, and an unclosed head is closed as the parser
+// closes it. That mostly moves a space; but a hidden element whose end tag
+// HTML lets an author leave out, e.g. p, li, dd, dt, tr, td, th, option, or
+// rp, hides the text after it until an enclosing element ends. Mail hides
+// text with style, not hidden, so this is accepted.
 func htmlText(content string) string {
 	tokens := html.NewTokenizer(strings.NewReader(content))
 	var text strings.Builder

@@ -353,7 +353,7 @@ type ReadConnectedAccountAccessRow struct {
 }
 
 // The share lock waits for a deactivation in progress, so the member's flag
-// is read as ADR029 asks before provider work.
+// is read after it, before provider work.
 func (q *Queries) ReadConnectedAccountAccess(ctx context.Context, id int64) (ReadConnectedAccountAccessRow, error) {
 	row := q.db.QueryRow(ctx, readConnectedAccountAccess, id)
 	var i ReadConnectedAccountAccessRow

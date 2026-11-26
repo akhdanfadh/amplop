@@ -100,7 +100,7 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 // DESIGN: Closing deletes every registration attempt and link, so no email or
 // client address is kept while registration stays closed. The cost: a link
 // sent before a close stops working, even after registration reopens, and
-// reopening starts the limits from zero. ADR028 records this.
+// reopening starts the limits from zero.
 func (s *Service) Save(ctx context.Context, actorID int64, state State) (Settings, error) {
 	// 1. Refuse an unknown state before storage.
 	if state != StateOpen && state != StateClosed {

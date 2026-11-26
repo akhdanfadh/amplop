@@ -1,11 +1,11 @@
 -- +goose Up
 -- Addresses are saved as emailaddress.Parse returns them: ASCII letters
--- lowercased, other letters as typed (ADR025). Under COLLATE "C", lower()
--- changes only A to Z, whatever the database's locale. users_email_lower_idx
--- already kept users' lower() forms apart, so they cannot collide here, except
--- under a locale where lower('I') is not 'i', e.g. Turkish: there two users
--- such as I@x and i@x could exist, and this migration stops with a unique
--- violation, changing nothing.
+-- lowercased, other letters as typed. Under COLLATE "C", lower() changes only
+-- A to Z, whatever the database's locale. users_email_lower_idx already kept
+-- users' lower() forms apart, so they cannot collide here, except under a
+-- locale where lower('I') is not 'i', e.g. Turkish: there two users such as
+-- I@x and i@x could exist, and this migration stops with a unique violation,
+-- changing nothing.
 UPDATE users SET email = lower(email COLLATE "C");
 UPDATE email_verification_links SET address = lower(address COLLATE "C");
 UPDATE sign_in_attempts SET email = lower(email COLLATE "C");

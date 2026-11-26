@@ -18,10 +18,9 @@ import (
 
 const linkLifetime = 24 * time.Hour
 
-// Product policy (ADR028). The email limits keep one inbox from being
-// flooded; the client limit slows one visitor; the instance limit caps how
-// much mail strangers can make inbok send, protecting its sender's
-// reputation.
+// Product policy. The email limits keep one inbox from being flooded; the
+// client limit slows one visitor; the instance limit caps how much mail
+// strangers can make inbok send, protecting its sender's reputation.
 var (
 	emailShortLimit = attemptlimit.Limit{Window: time.Hour, Max: 3}
 	emailLongLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 5}
@@ -133,7 +132,7 @@ func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now 
 // for a client or instance over its limit, all without recording or sending
 // anything, and the error from [systememail.Mailer.Send] after recording.
 //
-// DESIGN: Two differences remain, and ADR028 accepts both. A skipped request
+// DESIGN: Two differences remain, and inbok accepts both. A skipped request
 // returns sooner than one that sends. While mail fails, a skipped request
 // still returns nil where the others return the send's error. Either hints
 // that an email was asked for recently, never that it has an account.

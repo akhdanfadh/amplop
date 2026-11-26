@@ -72,7 +72,7 @@ cleans that user's expired attempts, counts the rest with `attemptlimit.Wait`,
 and saves a reservation only if one more fits, in one transaction. The enrollment
 code check, code sign-in, backup-code replacement, and turn-off use this
 limiter. The password asked before a secret shows counts against sign-in's
-limits instead (`session.Service.VerifyPassword`, ADR024).
+limits instead (`session.Service.VerifyPassword`).
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
 against both limits, so parallel requests cannot all pass an earlier count.
@@ -178,7 +178,7 @@ body and selects the owner from the checked session. HTTP 200 returns
 
 `Service.Start` first checks the account's password through
 `session.Service.VerifyPassword`, which reserves a sign-in attempt for the
-account's email and the client's address (ADR024). A wrong password keeps
+account's email and the client's address. A wrong password keeps
 the attempt, so a stolen session cookie cannot guess it freely. Then, under
 the owner's lock:
 
@@ -199,8 +199,8 @@ start replaces it or cancellation deletes it, so the page can say it
 expired; its secret can no longer become active. The same holds for a
 waiting set past its expiry: it stays until the member's next write
 replaces or deletes it, and every path that reads it checks the expiry
-first, so nothing stored can be shown or activated. Deleting expired rows
-on a schedule is a later cleanup job's (ADR032).
+first, so nothing stored can be shown or activated. Nothing deletes
+expired rows on a schedule.
 
 ### Code check
 
@@ -269,7 +269,7 @@ Session identity grants admin access only to an administrator with
 confirmed TOTP. An administrator without it gets enrollment access, which
 allows only the current session, sign-out, and the enrollment operations
 (status, start, code check, waiting codes, finish, cancel), and
-`totpRequired: true` (ADR020). Members keep
+`totpRequired: true`. Members keep
 member access and `totpRequired: false` regardless of TOTP. Identity reads
 account and factor metadata through the session row in one snapshot,
 rejecting proof revoked since the earlier lifetime check.

@@ -82,7 +82,7 @@ func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
 //
 // DESIGN: email must be the link's, so a link someone sends for an address
 // they control cannot create that account for a person who types their own
-// (link fixation, ADR028).
+// (link fixation).
 func (c *Completion) Complete(ctx context.Context, secret, email, password string) (account.User, error) {
 	// 1. Refuse what needs no storage: a bad password, an invalid email, or
 	// a malformed secret.

@@ -20,10 +20,10 @@ type Display struct {
 // that no HTML of its multipart/related can show is offered as a
 // download.
 //
-// DESIGN: It runs when a message is shown, on what PostgreSQL keeps, so
-// a better choice reaches stored mail without fetching it again (ADR009).
-// Alternatives not chosen are the same message in another form (RFC 2046,
-// section 5.1.4), so their parts are left out, attachments included.
+// DESIGN: It runs when a message is shown, on what PostgreSQL keeps, so a
+// better choice reaches stored mail without fetching it again. Alternatives
+// not chosen are the same message in another form (RFC 2046, section 5.1.4),
+// so their parts are left out, attachments included.
 func Choose(root Part) Display {
 	var d Display
 	d.add(root)

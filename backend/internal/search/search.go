@@ -1,6 +1,6 @@
 // Package search finds a member's messages through a derived index: a
 // searchable copy of message data that returns message IDs, while the
-// messages themselves load from PostgreSQL (ADR005).
+// messages themselves load from PostgreSQL.
 package search
 
 import (

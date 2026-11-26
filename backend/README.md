@@ -61,8 +61,8 @@ finished **step**, so a stopped workflow resumes where it left off.
 `serve` runs no workflows; it saves one with the change that needs it,
 e.g. a [password reset link](#password-reset-link) with its request,
 through a DBOS client (`dbos.Client`), so it too needs the workflow
-tables `migrate` creates. ADR004 in the project's decision records
-explains the choice.
+tables `migrate` creates. DBOS keeps its workflow state in PostgreSQL, so
+inbok runs no message broker.
 
 `make dev` runs the worker beside `serve`, restarting it when a Go file
 changes; `make dev-worker` runs only the worker, and `make backend-worker`
@@ -435,10 +435,9 @@ message` with the `message_id` and the status it ended with, a warning
 unless `sent`, or `outgoing message step failed` with an error that holds
 only Gmail's status. The Gmail client is given a logger that drops
 everything: Google's own would write each request's body, the whole
-message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006
-records the rules and what they were chosen over. The worker registers the
-workflow, and listens to `inbok.google-send`, only when the Google
-settings are set, as for account removal.
+message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. The worker
+registers the workflow, and listens to `inbok.google-send`, only when the
+Google settings are set, as for account removal.
 
 ### Synchronization
 
@@ -516,8 +515,8 @@ mail shows within seconds. A request that lands after that last look,
 while the run ends, finds the run and starts none; the next minute's check
 then starts its poll, as without the request, unless the account has a
 failure recorded and its checks keep failing, when it waits for a check
-that succeeds or, after a failed full sync, the hour's retry (ADR001
-accepts this: Gmail is failing then anyway). The page does not track when
+that succeeds or, after a failed full sync, the hour's retry (inbok accepts
+this: Gmail is failing then anyway). The page does not track when
 a request is answered: that would take exact bookkeeping across the two
 processes' clocks.
 
@@ -620,7 +619,7 @@ fetches the content of recent mail in the background, so a member opens
 it without waiting and search finds it by its text. Its input is only the
 account's ID: the account's own data lists what to fetch. A message needs
 its body while it has no part rows, Gmail received it in the last 90 days,
-it is in no Spam or Trash mailbox (ADR001 keeps those metadata only), and
+it is in no Spam or Trash mailbox (those stay metadata only), and
 its fetch has not failed for good in the last day (`body_failed_at`).
 
 The workflow `inbok.message-bodies-schedule` runs at the start of every
@@ -637,7 +636,7 @@ output is how many it asked for. Bodies so wait for an account's first
 copy, which with the whole pace fills the mail list up to four times as
 fast. A later full sync, after Gmail dropped the account's history, can
 start while a body run is going; the run keeps on, sharing the pace
-(ADR009, "Fetching content", accepts it). The accounts are found from their data
+(inbok accepts this). The accounts are found from their data
 each minute, not from events: a quiet account, which gets no sync run,
 still has a run that ended at its limit or failed, or a message whose day
 passed, picked up within a minute. A pick that fails fails the run, and
@@ -1052,8 +1051,8 @@ section 4.1.4), not the part's `Content-ID`, which is `mime_content_id`.
 Rows reference their message with the account,
 deleted with it.
 
-`messagecontent.Contents.Save` writes a message's content in the order
-ADR009 sets, since the store and PostgreSQL share no transaction:
+`messagecontent.Contents.Save` writes a message's content in this
+order, since the store and PostgreSQL share no transaction:
 
 1. Store each text part's content under a new random blob ID.
 2. Save the rows in one transaction (`SaveMessageParts`), which locks the
@@ -1141,8 +1140,8 @@ silence on a connection, not on one request: over HTTP/2, which Go uses
 only with an `https` endpoint, other requests on the connection can keep
 one that stalls alive. That can hold a content job, which the sweep
 backs up, or a member's download, whose read has no request deadline so
-a large file reaches a slow client; `DEBT.md` in the decision records
-holds the fix for when an `https` store is used.
+a large file reaches a slow client. With an `https` store, though, a call
+whose answer never comes can hang for good.
 
 Feature tests use `messagecontenttest.Fake`, a store in memory.
 `messagecontenttest.RunContract` holds the tests both it and the `s3`
@@ -1281,7 +1280,7 @@ install fails if the patch no longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it. Unpatched,
 emulate puts a sent message in the `threadId` it is given, and without one
 threads it by `In-Reply-To` and `References` alone, where Gmail starts a
-new thread (ADR006, "Replies").
+new thread.
 
 Where it still differs from Google, a test that needs Google's behavior
 uses a small `httptest` stub instead:
@@ -1383,8 +1382,8 @@ technology package fills (`google` for Gmail), and returns:
 
 These are inbok's own rules on top of a parsed tree. MIME libraries such
 as emersion's go-message or enmime read raw message bytes and decide no
-kinds or display; ADR009 ("Message parts") records why Gmail's parsed
-`format=full` is used instead, and where such a library fits later.
+kinds or display; inbok reads Gmail's parsed `format=full` instead, which
+already splits the message into parts.
 
 Every string in a `Part` comes from the sender, so `Parse` makes it valid
 UTF-8 and drops control characters, which PostgreSQL refuses (NUL), and
@@ -1525,7 +1524,7 @@ the body on inbok's origin, so inline images load with the session
 cookie and the web app can size the frame. The response replaces the
 `X-Frame-Options: DENY` of [Security headers](#security-headers) with
 `SAMEORIGIN`. A `srcdoc` frame would take the web app's policy instead,
-which refuses the message's CSS; ADR009 records the trade-offs.
+which refuses the message's CSS.
 
 Three operations under the Messages tag serve a message's content, each
 through `messagecontent.Reader`, which finds the message only in the
@@ -1588,10 +1587,10 @@ instead: the same rule and trimming, but every letter keeps its case, since
 the recipient's server may treat the local part's case as meaningful
 (RFC 5321) and inbok only sends to them.
 
-ADR025 in the project's decision records explains the choice and its cost: a
-mail server that treats the local part's case as meaningful is not
-supported for inbok's own addresses. ADR006 explains why connected Gmail
-accounts follow the rule, and why recipients do not.
+The cost of lowercasing: a mail server that treats the local part's case
+as meaningful is not supported for inbok's own addresses. Connected Gmail
+accounts are lowercased too, since Gmail ignores an address's case;
+recipients are not.
 
 ## Password hashes
 
@@ -1907,7 +1906,7 @@ ORDER BY id DESC;
 System email is the mail server inbok sends its own messages through,
 separate from members' mailboxes. It has no environment variables, because
 a test send must pass on the current settings before registration opens and
-each save is audited; US018 records the rule. An administrator with
+each save is audited. An administrator with
 confirmed TOTP configures it on the web app's Settings page, which calls
 `GET` and `PUT /api/v0/system-email` and
 `POST /api/v0/system-email/test-message`. It sends test messages and
@@ -2137,8 +2136,7 @@ While an administrator keeps registration open, anyone who can reach inbok
 can create a member account. A visitor gives only an email first. The
 password comes after they follow a link emailed to them, so no one can
 choose the password of an email they do not control, and no half-made
-account ever exists. ADR028 in the project's decision records explains
-each choice below and the alternatives it was chosen over.
+account ever exists.
 
 ### Opening and closing
 
@@ -2201,12 +2199,12 @@ The email counts exactly as `Parse` returns it: `kate+news@example.org` and
 `kate@example.org` are two emails. Folding them would need each provider's
 rules and can hand an account to the wrong person, so it is left out.
 
-Two differences remain, and ADR028 accepts both: a request that sends
+Two differences remain, and both are accepted: a request that sends
 nothing answers sooner, and while mail is failing it still answers 200
 where the others answer 502. Either shows that the email was asked about
 recently, never whether it has an account. Anyone can also use up the 50
-per hour and block registration for an hour; `DEBT.md` lists the defenses
-for when that happens.
+per hour and block registration for an hour; nothing stops that, but
+inbok logs a warning when it happens.
 
 How it runs: every request first reads whether registration is open, so a
 closed inbok answers without waiting. It then waits for one PostgreSQL
@@ -2269,8 +2267,7 @@ ORDER BY id DESC;
 ## Password reset
 
 A user who forgot their password follows a link sent to their verified
-email and chooses a new one (`passwordreset`). ADR030 in the project's
-decision records explains the choices.
+email and chooses a new one (`passwordreset`).
 
 ### Links
 
@@ -2400,8 +2397,7 @@ ORDER BY id DESC;
 ## Gmail accounts
 
 A member connects Gmail accounts with Google's consent page
-(`connectedaccount`), as ADR006 in the project's decision records
-decides. Only an instance with a Google client offers it:
+(`connectedaccount`). Only an instance with a Google client offers it:
 `INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET`, which the deploy
 guide's [Connecting Gmail](../deploy/README.md#connecting-gmail) section
 shows how to create. `serve` builds `connectedaccount.Connections` only
@@ -2509,7 +2505,7 @@ account stop when `Access.Token` finds it gone.
 ### Sending mail
 
 A member sends a new message, or a reply, from one of their connected
-accounts (`outgoingmessage`, US015 and US009). `outgoing_messages` keeps
+accounts (`outgoingmessage`). `outgoing_messages` keeps
 each message under a random `uuid`: its sending account, whose owner owns
 it, the account's address when it was saved (a reconnect may change the
 account's), To, Cc, and Bcc, subject, plain text body, status, failure
@@ -2673,15 +2669,12 @@ rather than decoding it. The same row gives the same bytes on every
 worker. Building checks again each value that becomes a header (the
 recipients, `From`, the subject, the msg-ids), so none can add one, whatever
 wrote the row; it does not apply the limits
-again, so lowering one leaves saved messages sendable. ADR006 records these
-choices.
+again, so lowering one leaves saved messages sendable.
 
 ### Synchronized mail
 
 `mailsync` keeps a copy of each connected account's recent mail metadata
-and mailboxes, as ADR001 in the project's decision records decides; the
-provider stays authoritative. ADR001's "Synchronization rules" lists
-what synchronization does and where each rule comes from. A
+and mailboxes; the provider stays authoritative. A
 [sync](#synchronization) copies an account when it is connected, and
 polls keep the copy current. The
 model follows JMAP Mail (RFC 8621), which covers both folders and Gmail
@@ -2694,8 +2687,8 @@ Four tables hold it, each deleted with its account:
   `Work/Projects` as `Projects` under `Work`), and a `role` for the
   special ones, NULL for the member's own. The roles are the purposes in
   IANA's IMAP Mailbox Name Attributes registry, as JMAP names them, e.g.
-  `inbox`, `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how
-  Gmail's labels map: `UNREAD` and `STARRED` are flags, not mailboxes.
+  `inbox`, `sent`, `junk`, `trash`, or `snoozed`. Of Gmail's
+  labels, `UNREAD` and `STARRED` are flags, not mailboxes.
   `made_by` says who made it: the `provider`, for Gmail's labels of type
   `system`, e.g. `INBOX` or `CATEGORY_SOCIAL`, or the `member`; the
   labels a member sees have no role and are the member's.
@@ -2793,8 +2786,8 @@ takes an access token from [Calling Gmail](#calling-gmail):
   as `seen` and `flagged`, at the record's ID as its version; or reread,
   when that record lists no labels, since Gmail leaves out an empty list
   too. Each label record's message
-  lists its labels just after the record (observed on real Gmail; ADR001
-  "Reading Gmail"). Gmail's 404 for a history ID it no
+  lists its labels just after the record (observed on real Gmail).
+  Gmail's 404 for a history ID it no
   longer keeps returns `mailsync.ErrPositionExpired`, which means a full
   sync; so does a position that is not a history ID, without asking
   Gmail.
@@ -2833,9 +2826,8 @@ without quoting it. The Google client's own logging is off, since at
 ### Conversations
 
 The mail lists show conversations: an account's messages that share
-Gmail's thread ID (ADR031). Two tables keep them, derived from the
-synchronized mail so a list reads one index and never groups messages
-(ADR001, "Conversations"):
+Gmail's thread ID. Two tables keep them, derived from the
+synchronized mail so a list reads one index and never groups messages:
 
 - `conversations`: one row per thread with a message to show, with
   inbok's own random `id`, which the web app's URLs and the other mail
@@ -2865,9 +2857,8 @@ or a write to `messages`, `message_mailboxes`, or `mailboxes` added
 anywhere else, leaves them stale: such a write must go through
 `UpdateSyncedMail` or derive the threads it touched. So does a change to
 how a row is derived, which leaves existing rows as they were until
-their thread is written again. ADR001 lists the fixes considered, and
-`DEBT.md` holds the planned one: a rules version that `inbok migrate`
-derives every thread again on.
+their thread is written again. Nothing derives every thread again
+after such a change.
 
 The API names three things apart. A *place* is what a list shows: a
 view, e.g. `inbox`, or a label's ID, wherever either is accepted, e.g.
@@ -2876,7 +2867,7 @@ the member's own mailboxes, with no role, made by the member: a Gmail
 label, later an IMAP folder; [Labels](#labels) change them, and 404
 `label-not-found` names one the member does not have. *Mailbox* stays
 inside inbok: every label or folder the provider has, as
-`mailsync.Mailbox` and the `mailboxes` table hold them (ADR007).
+`mailsync.Mailbox` and the `mailboxes` table hold them.
 
 `conversation` reads them for the member, all under `/api/v0` and the
 Conversations tag. Each read first checks that the place's label, the
@@ -2933,8 +2924,7 @@ from that is not in Sent, else the newest, which `Derive` records as
 `newest_message_id`; the rest change every message. `untrash` puts a
 conversation back in the inbox, as Gmail's Move to Inbox does, since
 Trash took it out. `conversation.ActionService` calls Gmail inside the
-request, and inbok writes only what Gmail answers (ADR031, "Mail actions
-as built"):
+request, and inbok writes only what Gmail answers:
 
 1. It finds the member's threads, another ID refused `not-found`, and
    reads their rows as they stand before.
@@ -2970,7 +2960,7 @@ as built"):
    own replies in the inbox, as one `threads.modify` labels every
    message, and a thread only partly in Trash or Spam that the action
    put there whole comes back out of it whole, the message deleted on
-   its own included (DEBT.md, "Undo per message").
+   its own included.
 
 `POST /conversations/changes {changes}` applies changes as they are, by
 none of Gmail's rules, an action's `undo` among them: each adds its
@@ -2982,7 +2972,7 @@ change. The contract names those places once, as `ChangePlace`: one of
 a client learns from it which views a change can name, e.g. that the web
 app's Move to leaves the Inbox, a label, Spam, or Trash, and never Sent,
 All mail, or Starred. The web app's Move to and Labels send their
-changes here (ADR031, "Labels as built"). It runs as an action does,
+changes here. It runs as an action does,
 with the same answer, its own `undo` included, which reaches what each
 change names. The service turns each place into the conversation's
 account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
@@ -3011,8 +3001,7 @@ access tokens itself, as the worker does.
 ### Labels
 
 `label` creates, renames, moves, and deletes the member's labels at
-their provider, under `/api/v0` and the Labels tag (ADR007, "Changing
-labels"):
+their provider, under `/api/v0` and the Labels tag:
 
 - `POST /labels {accountId, name, parent}` makes a label in one of the
   member's accounts, at the top when `parent` is null, and answers 201
@@ -3089,8 +3078,7 @@ Search finds a member's messages through Meilisearch, a derived index: a
 searchable copy of message data that returns message IDs, with where the
 query matched and an excerpt of the body around it, while the messages
 themselves load from PostgreSQL with the usual ownership check.
-ADR005 in the project's decision records explains the choices. Jobs
-keep the index in step with synchronized mail, and Search Conversations
+Jobs keep the index in step with synchronized mail, and Search Conversations
 [searches](#searching) it.
 
 The index holds every message inbok keeps, Spam and Trash included, and
@@ -3140,7 +3128,7 @@ in as lists place it (`conversation_mailboxes`), and
 its whole conversation in the inbox, so the derive step of
 `UpdateSyncedMail` returns every message of each thread it derives, and
 the write's job indexes them all. A long thread's new reply so indexes
-its older messages again, which ADR005 accepts. Three more fields serve
+its older messages again, which inbok accepts. Three more fields serve
 filters: `from_addresses`, every address of its From as PostgreSQL holds
 it, without empty ones, e.g. a group's name; `internal_date`, when the
 provider received it, in Unix milliseconds, Gmail's own precision; and,
@@ -3211,11 +3199,11 @@ read re-reads its stored body text too.
 - `search.BodyText` turns each group into a field's text: plain text as
   it is, and the text of HTML that a reader sees, as the HTML Standard's
   default rendering decides it, read token by token and never parsed into
-  a tree with `html.Parse` (ADR005 says why), in order, cut at a word to
-  at most 64 KiB. The shown text becomes `BodyText`, the rest `AltText`,
-  so a stub such as "View in browser" never stands in for HTML a reader
-  sees, and the words of an HTML message that is only images are still
-  found in its plain-text alternative.
+  a tree with `html.Parse` (`htmlText`'s comment says why), in order, cut
+  at a word to at most 64 KiB. The shown text becomes `BodyText`, the
+  rest `AltText`, so a stub such as "View in browser" never stands in for
+  HTML a reader sees, and the words of an HTML message that is only images
+  are still found in its plain-text alternative.
 - `search.Indexer` is what the jobs call: `Index` brings a member's
   messages up to date from `IndexStorage`, which `repository/postgres`
   implements, and `RemoveAccount` removes a disconnected account.
@@ -3540,8 +3528,8 @@ next `migrate` creates it again.
 
 Until the first release, inbok is deployed nowhere, so a schema change
 edits the migration that made the table rather than adding one that
-alters it; inbok keeps no compatibility with unreleased schemas (ADR001,
-"Conversations"). A database that already applied it, e.g. your `.env`
+alters it; inbok keeps no compatibility with unreleased schemas.
+A database that already applied it, e.g. your `.env`
 stack, then needs `make db-reset`, losing its data, and its accounts
 connected again. After the first release, never edit a migration a
 deployed database has applied; add a new one.
@@ -3679,9 +3667,6 @@ httpapi --> messagecontent <-- s3
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
-ADR021 in the project's decision records explains this layout and the
-alternatives it was chosen over.
-
 ### Files and sections
 
 A package splits into files by concept, named for its noun, as `smtp`
@@ -3741,7 +3726,7 @@ resumes at the first step without one. The rules every job follows:
   Make each step safe to repeat, e.g. a delete, or an insert that ignores
   a row it already added. Where it cannot be, e.g. an email, decide
   whether a repeat is acceptable, as the recovery notice accepts a second
-  copy, and record why in ADR004.
+  copy, and record why in a comment on the step.
 - Steps call plain feature methods. Feature packages never import DBOS;
   `internal/dbos` declares a small interface for what it calls and a field
   for it in `dbos.Services`, which `cmd/inbok/worker.go` fills, as `serve`
@@ -3849,10 +3834,10 @@ A token lasts as long as Google's `expires_in` said, usually an hour.
   returns `ErrCredentialChanged` if the token changed again. Saving a
   replacement clears a refusal another job recorded against the same
   token, since Google accepted that token to send the replacement.
-- It reads the account under the member's share lock, as
-  ADR029 asks before provider work, and reads it again just before
-  returning, so an account disconnected, deactivated, or refused while
-  Google answered gets no token. Its checks hold at that last read; a job
+- It reads the account under the member's share lock, which waits for a
+  deactivation in progress, and reads it again just before returning, so
+  an account disconnected, deactivated, or refused while Google answered
+  gets no token. Its checks hold at that last read; a job
   that must not act for an account gone since, e.g. one sending mail,
   checks again where it acts.
 

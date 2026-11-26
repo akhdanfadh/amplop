@@ -30,7 +30,7 @@ var (
 )
 
 // Page sizes: the web app loads pages of [DefaultLimit] and asks for one
-// more row to learn whether another page follows (ADR031).
+// more row to learn whether another page follows.
 const (
 	DefaultLimit = 50
 	MaxLimit     = 100
@@ -273,7 +273,7 @@ func (s *Service) Get(ctx context.Context, userID int64, id uuid.UUID) (Detail, 
 	if err != nil {
 		return Detail{}, err
 	}
-	// A draft shows nowhere (ADR001, "Conversations").
+	// A draft shows nowhere: inbok cannot open one.
 	detail.Messages = slices.DeleteFunc(detail.Messages, Message.draft)
 	linkAnswers(detail.Messages)
 	detail.ProviderURL = s.linker.ConversationURL(detail.Source, detail.Conversation)

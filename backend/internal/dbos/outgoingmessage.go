@@ -18,7 +18,7 @@ const outgoingMessageWorkflow = "inbok.outgoing-message"
 
 // checkDelay is how long the send job waits after an unanswered send before
 // looking for the message in Sent, so a request Gmail is still working on
-// lands first. Google promises no bound; this is inbok's choice (ADR006).
+// lands first. Google promises no bound; this is inbok's choice.
 var checkDelay = 2 * time.Minute
 
 // giveUpDelay is how long the send job waits before trying again to end a
@@ -28,7 +28,7 @@ var giveUpDelay = 15 * time.Minute
 
 // OutgoingMessageInput is the send workflow's input: the message to send.
 // The steps read the message and a token when they run, so the input holds
-// neither content nor secret (ADR003).
+// neither content nor secret.
 type OutgoingMessageInput struct {
 	MessageID uuid.UUID
 }

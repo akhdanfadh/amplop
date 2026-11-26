@@ -2,11 +2,11 @@
 // at their account's provider, then saves the account's mailboxes as the
 // provider lists them after, as a sync saves them.
 //
-// DESIGN: a label is a mailbox of the member's with no role (ADR007). The
-// provider stays authoritative: inbok saves only what the provider lists
-// after a change, never the change it asked for, so it shows nothing the
-// provider does not have, and copies none of its naming rules beyond the
-// checks a provider's code makes before calling it.
+// DESIGN: a label is a mailbox of the member's with no role. The provider
+// stays authoritative: inbok saves only what the provider lists after a
+// change, never the change it asked for, so it shows nothing the provider
+// does not have, and copies none of its naming rules beyond the checks a
+// provider's code makes before calling it.
 package label
 
 import (
@@ -112,7 +112,7 @@ type accountAccess interface {
 // DESIGN: a provider whose messages sit in one folder each, e.g. IMAP, must
 // refuse deleting a folder that holds mail, so a delete never deletes a
 // message, and keep each folder's ID across a rename, e.g. by MAILBOXID
-// (RFC 8474), so a renamed label keeps its conversations (ADR007).
+// (RFC 8474), so a renamed label keeps its conversations.
 type Provider interface {
 	// Mailboxes returns all of the account's mailboxes, as
 	// [mailsync.Provider.Mailboxes] does.
@@ -322,7 +322,7 @@ func (s *Service) readLabel(ctx context.Context, userID int64, id uuid.UUID) (La
 // that stopped part way deleted, and a label the provider says is taken
 // that inbok had not synced yet. A sync that read the mailboxes before
 // this change and saves after it shows the old ones until the next sync,
-// which is accepted (ADR007).
+// which is accepted.
 func (s *Service) write(ctx context.Context, userID, accountID int64, change func(context.Context, connectedaccount.AccessToken) error) ([]Label, error) {
 	budget, cancel := budgetOf(ctx)
 	defer cancel()

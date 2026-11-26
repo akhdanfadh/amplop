@@ -193,7 +193,7 @@ func validateInput(input Input) error {
 	case SecurityTLS, SecuritySTARTTLS:
 	case SecurityNone:
 		// inbok never signs in without TLS, so the password never crosses the
-		// network in clear text (US018).
+		// network in clear text.
 		if input.Username != "" {
 			return ErrCleartextUsername
 		}

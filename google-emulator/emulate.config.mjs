@@ -9,9 +9,9 @@ const clientID = "inbok-dev.apps.googleusercontent.com";
 const clientSecret = "GOCSPX-inbok-dev";
 
 // inbok's callback: its public URL and one fixed path. The path must match
-// the one inbok's API serves (ADR006, Connecting). URL resolution drops a
-// trailing slash and spells the host as inbok's settings do, e.g. in
-// lowercase, so the two sides send the same text.
+// the one inbok's API serves. URL resolution drops a trailing slash and
+// spells the host as inbok's settings do, e.g. in lowercase, so the two sides
+// send the same text.
 const publicURL = process.env.INBOK_PUBLIC_URL;
 if (!publicURL) throw new Error("INBOK_PUBLIC_URL is required");
 const redirectURI = new URL("/api/v0/connected-accounts/google/callback", publicURL).href;
@@ -30,7 +30,7 @@ export default {
   google: {
     // Without it the emulator answers Gmail calls without checking the
     // access token or its scopes, and revoking leaves the refresh token
-    // working (ADR006, Testing).
+    // working.
     strict_scopes: true,
     // Fixed IDs, as a Google account keeps its own, so a reconnect after
     // the emulator restarts finds the same account (see pnpm-workspace.yaml).

@@ -42,10 +42,10 @@ type searchIndex interface {
 	RemoveAccount(ctx context.Context, owner, accountID int64) error
 }
 
-// searchRetries spans about an hour, 1, 2, 4, 8, then 15 minutes three
-// times: enough for Meilisearch's restart or a short outage, while the
-// member's later runs wait behind the retrying one (ADR005). As with every
-// policy, a worker restarted meanwhile starts the count again.
+// searchRetries spans about an hour, 1, 2, 4, 8, then 15 minutes three times:
+// enough for Meilisearch's restart or a short outage, while the member's
+// later runs wait behind the retrying one. As with every policy, a worker
+// restarted meanwhile starts the count again.
 var searchRetries = retries{attempts: 7, base: time.Minute, ceiling: 15 * time.Minute}
 
 // searchPartition returns the partition of [searchQueue] that owner's runs
@@ -158,7 +158,7 @@ type searchRebuild interface {
 // does not make up a night the worker was down, and a run that fails or
 // waits leaves the repair to a later one. It rewrites every message each night, which a demo's mail
 // makes cheap; at a larger scale, compare first, e.g. counts, and rebuild
-// only the members that differ (ADR005).
+// only the members that differ.
 func (w *Worker) registerSearchRebuild(rebuild searchRebuild) error {
 	if rebuild == nil {
 		return dbos.DeleteSchedule(w.ctx, searchRebuildSchedule)

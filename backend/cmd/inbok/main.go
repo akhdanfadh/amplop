@@ -195,8 +195,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		client := googleClient(cfg.Google, cfg.PublicURL)
 		services.Connections = connectedaccount.NewConnections(db, connectedAccounts, client, time.Now)
 		// Content a member opens before the worker stored it is fetched in
-		// the request, at this process's own Gmail pace (ADR009, "Fetching
-		// content").
+		// the request, at this process's own Gmail pace.
 		access := connectedaccount.NewAccess(db, cfg.Encryption, client, time.Now)
 		fetcher := messagecontent.NewFetcher(messagecontent.NewContents(content, db), db, client, access, time.Now, logger)
 		services.MessageContent = messagecontent.NewReader(content, db, fetcher)

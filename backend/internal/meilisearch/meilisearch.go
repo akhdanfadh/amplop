@@ -21,7 +21,7 @@ const (
 	documentPage = 1000
 )
 
-// The index's fields, named as in ADR005.
+// The index's fields.
 const (
 	fieldID        = "id"
 	fieldOwner     = "owner_user_id"

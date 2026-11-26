@@ -288,7 +288,7 @@ func TestSearchConversationsInvalid(t *testing.T) {
 		"long from":        "from=" + longAddress + "a",
 		"not an address":   "from=amazon",
 		// Huma's check wants the address net/mail reads, which drops the
-		// quotes (ADR005 accepts it).
+		// quotes: a limit inbok accepts.
 		"quoted local part": "from=%22a%2Cb%22%40example.com",
 		"11 senders":        strings.Repeat("from=a%40example.com&", 11),
 		"other has":         "has=star",

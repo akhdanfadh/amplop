@@ -119,19 +119,18 @@ func NewSearcher(index Index, storage SearchStorage) *Searcher {
 	return &Searcher{index: index, storage: storage}
 }
 
-// Search returns one page of owner's conversations in any of request's
-// places whose messages match request, each by its best match, or with no
-// words its newest. A place shows a conversation as its list does (ADR031),
-// through a message in neither Spam, Trash, nor drafts, or for Spam and
-// Trash any message but a draft. It returns [ErrNoOwner], [ErrBadPage], or
-// [ErrBadRange] before reading anything, [ErrAccountNotFound] for an
-// account owner does not have, [conversation.ErrLabelNotFound] for a label
-// owner does not have, and an error wrapping [ErrUnavailable] when the
-// index does not answer.
+// Search returns one page of owner's conversations in any of request's places
+// whose messages match request, each by its best match, or with no words its
+// newest. A place shows a conversation as its list does, through a message in
+// neither Spam, Trash, nor drafts, or for Spam and Trash any message but a
+// draft. It returns [ErrNoOwner], [ErrBadPage], or [ErrBadRange] before
+// reading anything, [ErrAccountNotFound] for an account owner does not have,
+// [conversation.ErrLabelNotFound] for a label owner does not have, and an
+// error wrapping [ErrUnavailable] when the index does not answer.
 //
-// DESIGN: the index may lag behind storage (ADR005), so storage decides
-// what is shown: the index finds messages in the places it last saw, and
-// storage drops those no longer there.
+// DESIGN: the index may lag behind storage, so storage decides what is shown:
+// the index finds messages in the places it last saw, and storage drops those
+// no longer there.
 func (s *Searcher) Search(ctx context.Context, owner int64, request Request) (Page, error) {
 	query := Query{
 		Text:           request.Text,
@@ -262,7 +261,7 @@ func scopes(places []conversation.Place, roles map[mailsync.Role][]uuid.UUID) []
 			}
 		}
 		// Spam and Trash show their messages, which every other place
-		// leaves out; drafts show nowhere (ADR001, "Conversations").
+		// leaves out; drafts show nowhere.
 		if place.View == conversation.ViewSpam || place.View == conversation.ViewTrash {
 			scope.Exclude = drafts
 		}

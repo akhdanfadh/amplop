@@ -1,22 +1,21 @@
 -- +goose Up
--- The conversations the unified inbox lists (ADR031, ADR001), kept from the
--- synchronized mail.
+-- The conversations the unified inbox lists, kept from the synchronized mail.
 --
 -- A column marked "denormalized" holds a value derived from other rows,
 -- named after the mark, so a list reads it without grouping messages. Only
 -- deriveConversations writes them, in the transaction that writes the mail
--- they come from; a write to that mail anywhere else leaves them stale
--- (ADR001, "Conversations").
+-- they come from; a write to that mail anywhere else leaves them stale.
 
 -- A conversation: an account's messages that share the provider's thread
 -- ID, as one list row. id is inbok's own and random, as a message's, so
 -- URLs can name it.
 --
--- The row is made from the conversation's visible messages: those in
--- neither Spam nor Trash, nor drafts, which inbok does not show. A
--- conversation with none is made from its Spam and Trash messages; one with
--- only drafts has no row. Like messages, the row references the account's
--- sync state, so it joins the lock order of ADR001.
+-- The row is made from the conversation's visible messages: those in neither
+-- Spam nor Trash, nor drafts, which inbok does not show. A conversation with
+-- none is made from its Spam and Trash messages; one with only drafts has no
+-- row. Like messages, the row references the account's sync state, so a write
+-- to it locks the sync state first, as every write to the account's mail
+-- does.
 CREATE TABLE conversations (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connected_account_id bigint NOT NULL REFERENCES sync_states (connected_account_id) ON DELETE CASCADE,

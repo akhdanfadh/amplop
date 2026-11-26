@@ -71,8 +71,7 @@ func New(settings Settings, now func() time.Time) *Client {
 	gmail := gmailURL
 	reach := reachAny
 	if settings.BaseURL != nil {
-		// The emulator's paths (ADR006, Testing); its ID tokens name its own
-		// origin as issuer.
+		// The emulator's paths; its ID tokens name its own origin as issuer.
 		endpoint = oauth2.Endpoint{
 			AuthURL:  settings.BaseURL.JoinPath("/o/oauth2/v2/auth").String(),
 			TokenURL: settings.BaseURL.JoinPath("/oauth2/token").String(),

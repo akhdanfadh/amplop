@@ -340,7 +340,7 @@ FOR SHARE OF u
 `
 
 // The share lock waits for a deactivation in progress, so the member's flag
-// is read as ADR029 asks before provider work.
+// is read after it, before provider work.
 func (q *Queries) LockOutgoingMessageMember(ctx context.Context, id uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, lockOutgoingMessageMember, id)
 	var deactivated bool

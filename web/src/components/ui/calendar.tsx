@@ -27,13 +27,13 @@ import {
 // Calendar picks one day on a month's grid, its month and year chosen from
 // menus above it, so a day years back is two choices away.
 //
-// DESIGN: inbok's copy differs from shadcn's as its other components do
-// (ADR031, "The flavour"): one month, single selection only, as its one
-// caller needs; the month and year are always menus; cells take DESIGN.md's
-// focus ring and touch size; it fills its column's width, each day as wide
-// as a seventh of it, so it lines up with fields above it and a range's
-// shading runs unbroken; dayClassName lets a caller mark days the
-// selection alone cannot, e.g. a range's other end.
+// DESIGN: inbok's copy differs from shadcn's as its other components do: one
+// month, single selection only, as its one caller needs; the month and year
+// are always menus; cells take DESIGN.md's focus ring and touch size; it
+// fills its column's width, each day as wide as a seventh of it, so it lines
+// up with fields above it and a range's shading runs unbroken; dayClassName
+// lets a caller mark days the selection alone cannot, e.g. a range's other
+// end.
 function Calendar<T extends DateValue>({
   className,
   dayClassName,

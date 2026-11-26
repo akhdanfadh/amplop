@@ -3,7 +3,7 @@
 //
 // DESIGN: an IPv6 connection usually gets a whole /64 block, so one host can
 // give every request a new address within it. Counting the block keeps such
-// a host one client. ADR024 records the rule.
+// a host one client.
 package clientprefix
 
 import "net/netip"

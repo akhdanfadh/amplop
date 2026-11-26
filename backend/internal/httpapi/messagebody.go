@@ -42,8 +42,8 @@ const (
 // lists [fetchDestIframe] under [fetchDestKey].
 //
 // DESIGN: the body has a URL of its own rather than the iframe's srcdoc: a
-// srcdoc document takes the web app's policy, which refuses the message's CSS,
-// while a response brings its own (ADR009). The whole copy is sanitized before
+// srcdoc document takes the web app's policy, which refuses the message's
+// CSS, while a response brings its own. The whole copy is sanitized before
 // the answer starts, so a store that fails midway gets an error answer, which
 // the view shows as a failure, rather than a message cut short that reads as
 // complete; the copy is about the size of the stored HTML.

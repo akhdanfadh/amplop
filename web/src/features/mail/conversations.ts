@@ -28,7 +28,7 @@ import { viewFlags, type Flag } from "./rules";
 //
 // NOTE: the date's text cannot be the order: Go's RFC 3339 drops trailing
 // zero fractions ("...:00Z" beside "...:00.5Z"), so the strings do not sort
-// by time (ADR031, TanStack DB gate, rule 6).
+// by time.
 export type Conversation = ConversationRowOutput & { dateMs: number };
 
 // toConversation returns row with its date as a number.
@@ -174,7 +174,7 @@ type Cursor = { dateMs: number; id?: string };
 // after the last date (cursor.whereFrom), plus each page's last date's
 // ties apart; each page asks for one row more than it needs, so the ties
 // of its last date are known whole when the extra row is older, and that
-// next load needs no request (ADR031, TanStack DB gate, rule 3).
+// next load needs no request.
 async function loadConversations(
   options: LoadSubsetOptions,
   ties: Map<string, Ties>,
@@ -392,7 +392,7 @@ export function placeKey(accountId: number, place: string): string {
 //
 // DESIGN: no refetchInterval: it reads every loaded page again, 200
 // requests at row 5,000; inbok's own timer (createMail) reads only each
-// open list's newest page (ADR031, TanStack DB gate, rule 2).
+// open list's newest page.
 function createConversations(client: QueryClient, id: string) {
   const ties = new Map<string, Ties>();
   // Reads the collection's confirmed row by ID, and the rows searches
@@ -411,8 +411,8 @@ function createConversations(client: QueryClient, id: string) {
       defaultIndexType: BasicIndex,
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      // Back online, every loaded page would be read again (rule 2); the
-      // newest pages are, below.
+      // Back online, every loaded page would be read again; the newest pages
+      // are, below.
       refetchOnReconnect: false,
       staleTime: 0,
       queryFn: async ({ meta, signal }) => {
@@ -542,8 +542,7 @@ export async function refreshMail(client: QueryClient): Promise<void> {
 // settles when they have; older pages stay as they are.
 //
 // DESIGN: the open conversation with the lists, so a row the pane holds
-// after its list let it go is as current as the list (ADR031, "Mail
-// actions as built", checkpoint 7b).
+// after its list let it go is as current as the list.
 export async function refreshNewest(client: QueryClient): Promise<void> {
   await client.refetchQueries({
     queryKey: conversationsKey,

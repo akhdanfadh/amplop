@@ -1,10 +1,10 @@
 -- +goose Up
--- An outgoing message key is the Idempotency-Key of the request that saved
--- a message, so a repeated request returns that message instead of saving a
--- second (ADR006). A key belongs to the member who sent it: another member's
--- use of the same key is another request, and never seen. It describes the
--- request, not the message, so a message sent again, which no request named,
--- has none; and it goes with its message.
+-- An outgoing message key is the Idempotency-Key of the request that saved a
+-- message, so a repeated request returns that message instead of saving a
+-- second. A key belongs to the member who sent it: another member's use of
+-- the same key is another request, and never seen. It describes the request,
+-- not the message, so a message sent again, which no request named, has none;
+-- and it goes with its message.
 CREATE TABLE outgoing_message_keys (
     user_id             bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     idempotency_key     uuid NOT NULL,

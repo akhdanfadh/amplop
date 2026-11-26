@@ -13,7 +13,7 @@ function refusal(status: number, type: ProblemType, detail?: string): ApiError {
 }
 
 describe("requested", () => {
-  // ADR030: the same answer whether or not the email has an account.
+  // The same answer whether or not the email has an account.
   it("says what happens without saying whether a link was sent", () => {
     expect(requested).toEqual({
       lead: "If this is the verified address of an active account, a reset link is on its way.",

@@ -37,8 +37,7 @@ export type ReplyValues = {
 // replyDefaults returns what the reply editor starts with when the member
 // answers message in mode, given accounts, the member's connected accounts.
 // It sends from the account that received message while that account can
-// send (US009), else from none until the member chooses. The recipients
-// are Gmail's:
+// send, else from none until the member chooses. The recipients are Gmail's:
 //   - Reply goes to Reply-To, else to From (RFC 5322 section 3.6.3).
 //   - Reply all also copies message's To and Cc.
 //   - Answering a message the account itself sent goes to that message's

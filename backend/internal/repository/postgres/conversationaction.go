@@ -38,8 +38,7 @@ func (db *DB) ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([
 // DESIGN: the mailboxes are read under the sync state's lock, in the
 // transaction that writes, so an update left without a label is never
 // written over a poll that already added that label at the same version;
-// a poll after it, at the same version, adds the label back (ADR001,
-// "Reading Gmail").
+// a poll after it, at the same version, adds the label back.
 func (db *DB) UpdateMessages(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error {
 	_, err := db.updateSyncedMail(ctx, accountID, func(queries *sqlc.Queries, current mailsync.SyncState) (mailsync.Change, error) {
 		// A label made at the provider since the last sync listed the

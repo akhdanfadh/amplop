@@ -71,9 +71,8 @@ func NewIndexer(index Index, storage IndexStorage, texts texts) *Indexer {
 //
 // DESIGN: it reads the messages when it runs rather than taking their
 // documents from the change that queued it, so whichever call runs last
-// writes the latest state. That holds only while one call at a time runs
-// for an owner, as the search queue runs them (ADR005): the index orders
-// no writes itself.
+// writes the latest state. That holds only while one call at a time runs for
+// an owner, as the search queue runs them: the index orders no writes itself.
 func (x *Indexer) Index(ctx context.Context, owner int64, ids []uuid.UUID) error {
 	if err := ValidateOwner(owner); err != nil {
 		return err
@@ -132,12 +131,12 @@ func (x *Indexer) document(ctx context.Context, owner int64, source Source) (Doc
 		FromAddresses:      addresses(source.From),
 		// A message's document holds its conversation's places, which
 		// storage derives again with every write to the thread and so
-		// queues every message of the thread to index (ADR005).
+		// queues every message of the thread to index.
 		ConversationMailboxIDs: source.ConversationMailboxIDs,
 		ConversationFlagged:    source.ConversationFlagged,
 	}
 	if !source.HasParts {
-		// Found by its headers until its body is stored (ADR005).
+		// Found by its headers until its body is stored.
 		return document, nil
 	}
 	// No more than BodyText reads of one field, shared by both, so the

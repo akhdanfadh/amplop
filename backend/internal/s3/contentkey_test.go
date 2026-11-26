@@ -15,7 +15,7 @@ import (
 // testID holds letters, so its upper-case spelling differs.
 var testID = uuid.MustParse("0e6f3a52-9c1b-4d7e-8a2f-5b4c3d2e1f0a")
 
-// Content sits at accounts/<account>/<blob ID>, as ADR009 records.
+// Content sits at accounts/<account>/<blob ID>.
 func TestContentKey(t *testing.T) {
 	key := contentKey(messagecontent.Ref{Account: 42, ID: testID})
 

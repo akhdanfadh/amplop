@@ -115,7 +115,7 @@ type FetchStorage interface {
 // Fetcher fetches messages' content from their provider and keeps it in
 // [Contents]: in the background, the bodies of the recent messages a
 // member would read next, and on request, a message or part a member
-// opens (ADR009, "Fetching content").
+// opens.
 type Fetcher struct {
 	contents *Contents
 	storage  FetchStorage
@@ -150,8 +150,7 @@ type Batch struct {
 // a body is fetched when they open its message anyway. The accounts are
 // found from their data each time, not from events, so a run that ended
 // at its limit or failed, or a failure's day that passed, is picked up the
-// next time without anything having to remember it (ADR009, "Fetching
-// content").
+// next time without anything having to remember it.
 func (f *Fetcher) DueAccounts(ctx context.Context) ([]int64, error) {
 	accounts, err := f.storage.AccountsWithDueBodies(ctx, f.dueFilter())
 	if err != nil {

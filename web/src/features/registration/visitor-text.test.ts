@@ -16,7 +16,7 @@ function refusal(method: string, status: number, type: ProblemType, detail: stri
 }
 
 describe("requested", () => {
-  // ADR028: the same answer whether or not the email has an account.
+  // The same answer whether or not the email has an account.
   it("points to the inbox without saying what was sent", () => {
     expect(requested).toEqual({
       lead: "Look for a message at this address.",

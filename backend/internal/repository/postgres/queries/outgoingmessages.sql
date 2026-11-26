@@ -142,7 +142,7 @@ FOR NO KEY UPDATE OF ca;
 
 -- name: LockOutgoingMessageMember :one
 -- The share lock waits for a deactivation in progress, so the member's flag
--- is read as ADR029 asks before provider work.
+-- is read after it, before provider work.
 SELECT (u.deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id

@@ -16,7 +16,7 @@ const (
 	// googleSendQueue runs the workflows that send members' messages through
 	// Gmail. A run keeps its place in a queue's limit until it ends, and
 	// priority orders only waiting runs, so a member's send would wait
-	// behind long runs on googleQueue were it there (ADR004).
+	// behind long runs on googleQueue were it there.
 	googleSendQueue = "inbok.google-send"
 
 	// contentQueue runs the workflows that delete message content from
@@ -24,8 +24,7 @@ const (
 	contentQueue = "inbok.content"
 
 	// searchQueue runs the workflows that write to the search index, one
-	// at a time for each member and side by side for different members
-	// (ADR005).
+	// at a time for each member and side by side for different members.
 	searchQueue = "inbok.search"
 
 	// searchRebuildQueue runs the rebuilds of every member's search index

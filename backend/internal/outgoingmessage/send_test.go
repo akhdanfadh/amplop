@@ -291,7 +291,7 @@ func TestSendSenderChanged(t *testing.T) {
 }
 
 // A member deactivated after the token was taken, read again under the
-// message's lock, stops the send (ADR029).
+// message's lock, stops the send.
 func TestSendDeactivated(t *testing.T) {
 	s := newSendTest(t)
 	s.storage.deactivated = true
@@ -419,7 +419,7 @@ func TestCheckFound(t *testing.T) {
 }
 
 // Not finding the message, or not being able to tell, ends it unknown:
-// never sent again (ADR006).
+// never sent again.
 func TestCheckNotFound(t *testing.T) {
 	for _, findErr := range []error{ErrSentNotFound, ErrCheckIncomplete} {
 		t.Run(findErr.Error(), func(t *testing.T) {

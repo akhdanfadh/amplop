@@ -1,17 +1,15 @@
 // Package conversation holds inbok's conversations: each account's messages
-// that share the provider's thread, as one row of the unified inbox
-// (ADR031). [Derive] applies the rules that make a thread's row and places,
-// which storage keeps derived for every thread a sync write touches.
-// [Service] lists and reads them for one member, across their connected
-// accounts or one of them.
+// that share the provider's thread, as one row of the unified inbox. [Derive]
+// applies the rules that make a thread's row and places, which storage keeps
+// derived for every thread a sync write touches. [Service] lists and reads
+// them for one member, across their connected accounts or one of them.
 //
-// DESIGN: The rules (ADR001, "Conversations"): a draft shows nowhere, which
-// inbok cannot open yet; a message in Spam or Trash counts only there. A
-// conversation's row is made from its visible messages, the others, or when
-// it has none, from its Spam and Trash ones. One row per conversation, the
-// same in every place, is what the web app's data layer keeps (ADR031), so a
-// row's date is its newest visible message's in every place, as in Gmail's
-// conversation view.
+// DESIGN: The rules: a draft shows nowhere, which inbok cannot open; a
+// message in Spam or Trash counts only there. A conversation's row is made
+// from its visible messages, the others, or when it has none, from its Spam
+// and Trash ones. One row per conversation, the same in every place, is what
+// the web app's data layer keeps, so a row's date is its newest visible
+// message's in every place, as in Gmail's conversation view.
 package conversation
 
 import (

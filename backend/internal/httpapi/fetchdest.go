@@ -45,7 +45,7 @@ var (
 // The sanitizer keeps such an address only as an absolute URL once the
 // member loads remote content, or by a bug. A GET must change nothing
 // anyway; this keeps a body from reaching an operation it was never
-// meant to load, e.g. one added later that forgets that rule (ADR009).
+// meant to load, e.g. one added later that forgets that rule.
 func withFetchDest() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		dest := ctx.Header("Sec-Fetch-Dest")

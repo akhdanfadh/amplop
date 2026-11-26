@@ -52,7 +52,7 @@ var Actions = []Action{
 // messages, so marking each unread would open them all on the next visit,
 // and a star on each shows on each. Their opposites clear every message,
 // so Unstar and Mark read leave no star or unread message behind, and
-// undoing them marks only the newest (ADR031, "Mail actions as built").
+// undoing them marks only the newest.
 func (a Action) OnNewest() bool {
 	return a == ActionStar || a == ActionUnread
 }
@@ -231,8 +231,7 @@ func NewActionService(storage ActionStorage, access accountAccess, provider Thre
 //
 // DESIGN: inbok writes only what the provider answered, so it never shows
 // a change the provider does not have, and copies none of the provider's
-// rules, e.g. what Trash does to a thread's other labels (ADR031, "Mail
-// actions as built").
+// rules, e.g. what Trash does to a thread's other labels.
 func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, ids []uuid.UUID) (Applied, error) {
 	// 1. Refuse bad input before any read or provider call.
 	if !slices.Contains(Actions, action) {
@@ -264,8 +263,7 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 // DESIGN: the undo is the difference between each conversation's row
 // before and after, within its reach, so it puts back only what this
 // changed: a label added meanwhile elsewhere stays, and a star or unread
-// mark that changed during a move, e.g. a new reply's, is not taken back
-// (ADR031, "Mail actions as built", checkpoint 7c).
+// mark that changed during a move, e.g. a new reply's, is not taken back.
 func (a *ActionService) run(ctx context.Context, userID int64, ids []uuid.UUID, threads []Thread, reach func(uuid.UUID) Reach, call threadCall) (Applied, error) {
 	reasons := make(map[uuid.UUID]Reason, len(ids))
 	for _, id := range ids {
@@ -358,8 +356,7 @@ type accountOutcome struct {
 // write passes as not late, unless a poll stores a newer one meanwhile and
 // wins; a change made after that version carries a greater one, so the
 // poll that brings it still writes over this one, and the action's own
-// record comes again with that poll (ADR031, "Mail actions as built",
-// checkpoint 7a).
+// record comes again with that poll.
 func (a *ActionService) applyAccount(ctx, budget context.Context, call threadCall, outcome *accountOutcome) error {
 	outcome.refused = make(map[uuid.UUID]Reason)
 	refuseAll := func(reason Reason) {

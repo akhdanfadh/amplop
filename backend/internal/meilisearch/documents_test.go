@@ -13,9 +13,9 @@ import (
 	"inbok/internal/search"
 )
 
-// Documents are stored under ADR005's field names, IDs as decimal
-// strings, the date as Unix milliseconds, and the conversation as the
-// account and the thread.
+// Documents are stored under the index's field names, IDs as decimal strings,
+// the date as Unix milliseconds, and the conversation as the account and the
+// thread.
 func TestUpsertFields(t *testing.T) {
 	index := newIndex(t)
 	inbox, label := uuid.New(), uuid.New()
@@ -81,7 +81,7 @@ func TestUpsertReplaces(t *testing.T) {
 	assert.NotContains(t, stored, "stale")
 }
 
-// A member's first upsert creates their index with ADR005's settings.
+// A member's first upsert creates their index with the index's settings.
 func TestUpsertCreates(t *testing.T) {
 	index := newIndex(t)
 

@@ -30,9 +30,9 @@ const (
 // as opposed to "user" for the member's (Gmail's labels reference).
 const labelTypeSystem = "system"
 
-// labelRoles are the system labels that are mailboxes with a role
-// (ADR007, "Gmail labels as mailboxes"). Every other label is a mailbox
-// without one, but for [labelUnread] and [labelStarred], which are flags.
+// labelRoles are the system labels that are mailboxes with a role. Every
+// other label is a mailbox without one, but for [labelUnread] and
+// [labelStarred], which are flags.
 var labelRoles = map[string]mailsync.Role{
 	labelInbox:     mailsync.RoleInbox,
 	labelSent:      mailsync.RoleSent,

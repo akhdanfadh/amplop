@@ -94,7 +94,7 @@ func proxied(t *testing.T, before func(r *http.Request)) meili.ServiceManager {
 	return meili.New(server.URL, meili.WithAPIKey(masterKey), meili.DisableRetries())
 }
 
-// assertSettings checks that owner's index has ADR005's settings.
+// assertSettings checks that owner's index has the expected settings.
 func assertSettings(t *testing.T, index *Index, owner int64) {
 	t.Helper()
 	settings, err := member(index, owner).GetSettingsWithContext(t.Context())

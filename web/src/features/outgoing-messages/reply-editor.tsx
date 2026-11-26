@@ -111,8 +111,8 @@ export function ReplyEditor({
     receiving !== undefined &&
     !receiving.allowedActions.includes("send") &&
     initial.connectedAccountId === 0;
-  // Gmail threads a reply only within the account that holds the message
-  // (ADR006, "Replies"), so another account's reply starts a conversation.
+  // Gmail threads a reply only within the account that holds the message, so
+  // another account's reply starts a conversation.
   const otherAccount = receiving !== undefined && chosen !== 0 && chosen !== receiving.id;
   const fromNote = otherAccount
     ? otherAccountNote

@@ -18,7 +18,7 @@ type WebApp struct{}
 // NOTE: Gmail documents no such address, so it may stop working without
 // notice. authuser picks which of the browser's signed-in Google accounts
 // opens it, and the fragment names a view and the thread by its Gmail API
-// ID (ADR031, "Mail actions as built", checkpoint 7a).
+// ID.
 func (WebApp) ConversationURL(source conversation.Source, c conversation.Conversation) string {
 	if source.Provider != connectedaccount.ProviderGmail {
 		return ""

@@ -17,7 +17,7 @@ import (
 type Remote int
 
 const (
-	// RemoteBlocked leaves remote images out, the default (US008).
+	// RemoteBlocked leaves remote images out, the default.
 	RemoteBlocked Remote = iota + 1
 	// RemoteAllowed loads them, for one view a member asked for.
 	RemoteAllowed
@@ -182,7 +182,7 @@ var attributes = map[string]bool{
 // bluemonday, which reads tokens too, applies one URL rule to links and
 // images alike, so it cannot block remote images while keeping links,
 // reports nothing of what it drops, keeps no <style> element, and cannot
-// rewrite a url() in CSS (ADR009, "Displaying HTML").
+// rewrite a url() in CSS.
 func Sanitize(w io.Writer, r io.Reader, policy Policy) (Sanitized, error) {
 	s := sanitizer{
 		policy:  policy,

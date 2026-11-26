@@ -77,10 +77,10 @@ func (r *Rebuild) Owners(ctx context.Context) ([]int64, error) {
 // anything.
 //
 // DESIGN: it never empties the index first, so the member's searches keep
-// finding what the index held while it runs. Like [Indexer.Index], it
-// needs no other write to owner's index while it runs, as the search
-// queue runs one of owner's runs at a time (ADR005): it lists the index's
-// documents page by page, and writes what it read earlier.
+// finding what the index held while it runs. Like [Indexer.Index], it needs
+// no other write to owner's index while it runs, as the search queue runs one
+// of owner's runs at a time: it lists the index's documents page by page, and
+// writes what it read earlier.
 func (r *Rebuild) Owner(ctx context.Context, owner int64) (Rebuilt, error) {
 	if err := ValidateOwner(owner); err != nil {
 		return Rebuilt{}, err

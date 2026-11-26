@@ -160,7 +160,7 @@ func (c connectedAccountsTest) storedCiphertext(t *testing.T, accountID int64) (
 }
 
 // storedToken returns the refresh token in account accountID's row, opened
-// with the owner ADR006 binds it to.
+// with the owner it is bound to.
 func (c connectedAccountsTest) storedToken(t *testing.T, userID, accountID int64) string {
 	t.Helper()
 	keyID, ciphertext := c.storedCiphertext(t, accountID)
@@ -637,7 +637,7 @@ func TestAccountAccess(t *testing.T) {
 	})
 
 	// A deactivation in progress holds the user lock; the read waits for it
-	// and sees the member deactivated, as ADR029 asks before provider work.
+	// and sees the member deactivated.
 	t.Run("deactivating", func(t *testing.T) {
 		c := newConnectedAccountsTest(t)
 		account, _ := c.connectAlex(t)
@@ -771,8 +771,8 @@ func (c connectedAccountsTest) seal(t *testing.T, userID, accountID int64, refre
 	return connectedaccount.Credential{KeyID: keyID, Ciphertext: ciphertext}
 }
 
-// refreshTokenOwner returns the owner ADR006 binds userID's account
-// accountID's refresh token to.
+// refreshTokenOwner returns the owner that userID's account accountID's
+// refresh token is bound to.
 func refreshTokenOwner(userID, accountID int64) string {
 	return "connected-account:" + strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(accountID, 10) + ":google-refresh-token"
 }

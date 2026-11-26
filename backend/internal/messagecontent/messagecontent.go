@@ -1,6 +1,6 @@
 // Package messagecontent keeps message content: the bytes of text parts,
 // attachments, and inline parts. Content lives in an object store, while
-// PostgreSQL keeps what describes it and each content's ID (ADR009).
+// PostgreSQL keeps what describes it and each content's ID.
 //
 // messagecontent.go declares the store; part.go reads a message's part
 // tree, text.go converts its text to UTF-8, display.go chooses what a

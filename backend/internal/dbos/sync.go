@@ -21,15 +21,15 @@ const (
 	syncScheduleWorkflow = "inbok.sync-schedule"
 	syncSchedule         = "inbok.sync.minutely"
 
-	// syncCron fires at the start of every minute (ADR001, "Polling").
-	// DBOS's cron has a seconds field first.
+	// syncCron fires at the start of every minute. DBOS's cron has a seconds
+	// field first.
 	syncCron = "0 * * * * *"
 )
 
 // SyncInput is the sync workflow's input: the account it synchronizes.
 //
 // DESIGN: Each step takes its own access token, so the input holds no
-// secret (ADR003).
+// secret.
 type SyncInput struct {
 	AccountID int64
 }
@@ -70,8 +70,8 @@ type dueSyncs interface {
 
 // pollEveryPages is how many full sync pages run between the polls inside
 // the full sync's run, inbok's choice: at about 25 seconds a page, new mail
-// arrives within about two minutes while a long copy goes on (ADR001,
-// "Polling"). Counted in pages, so a resumed run polls where the first did.
+// arrives within about two minutes while a long copy goes on. Counted in
+// pages, so a resumed run polls where the first did.
 const pollEveryPages = 4
 
 // syncRetries spans about five minutes, 30 seconds, then 1, 2, and 2 minutes,
@@ -291,8 +291,8 @@ func runPoll(ctx dbos.Context, polls polls, accountID int64, position string, se
 		}
 
 		// 2. Poll again when a request came after the reads began, so the
-		// read that answers it starts after it (ADR001, "Polling"). The
-		// poll succeeded whatever this step finds.
+		// read that answers it starts after it. The poll succeeded whatever
+		// this step finds.
 		recheck, err := syncStep(ctx, logger, "recheck", func(stepCtx context.Context) (mailsync.Recheck, error) {
 			return polls.Recheck(stepCtx, accountID, seen)
 		})

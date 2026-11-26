@@ -255,9 +255,8 @@ func undoOf(before, after []Conversation, reach func(uuid.UUID) Reach) []Change 
 // DESIGN: by the row, not each message: putting a message back exactly
 // would take Gmail a call per message, beyond an action's budget for
 // [MaxActionIDs] conversations, while the row is what inbok and the
-// provider's own list show. So undoing Trash also puts the member's own replies in the inbox
-// (ADR031, "Mail actions as built", checkpoint 7c; DEBT.md, "Undo per
-// message").
+// provider's own list show. So undoing Trash also puts the member's own
+// replies in the inbox: undo works per conversation, not per message.
 func inverse(before, after Conversation, reach Reach) (Change, bool) {
 	change := Change{IDs: []uuid.UUID{after.ID}}
 	if reach&ReachPlaces != 0 {

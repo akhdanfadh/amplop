@@ -11,8 +11,9 @@ import (
 	"inbok/internal/emailaddress"
 )
 
-// Product policy (ADR030), from registration's (ADR028). The email limits
-// keep one inbox from being flooded; the client limit slows one visitor.
+// Product policy, the same as registration's email and client limits. The
+// email limits keep one inbox from being flooded; the client limit slows one
+// visitor.
 var (
 	emailShortLimit = attemptlimit.Limit{Window: time.Hour, Max: 3}
 	emailLongLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 5}

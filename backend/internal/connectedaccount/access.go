@@ -76,7 +76,7 @@ func (t AccessToken) Value() string {
 // than handing t out. It does nothing for a token from [NewAccessToken].
 //
 // DESIGN: the provider's client calls it where it sees the refusal, so no
-// feature that calls the provider has to (ADR006).
+// feature that calls the provider has to.
 func (t AccessToken) Refused() {
 	if t.keptBy != nil {
 		t.keptBy.access.refused(t.keptBy.accountID, t.value)
@@ -163,11 +163,10 @@ type accessStorage interface {
 // Access hands out access tokens for connected accounts, for the jobs that
 // call Gmail. It exists only when a Google client is configured.
 //
-// DESIGN: Each account's access token is kept in memory and handed out
-// again until shortly before it expires (ADR006, "Access tokens are reused
-// within a worker"), while every call still reads the account: a schedule
-// that checks every account each minute would otherwise trade every
-// refresh token at Google each minute. It is never stored.
+// DESIGN: Each account's access token is kept in memory and handed out again
+// until shortly before it expires, while every call still reads the account:
+// a schedule that checks every account each minute would otherwise trade
+// every refresh token at Google each minute. It is never stored.
 type Access struct {
 	storage    accessStorage
 	encryption keyring
@@ -207,7 +206,7 @@ func NewAccess(storage accessStorage, encryption keyring, google refresher, now 
 // failure that may pass.
 //
 // DESIGN: a refresh token Google replaces is left alone at Google, not revoked:
-// revoking it would end the grant the replacement belongs to (ADR006).
+// revoking it would end the grant the replacement belongs to.
 func (a *Access) Token(ctx context.Context, accountID int64) (AccessToken, error) {
 	token, err := a.token(ctx, accountID)
 	// A credential that changed while this call held it, by a reconnect or
@@ -269,7 +268,7 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 
 	// 2. Open the refresh token. An unreadable one is not recorded as
 	// needing a reconnect: a worker started with a wrong key list would
-	// mark every account (ADR006).
+	// mark every account.
 	refreshToken, err := openToken(a.encryption, state.UserID, accountID, state.Credential)
 	if err != nil {
 		return AccessToken{}, err

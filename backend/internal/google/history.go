@@ -117,9 +117,9 @@ type messageHistory struct {
 	//
 	// NOTE: Gmail's reference shows a label record's message with labelIds
 	// but not when they are taken. On real Gmail they are the message's
-	// whole set just after that record (observed 2026-11-10, ADR001
-	// "Reading Gmail"); the emulator gives the set now. Either is where the
-	// message stands after its last record.
+	// whole set just after that record (observed 2026-11-10); the emulator
+	// gives the set now. Either is where the message stands after its last
+	// record.
 	labels []string
 	// version is the ID of the record labels came with.
 	version uint64

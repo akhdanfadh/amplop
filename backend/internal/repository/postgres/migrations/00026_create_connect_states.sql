@@ -1,9 +1,9 @@
 -- +goose Up
--- A connect state is one start of the Gmail connect flow (ADR006): the
--- callback accepts it once, from the same session, before it expires. Only
--- the state's SHA-256 hash is kept; the PKCE verifier is kept as is, since
--- the code exchange sends it to Google. Both times come from the API's clock,
--- and expiry is checked in Go, as for emailed links.
+-- A connect state is one start of the Gmail connect flow: the callback
+-- accepts it once, from the same session, before it expires. Only the state's
+-- SHA-256 hash is kept; the PKCE verifier is kept as is, since the code
+-- exchange sends it to Google. Both times come from the API's clock, and
+-- expiry is checked in Go, as for emailed links.
 CREATE TABLE connect_states (
     state_hash    bytea PRIMARY KEY,
     user_id       bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,

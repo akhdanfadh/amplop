@@ -17,7 +17,7 @@ const accountRemovalWorkflow = "inbok.account-removal"
 
 // AccountRemovalInput is the account removal workflow's input: the
 // removal a disconnect saved. The step reads the token when it runs, so
-// the input holds no secret (ADR003).
+// the input holds no secret.
 type AccountRemovalInput struct {
 	RemovalID int64
 }

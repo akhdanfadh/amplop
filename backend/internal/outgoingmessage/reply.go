@@ -40,10 +40,10 @@ type Reply struct {
 // It returns [ErrAnsweredNotFound] when userID has no synchronized message
 // [Reply.AnsweredMessageID], and the errors of [Service.Create] otherwise.
 //
-// DESIGN: another of the member's accounts has its own Gmail thread IDs, so
-// a reply from it carries only the headers and starts a new thread in that
-// account's Gmail, which does not thread by headers alone (real-Gmail trial,
-// ADR006, Replies); recipients' mail clients thread it by References.
+// DESIGN: another of the member's accounts has its own Gmail thread IDs, so a
+// reply from it carries only the headers and starts a new thread in that
+// account's Gmail, which does not thread by headers alone (real-Gmail trial);
+// recipients' mail clients thread it by References.
 func (s *Service) Reply(ctx context.Context, userID int64, reply Reply) (Message, error) {
 	answered := reply.AnsweredMessageID
 	request := Request{AccountID: reply.ConnectedAccountID, Key: reply.IdempotencyKey, AnsweredID: &answered}
@@ -78,7 +78,7 @@ func replyTo(next NewMessage, sender Sender, answered Answered) NewMessage {
 // hardly writes past; Gmail's thread guide asks for a matching subject
 // without saying how it compares them. A "Re:" prefix, tabs, and line breaks
 // leave RFC 5256's base subject unchanged (section 2.1); another control
-// character turned into a space, or a cut, changes it (ADR006, Replies).
+// character turned into a space, or a cut, changes it.
 func replySubject(subject string) string {
 	subject = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {

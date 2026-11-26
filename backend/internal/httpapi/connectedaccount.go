@@ -24,12 +24,12 @@ const (
 
 	// googleCallbackPath is the address Google sends the member back to.
 	// The setup guide tells administrators to register it, so it never
-	// changes (ADR006).
+	// changes.
 	googleCallbackPath = connectedAccountsPath + "/google/callback"
 
 	// connectLandingPath is the web route the callback ends on, and
 	// outcomeParam its one query parameter: the address carries only the
-	// outcome (ADR006).
+	// outcome.
 	connectLandingPath = "/connected-accounts"
 	outcomeParam       = "outcome"
 )
@@ -235,7 +235,7 @@ func (h connectedAccountHandler) handleListConnectedAccounts(ctx context.Context
 	}
 
 	// 2. Read their sync states. mailsync depends on connectedaccount, so
-	// the two reads are composed here (ADR001, "Polling").
+	// the two reads are composed here.
 	ids := make([]int64, len(accounts))
 	for i, account := range accounts {
 		ids[i] = account.ID
@@ -516,7 +516,7 @@ func (h connectedAccountHandler) handleGoogleCallback(ctx context.Context, in *g
 // failures the member cannot fix, never the code, state, or query string.
 func (h connectedAccountHandler) finish(ctx context.Context, in *googleCallbackInput) connectOutcome {
 	// The flow never runs, so the state is not used: it still expires in
-	// minutes, bound to its session and PKCE verifier (ADR006).
+	// minutes, bound to its session and PKCE verifier.
 	if h.connections == nil {
 		return outcomeFailed
 	}

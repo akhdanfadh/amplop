@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// [Index.Prepare] applies ADR005's settings to a member's index that lacks
+// [Index.Prepare] applies the index's settings to a member's index that lacks
 // them, and applying them again changes nothing.
 func TestPrepare(t *testing.T) {
 	// Given a member's index that Meilisearch created bare.

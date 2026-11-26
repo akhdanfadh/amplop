@@ -480,7 +480,7 @@ func TestOutgoingSenderEmailDisconnect(t *testing.T) {
 }
 
 // A deactivation in progress holds the read of the member until it
-// commits, so the send sees it (ADR029).
+// commits, so the send sees it.
 func TestOutgoingSenderDeactivated(t *testing.T) {
 	// Given a deactivation that has locked the member and not committed.
 	o := newOutgoingMessagesTest(t)

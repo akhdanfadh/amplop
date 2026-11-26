@@ -677,9 +677,8 @@ type ListThreadMessagesRow struct {
 }
 
 // Conversations are derived from the synchronized mail, thread by thread, in
-// the transaction that writes the mail (ADR001, "Conversations"). The rules
-// are conversation.Derive's; these queries load what it reads and save what
-// it returns.
+// the transaction that writes the mail. The rules are conversation.Derive's;
+// these queries load what it reads and save what it returns.
 // The messages of the account's threads named, each with the IDs and roles
 // of its mailboxes, in ID order, an empty role for none.
 func (q *Queries) ListThreadMessages(ctx context.Context, arg ListThreadMessagesParams) ([]ListThreadMessagesRow, error) {

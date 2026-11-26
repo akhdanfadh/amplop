@@ -17,7 +17,7 @@ type TextLimits struct {
 // StoredText is the stored text of one text part of a message.
 type StoredText struct {
 	MediaType string // "text/plain" or "text/html"
-	Content   []byte // as stored: UTF-8 (ADR009)
+	Content   []byte // as stored: UTF-8
 }
 
 // MessageTexts is the stored text of a message's text parts, by whether a

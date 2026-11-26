@@ -68,11 +68,10 @@ export function Reader({
   const detail = read.data?.data;
   const mail = currentMail(client);
   const labels = useLabelsIn(mail);
-  // The conversation's row in the mail collection, which an action
-  // anywhere changes at once: the list's, or loaded by ID (ADR031). Read
-  // here rather than as the query's placeholder, which the query drops
-  // once a read fails: the frame then stays, with the failure and Try
-  // again under the title.
+  // The conversation's row in the mail collection, which an action anywhere
+  // changes at once: the list's, or loaded by ID. Read here rather than as
+  // the query's placeholder, which the query drops once a read fails: the
+  // frame then stays, with the failure and Try again under the title.
   const { data: row } = useLiveQuery({
     query: (q) =>
       mail
@@ -181,8 +180,7 @@ export function Reader({
           )
         }
         back={
-          // An arrow alone, so the toolbar keeps one row at 390 px (ADR031,
-          // "Mail actions as built", checkpoint 7c).
+          // An arrow alone, so the toolbar keeps one row at 390 px.
           phone && (
             <TooltipTrigger>
               <Button

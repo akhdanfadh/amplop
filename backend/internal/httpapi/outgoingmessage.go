@@ -217,8 +217,7 @@ func (h outgoingMessageHandler) offered() bool {
 // sending account's provider is set up, and nil otherwise.
 //
 // DESIGN: refused before the message is saved: without the client no
-// worker sends Gmail, so a saved message would wait forever (ADR001,
-// "Polling").
+// worker sends Gmail, so a saved message would wait forever.
 func (h outgoingMessageHandler) refuseUnoffered() error {
 	if !h.offered() {
 		return outgoingMessageProblem(errGmailNotConfigured)
@@ -256,8 +255,7 @@ func (in idempotencyKeyInput) parseKey() (uuid.UUID, error) {
 	return key, nil
 }
 
-// newOutgoingMessage is a message to send. Its limits are inbok's choices
-// (ADR006).
+// newOutgoingMessage is a message to send. Its limits are inbok's choices.
 type newOutgoingMessage struct {
 	ConnectedAccountID int64    `json:"connectedAccountId" minimum:"1" doc:"The sending account, one of the signed-in account's connected accounts."`
 	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`

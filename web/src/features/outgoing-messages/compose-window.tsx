@@ -202,7 +202,7 @@ function OpenWindow({ message }: { message: ComposeMessage }): ReactElement {
   }
   function onKeyDown(event: KeyboardEvent<HTMLElement>): void {
     // Escape leaves full screen, never closes: there are no drafts to keep
-    // a message closed by a stray key (ADR031).
+    // a message closed by a stray key.
     if (event.key !== "Escape" || size !== "full" || phone) return;
     event.preventDefault();
     setSize("docked");

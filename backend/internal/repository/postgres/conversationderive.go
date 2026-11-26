@@ -23,16 +23,18 @@ var errCountRange = errors.New("conversation's message count is out of storage's
 // their messages, in tx, as [conversation.Derive] makes them: a thread with
 // none to show loses its conversation, and every other one gets its row and
 // mailboxes again, keeping its ID. It returns the IDs of every message the
-// threads have, whose search documents hold their conversation's places
-// (ADR005). It must run in the transaction that wrote the messages, after
-// every write to them.
+// threads have, whose search documents hold their conversation's places. It
+// must run in the transaction that wrote the messages, after every write to
+// them.
 //
 // DESIGN: Conversations are a summary the list reads with one index, kept
 // only by this function. Every write to the mail tables goes through
 // [DB.UpdateSyncedMail], which calls it for the threads it touched, so the
 // summary is right after every write inbok makes. SQL run by hand, or a write
-// added elsewhere, leaves it stale; ADR001 lists the alternatives, e.g. a
-// trigger, should that change.
+// added elsewhere, leaves it stale. A database trigger would cover such
+// writes, but it would fire several times per sync step, some with
+// memberships half replaced, and move the rules into PL/pgSQL, which inbok
+// uses nowhere else.
 func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, threads []string) ([]uuid.UUID, error) {
 	if len(threads) == 0 {
 		return nil, nil

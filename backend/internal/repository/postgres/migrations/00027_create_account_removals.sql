@@ -1,11 +1,11 @@
 -- +goose Up
--- An account removal is what is left to do for a disconnected account once its
--- row is gone (ADR006): so far, revoking its refresh token at Google, which a
--- job does. The disconnect moves the token here in its transaction, so the
--- job's input holds only this row's id, never the token (ADR003). user_id and
--- account_id are the deleted account's, which the sealed token is bound to.
--- They are not foreign keys: the account is gone, and the token can still be
--- revoked if its user is deleted before the job runs.
+-- An account removal is what is left to do for a disconnected account once
+-- its row is gone: so far, revoking its refresh token at Google, which a job
+-- does. The disconnect moves the token here in its transaction, so the job's
+-- input holds only this row's id, never the token. user_id and account_id are
+-- the deleted account's, which the sealed token is bound to. They are not
+-- foreign keys: the account is gone, and the token can still be revoked if
+-- its user is deleted before the job runs.
 CREATE TABLE account_removals (
     id                       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id                  bigint NOT NULL,

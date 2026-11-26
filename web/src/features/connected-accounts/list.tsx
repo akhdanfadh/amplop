@@ -652,8 +652,7 @@ function AccountNameText({
 }
 
 // StatusLine says where account stands: why inbok can't use it, with the
-// fix while reconnectable, else where its sync, view, stands (ADR001,
-// "Polling").
+// fix while reconnectable, else where its sync, view, stands.
 function StatusLine({
   account,
   view,
@@ -716,12 +715,11 @@ function Moment({ iso }: { iso: string }): ReactElement {
 // openGoogle sends this tab to Google's consent page from result, which
 // returns to this page with the outcome.
 //
-// DESIGN: the same tab, not a popup (ADR031): a popup must open within the
-// click or a blocker stops it, so it needs this as a fallback anyway; the
-// opener can't rely on window.opener under Google's cross-origin opener
-// policy, nor tell a closed popup; and a phone turns a popup into a tab.
-// The same tab already comes back to this page with the outcome and a
-// fresh list.
+// DESIGN: the same tab, not a popup: a popup must open within the click or a
+// blocker stops it, so it needs this as a fallback anyway; the opener can't
+// rely on window.opener under Google's cross-origin opener policy, nor tell a
+// closed popup; and a phone turns a popup into a tab. The same tab already
+// comes back to this page with the outcome and a fresh list.
 function openGoogle(result: ResponseAuthorization): void {
   // The address comes from inbok's own server, which also serves this app,
   // so it is trusted as the app's code is.

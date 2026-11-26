@@ -32,9 +32,9 @@ func (db *DB) SaveMessageParts(ctx context.Context, accountID int64, messageID u
 	err = pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
-		// 1. Lock the sync state, as every write to the account's mail does first
-		// (ADR001, "Lock order"): a sync write deleting the message then waits, and
-		// two saves of one message run one after the other.
+		// 1. Lock the sync state, as every write to the account's mail does
+		// first: a sync write deleting the message then waits, and two saves
+		// of one message run one after the other.
 		_, err := queries.LockSyncState(ctx, accountID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return messagecontent.ErrMessageNotFound
@@ -67,7 +67,7 @@ func (db *DB) SaveMessageParts(ctx context.Context, accountID int64, messageID u
 		}
 
 		// 4. Save the job that indexes the message's body, so it commits
-		// with the text it indexes (ADR005).
+		// with the text it indexes.
 		if err := db.indexAfter(ctx, tx, accountID, []uuid.UUID{messageID}); err != nil {
 			return err
 		}
@@ -302,8 +302,8 @@ func (db *DB) withSyncStateLock(ctx context.Context, accountID int64, write func
 		queries := sqlc.New(tx)
 
 		// 1. Lock the sync state, as every write to the account's mail does
-		// first (ADR001, "Lock order"), so a sync write waits, rather than
-		// deadlocks, on the rows the write takes after it.
+		// first, so a sync write waits, rather than deadlocks, on the rows
+		// the write takes after it.
 		_, err := queries.LockSyncState(ctx, accountID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return messagecontent.ErrMessageNotFound

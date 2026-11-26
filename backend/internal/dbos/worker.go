@@ -30,9 +30,9 @@ const (
 	//
 	// DESIGN: DBOS's default is a hash of the binary, so each release would
 	// leave the previous release's unfinished workflows behind. One fixed
-	// version lets a new release resume them, which ADR015 already
-	// requires workflows and their inputs to allow. A workflow whose steps
-	// change must keep resuming old runs, e.g. with [dbos.Patch].
+	// version lets a new release resume them, so a workflow and its inputs
+	// must stay readable by the next release. A workflow whose steps change
+	// must keep resuming old runs, e.g. with [dbos.Patch].
 	applicationVersion = "1"
 
 	// stageTimeout bounds each stage of DBOS's shutdown, e.g. waiting for

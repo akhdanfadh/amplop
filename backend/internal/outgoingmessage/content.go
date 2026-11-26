@@ -22,7 +22,7 @@ const (
 	// JSON.stringify writes it, at most 4 bytes each, or 6 for an escaped
 	// control character, it fits Huma's 1 MiB request body. A client that
 	// escapes each character outside the Basic Multilingual Plane as a \u
-	// pair, 12 bytes, can get a 413 near the limit (ADR006).
+	// pair, 12 bytes, can get a 413 near the limit.
 	maxBodyLength = 100_000
 )
 

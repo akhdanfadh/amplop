@@ -98,11 +98,11 @@ const sessionKeys = [
 // session. It returns once those reads are done.
 //
 // DESIGN: the member is the same, so the rest of their data stays, mail's
-// collections included, which refresh only a list's newest page, on their
-// own timer (ADR031). A read the old session was refused, e.g. an
-// administrator's before two-factor authentication, is read again as its
-// page mounts (TanStack Query's retryOnMount). A new read that describes the
-// session joins sessionKeys.
+// collections included, which refresh only a list's newest page, on their own
+// timer. A read the old session was refused, e.g. an administrator's before
+// two-factor authentication, is read again as its page mounts (TanStack
+// Query's retryOnMount). A new read that describes the session joins
+// sessionKeys.
 export async function resetSession(client: QueryClient): Promise<void> {
   await Promise.all(sessionKeys.map((queryKey) => client.resetQueries({ queryKey, exact: true })));
 }

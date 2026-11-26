@@ -91,10 +91,9 @@ export function ReadingPane({
           aria-hidden="true"
           // A subject's direction from its first letter, as the list's.
           dir="auto"
-          // Under a 512 px pane it may shrink, so the toolbar keeps one
-          // row (ADR031, "Mail actions as built", checkpoint 7c); under
-          // 28em, e.g. a phone, it would be a few letters between Back and
-          // the actions, so it hides. In em, so it follows the text size.
+          // Under a 512 px pane it may shrink, so the toolbar keeps one row;
+          // under 28em, e.g. a phone, it would be a few letters between Back
+          // and the actions, so it hides. In em, so it follows the text size.
           className={cn(
             "pointer-events-none min-w-0 flex-1 truncate px-2 text-sm font-semibold transition-opacity duration-150 select-none @max-[28em]:hidden @lg:min-w-24",
             titleHidden ? "opacity-100" : "opacity-0",

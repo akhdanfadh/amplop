@@ -26,7 +26,7 @@ const pollMs = 100;
 // second, so this leaves room for a slow network.
 const timeoutMs = 15_000;
 // The smallest scale wide mail is shown at, after which it scrolls
-// sideways (ADR031, "Reading pane"): smaller, its text gets hard to read.
+// sideways: smaller, its text gets hard to read.
 const minScale = 0.6;
 
 // watch shows the body in frame once its document has been read, without

@@ -89,7 +89,7 @@ func (n *RecoveryNotices) Administrators(ctx context.Context) ([]int64, error) {
 func (n *RecoveryNotices) Send(ctx context.Context, recoveredID int64, recoveredAt time.Time, recipientID int64) (NoticeOutcome, error) {
 	// 1. Read the recipient now, not when the list was made: a retry or a
 	// resumed run can come long after, and workers check that an account
-	// is active before acting for it (ADR029).
+	// is active before acting for it.
 	state, err := n.storage.ReadRecoveryNotice(ctx, recoveredID, recipientID)
 	if errors.Is(err, ErrUserNotFound) {
 		return NoticeNoRecipient, nil
@@ -141,7 +141,7 @@ func (n *RecoveryNotices) Send(ctx context.Context, recoveredID int64, recovered
 
 	// 4. Return any other failure, to be retried: it may pass, an
 	// unconfirmed send included, and a second copy of this notice costs
-	// less than none (ADR004).
+	// less than none.
 	if isSendError {
 		// The server's reply can quote what inbok sent it, the SMTP password
 		// included, and DBOS keeps this error with the run; the mailer has

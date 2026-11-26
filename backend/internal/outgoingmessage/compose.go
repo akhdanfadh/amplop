@@ -16,8 +16,8 @@ import (
 )
 
 // inbokMessageIDHeader carries [Message.InbokMessageID]. Gmail keeps it
-// though it replaces the Message-ID (tested 2026-11-09, ADR006), so a check
-// after an unanswered send finds the message by it.
+// though it replaces the Message-ID (tested 2026-11-09), so a check after an
+// unanswered send finds the message by it.
 const inbokMessageIDHeader = "X-Inbok-Message-Id"
 
 // fallbackMessageIDDomain stands in for a sending domain that cannot be a

@@ -2,7 +2,7 @@ import type { AccountSync, ConnectedAccounts, ListedAccount } from "@/api/genera
 
 // How often the list is read again: often while a sync moves, so its
 // progress and outcome show, else each minute, so the checked time stays
-// current (ADR001, "Polling").
+// current.
 export const busyRefresh = 2_000;
 export const idleRefresh = 60_000;
 // How long after a Check now the list is read often, inbok's choice: a check

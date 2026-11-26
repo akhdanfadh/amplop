@@ -39,7 +39,7 @@ const (
 	// at 4 every 3 seconds. The pace is this process's: the worker runs
 	// one sync and one body fetch per account at a time, while the API's
 	// fetches for a member who opens a message share its own process's
-	// pace, inside the room left (ADR009, "Fetching content").
+	// pace, inside the room left.
 	fetchUnitsPerMinute = userUnitsPerMinute * 4 / 5
 	// fetchConcurrency bounds one call's fetches in flight, inbok's choice.
 	// Gmail also limits a user's concurrent requests, at a number it does
@@ -328,8 +328,7 @@ func isNotFound(err error) bool {
 }
 
 // messageFromGmail returns m as inbok keeps it: its labels as mailboxes
-// and flags (ADR007, "Gmail labels as mailboxes"), its headers decoded,
-// and its snippet as text.
+// and flags, its headers decoded, and its snippet as text.
 func messageFromGmail(m *gmail.Message) mailsync.Message {
 	var h headers
 	if m.Payload != nil {
@@ -357,9 +356,9 @@ func messageFromGmail(m *gmail.Message) mailsync.Message {
 	return message
 }
 
-// labelState returns a message's labelIDs as inbok keeps them (ADR007,
-// "Gmail labels as mailboxes"): every label but UNREAD and STARRED as its
-// mailboxes, nil for none, and those two as whether it is seen and flagged.
+// labelState returns a message's labelIDs as inbok keeps them: every label
+// but UNREAD and STARRED as its mailboxes, nil for none, and those two as
+// whether it is seen and flagged.
 func labelState(labelIDs []string) (mailboxes []string, seen, flagged bool) {
 	for _, labelID := range labelIDs {
 		if !isFlag(labelID) {

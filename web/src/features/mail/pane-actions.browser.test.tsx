@@ -169,8 +169,7 @@ describe("the reading pane's actions", () => {
   it("lists a deleted conversation in Trash, though Trash's first page answers late", async () => {
     // The Inbox list, left for Trash, lets its rows go while Trash's first
     // page loads; TanStack DB, patched, then reads that page again rather
-    // than the whole place, which inbok refuses (ADR031, TanStack DB gate,
-    // rule 9).
+    // than the whole place, which inbok refuses.
     const rows = [
       conversation(3),
       conversation(2),

@@ -37,6 +37,6 @@ DELETE FROM password_reset_links WHERE token_hash IN (
 -- name: ReadPasswordChangedNotice :one
 -- The notice reads the address when it runs, which can be long after the
 -- reset. FOR SHARE waits for a deactivation that holds the row, so the
--- flag is read as ADR029 asks of a feature that sends mail.
+-- flag is read after it, before mail goes out.
 SELECT email, (deactivated_at IS NULL)::boolean AS active FROM users WHERE id = @id
 FOR SHARE;

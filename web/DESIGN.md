@@ -1,17 +1,10 @@
 # inbok web design
 
 The rules for how inbok's web app looks, is laid out, and talks. Read this
-before changing any screen, component, or interface text. The choices and
-their reasons are in ADR031 (docs repo, `decision-record/ADR031-web-design-system-and-mail-layout.md`);
-this file is what to do.
+before changing any screen, component, or interface text. This file is
+what to do; the reasons sit beside the rules that need one.
 
-Status: decided 2026-11-11. `feat/design-system` builds the foundation
-(tokens, the React Aria flavour, the shell, the status badge);
-`feat/design-forms` the shared form fields, the settings and signed-out
-pages, messages, leave warnings, and banners; the mail branches build on
-both and add the list's building blocks with the list (ADR031, "For branch
-3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code.
+Status: decided 2026-11-11. Build new work to this file.
 
 ## Principles
 
@@ -28,7 +21,7 @@ work to this file, not to the old code.
   the next step in words; no illustrations, glows, gradients, or emoji.
 - **First-party first.** shadcn's React Aria flavour, React Aria, and
   TanStack libraries before anything hand-built; documented API before
-  workarounds. When a workaround is unavoidable, it gets a `DEBT.md` entry.
+  workarounds. When a workaround is unavoidable, a comment beside it says why.
 
 ## Tokens
 
@@ -40,8 +33,8 @@ never raw colours or Tailwind palette classes (`text-gray-600`).
 ### Colour
 
 Every text pair below meets 4.5:1, every meaningful mark 3:1, checked in
-both themes. A new pair is checked before use (antislop-human's
-`contrast-check.py` or the WCAG formula); never assume a grey pair passes.
+both themes. A new pair is checked before use with the WCAG contrast
+formula; never assume a grey pair passes.
 
 | Token                            | Light                 | Dark                  | Use                                                                                               |
 | -------------------------------- | --------------------- | --------------------- | ------------------------------------------------------------------------------------------------- |
@@ -111,8 +104,9 @@ surface changes.
 ### Type
 
 IBM Plex Sans Variable (`@fontsource-variable/ibm-plex-sans`), one family,
-bundled with the app (ADR026 allows no font service). It tells `I`, `l`,
-`1`, `O`, and `0` apart, which sender addresses and codes need.
+bundled with the app (the Content-Security-Policy allows fonts from
+inbok's own origin only). It tells `I`, `l`, `1`, `O`, and `0` apart,
+which sender addresses and codes need.
 
 | Use                                                                    | Size / line height | Weight                                          |
 | ---------------------------------------------------------------------- | ------------------ | ----------------------------------------------- |
@@ -259,7 +253,7 @@ text colour of their role.
 `src/components/ui/toast.tsx`: it pauses its timer while hovered or
 focused, and F6 reaches it. It is a dark surface in both themes, so it
 stands apart from the page. React Aria labels it alpha (`UNSTABLE_`
-names), which a `DEBT.md` entry covers. shadcn's React Aria flavour
+names), so it may change in a release. shadcn's React Aria flavour
 offers only `sonner`, whose runtime `<style>` the
 Content-Security-Policy blocks and whose timer keeps running when the
 keyboard reaches Undo. Toasts report failures only: they stay until
@@ -267,7 +261,7 @@ closed, an error already showing is not shown again, and they stack
 newest first, a scrolling box keeping what it shows above them
 (`--toast-space`). An action's Undo is the Undo bar (see Feedback), not
 a toast: a floating, timed toast covered rows and raced keyboard and
-screen-reader users (ADR031, checkpoint 7c).
+screen-reader users.
 
 **The message list** is inbok's own `src/components/ui/grid-list.tsx` on
 React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
@@ -296,7 +290,7 @@ saved per browser. The list grows with the window from 300 px to 440 px,
 so the reading pane keeps at least 480 px down to 780 px. No divider to
 drag: it would need a way to resize without dragging, a handle visible at
 rest, and its width in pixels, for a choice the fluid width mostly makes;
-resizing is in ADR031's backlog.
+resizing is not built.
 
 ### URLs
 
@@ -626,7 +620,7 @@ last two redirect into settings, so settings can move without the server.
   drop at once. A read the server refuses or that fails puts both back
   silently and is not tried again; arrow keys in the list only move
   focus, never open.
-- **Labels** (ADR031, "Labels as built"): More's "Move to…" and
+- **Labels**: More's "Move to…" and
   "Labels…" close More and open a picker in its place, under More's
   button, at every width (a submenu beside More ran off a 320 px screen
   and large text); one picker for both
@@ -668,15 +662,16 @@ last two redirect into settings, so settings can move without the server.
     from is left out. Choosing sends at once, for that account's
     conversations only.
   - **Labels** tags without moving, offered for conversations with a
-    message outside Spam and Trash (a row wholly there lists no labels,
-    a workaround recorded in ADR031 and DEBT.md): a checkbox per label,
-    ticked from what the conversations have, a dash for one some of them
-    have (pressing it goes to all, none, then back to some), and
-    **Apply** under the list, disabled until something changed, which
-    sends every change as one request, focus back on More; Escape or a
-    click outside sends nothing. It waits, saying so, while the ticks
-    add or remove more than the contract's limit for one change ("Add or
-    remove up to 100 at once.").
+    message outside Spam and Trash (a row wholly there lists no labels:
+    the server keeps one list of places for both the lists that hold a row
+    and its labels, so `labelable` in `label-menu.tsx` leaves such rows
+    out): a checkbox per label, ticked from what the conversations have,
+    a dash for one some of them have (pressing it goes to all, none, then
+    back to some), and **Apply** under the list, disabled until something
+    changed, which sends every change as one request, focus back on More;
+    Escape or a click outside sends nothing. It waits, saying so, while
+    the ticks add or remove more than the contract's limit for one change
+    ("Add or remove up to 100 at once.").
   - **Label chips** under the account line: the Inbox while the
     conversation is in it, then each of its labels by path, in the
     sidebar's order, as the list's Inbox chip (the `secondary` badge,
@@ -1282,22 +1277,21 @@ outcome.
   and Undo sends those, after the action's answer, so it never reaches
   Gmail first. They restore the row, not each message: a message deleted
   on its own before a Delete comes back out of Trash with the rest, and
-  undoing a Delete puts the member's own replies in the Inbox too
-  (DEBT.md, "Undo per message"). One conversation's result that stays in
-  view, e.g. a star or Mark read, gets no Undo; several conversations'
-  do, as which of them it changed is no longer in view. A bulk action
-  Gmail refuses for some conversations rolls back only those, the Undo
-  bar's count lowered to what changed (closed when nothing did), and one
-  error toast says why: "Couldn't archive 3 conversations", a sentence
-  per reason (the accounts to reconnect named, the gone and failed
-  counted), and Show details, a disclosure listing the conversations by
-  reason, with their accounts when they span several. A newer answer
-  that changed again what failed on every conversation an older
-  failure's toast named closes that toast: Hiring's removal working
-  leaves Acme's failure said, and a move, e.g. Move to Inbox, covers
-  every place. Several conversations go in requests of at most 25 (the
-  contract's limit, what Gmail changes within the server's budget), one
-  after another, every guess showing at once.
+  undoing a Delete puts the member's own replies in the Inbox too. One
+  conversation's result that stays in view, e.g. a star or Mark read,
+  gets no Undo; several conversations' do, as which of them it changed is
+  no longer in view. A bulk action Gmail refuses for some conversations
+  rolls back only those, the Undo bar's count lowered to what changed
+  (closed when nothing did), and one error toast says why: "Couldn't
+  archive 3 conversations", a sentence per reason (the accounts to
+  reconnect named, the gone and failed counted), and Show details, a
+  disclosure listing the conversations by reason, with their accounts
+  when they span several. A newer answer that changed again what failed
+  on every conversation an older failure's toast named closes that toast:
+  Hiring's removal working leaves Acme's failure said, and a move, e.g.
+  Move to Inbox, covers every place. Several conversations go in requests
+  of at most 25 (the contract's limit, what Gmail changes within the
+  server's budget), one after another, every guess showing at once.
 - **Irreversible actions** (disconnect, deactivate, discard typed text)
   ask first in an `AlertDialog`: the title asks, the body states the
   consequence and what is kept, the buttons name the actions ("Disconnect
@@ -1441,9 +1435,8 @@ Mail lists, the reading pane, and mail actions use TanStack DB collections
 over the generated client functions; everything else uses TanStack Query
 hooks. A message's content is the exception inside the reading pane: it
 never changes, so each open message reads it with its generated Query
-hook, cached for good (`messages/content.ts`). Rules from the spike,
-confirmed against the real API in branch 3's gate (ADR031, "TanStack DB
-gate"):
+hook, cached for good (`messages/content.ts`). Rules confirmed against
+the real API:
 
 - Sort by the date as a number (`dateMs`), then the ID
   (`stringSort: "lexical"`); dates are never null; one fixed order. The
@@ -1460,7 +1453,7 @@ gate"):
   alone, without an ID.
 - A list never reads its whole place: the data layer refuses it, and
   TanStack DB is patched so a row leaving a list before its first page
-  answers costs a page read again (ADR031, TanStack DB gate, rule 9). A
+  answers costs a page read again. A
   list that cannot read its rows in order says so, with Try again, never
   that its place is empty.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
@@ -1516,25 +1509,23 @@ gate"):
 
 ## Checking a screen
 
-Before a web checkpoint is done:
+Before a web change is done:
 
 - Both themes, a 390 px phone width, a 1024 px and a 1440 px window.
 - Keyboard only: every control reachable, the focus ring visible, Escape
   closes what opened.
-- Every new colour pair through the contrast checker.
+- Every new colour pair checked with the WCAG contrast formula.
 - Empty, loading, and failure states seen, not only the happy path.
-- antislop's delivery checklist (the antislop skills) with its results in
-  the checkpoint report.
 - Component behaviour tested in Vitest's browser mode (real Chromium),
   driven by Vitest's `userEvent`, which sends real input
   (`web/README.md`, "Checks and tests").
 
 ## Not now
 
-Recorded for later, not built: a row menu on right-click or a long
+Not built: a row menu on right-click or a long
 press (`context-menu`), deferred as the keyboard reaches a row's actions
 without it, which leaves a screen reader on a touch screen no announced
-way to start picking (ADR031, `feat/row-actions`); the search's filter
+way to start picking; the search's filter
 sentence scrolling away with its results, which at 200% text fills
 most of a short list pane before the first result (the results' own box scrolls, so the
 sentence would have to move inside it); a result's mark past where its
@@ -1553,7 +1544,7 @@ have to record failed sends), dismissing a banner. Pull-to-refresh and a
 top bar that hides while scrolling down: Check for new mail is one tap in
 the top bar, both gestures need hand-written touch handling over the
 Virtualizer's scrolling box that only a real phone can check, and a
-native app gets both from its platform (ADR031, branch 3 checkpoint 5).
+native app gets both from its platform.
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the

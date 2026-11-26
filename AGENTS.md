@@ -131,7 +131,7 @@ The web app reads these from the contract; keep them stable:
   `useCreateLabel()`; `useQuery` is for GET operations. Mail
   actions are the exception: `runAction` (`web/src/features/mail/actions.ts`)
   writes through the mail's TanStack DB collection, so every list shows
-  the change at once and a refusal puts it back (ADR031).
+  the change at once and a refusal puts it back.
 - A page never handles a 401 itself: `transport` tells the one
   session-end rule (`watchSessionEnd`, web/README.md "Routes"). A read's
   401 is left out of what the page shows; a write the member pressed

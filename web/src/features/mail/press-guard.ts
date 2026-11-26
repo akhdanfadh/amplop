@@ -14,11 +14,10 @@ export type PressGuard = {
 // drops every press in the list: a pointer going down, a click, and Enter
 // or Space. Each handler reports whether it dropped its event.
 //
-// DESIGN: after a row's action, the row below slides under a still
-// pointer, and a double press's second press would open it, or would
-// press the same row's Mark again (ADR031, feat/row-actions 8b3).
-// Dropped on the list's box before any row, button, or React Aria press
-// hears it; scrolling still works.
+// DESIGN: after a row's action, the row below slides under a still pointer,
+// and a double press's second press would open it, or would press the same
+// row's Mark again. Dropped on the list's box before any row, button, or
+// React Aria press hears it; scrolling still works.
 export function usePressGuard(): PressGuard {
   const until = useRef(0);
   const drop = (event: PointerEvent | MouseEvent | KeyboardEvent) => {

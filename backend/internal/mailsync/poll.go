@@ -28,7 +28,7 @@ const (
 	// PollComplete is a poll of an account whose full sync is complete.
 	PollComplete PollScope = iota + 1
 	// PollDuringCopy is a poll inside a running full sync's run, so new mail
-	// arrives while a long copy goes on (ADR001, "Polling").
+	// arrives while a long copy goes on.
 	PollDuringCopy
 )
 
@@ -144,8 +144,8 @@ func (p *Poll) Plan(ctx context.Context, accountID int64) (Plan, error) {
 // Recheck reports whether account accountID's poll, which finished, polls
 // once more: its member asked to sync since the poll read seen, its
 // [Report.RequestedAt] before its first read, so the poll may have missed
-// mail sent before the request (ADR001, "Polling"). It returns
-// [ErrNotFound] when the account has no sync state.
+// mail sent before the request. It returns [ErrNotFound] when the account has
+// no sync state.
 //
 // DESIGN: The stored value is compared, not the clocks: the request's time
 // comes from the server, and the worker's clock may differ. Every request
@@ -195,11 +195,11 @@ func (p *Poll) ReadChanges(ctx context.Context, accountID int64, position, pageT
 
 // ApplyChanges applies part part, counted from 0, of page, the page of
 // account accountID's changes since from's position that [Poll.ReadChanges]
-// read with pageToken. A part deletes up to applyWrites messages, writes where
-// up to applyWrites updated messages stand, or fetches up to applyFetches
-// messages: those added are saved, and those reread are applied as updates.
-// An update to a message the copy does not hold is skipped: only mail older
-// than the account's first window is not held (ADR001). The first part of
+// read with pageToken. A part deletes up to applyWrites messages, writes
+// where up to applyWrites updated messages stand, or fetches up to
+// applyFetches messages: those added are saved, and those reread are applied
+// as updates. An update to a message the copy does not hold is skipped: only
+// mail older than the account's first window is not held. The first part of
 // the first page also lists the mailboxes, whose creation, renaming, and
 // deletion the changes do not name. The last part of the last page records
 // the position after it; for [PollComplete], also the sync as finished now
@@ -238,10 +238,9 @@ func (p *Poll) ApplyChanges(ctx context.Context, accountID int64, from PollFrom,
 		}
 	}
 
-	// 3. Fetch the part's messages. One added is saved whatever its
-	// received time: mail imported into the account is new to the member
-	// (ADR001). One reread is applied as an update, so one the copy does
-	// not hold stays out.
+	// 3. Fetch the part's messages. One added is saved whatever its received
+	// time: mail imported into the account is new to the member. One reread
+	// is applied as an update, so one the copy does not hold stays out.
 	change := Change{Deleted: work.deleted, Updated: work.updated}
 	if len(work.fetch) > 0 {
 		fetched, err := p.provider.Messages(ctx, token, accountID, work.fetch)

@@ -3,7 +3,7 @@
 //
 // DESIGN: each throttle keeps its own key, storage, and lock in its feature
 // and passes the times it counted here, so every throttle counts a window's
-// edge the same way and can say how long to wait. ADR024 records the choice.
+// edge the same way and can say how long to wait.
 package attemptlimit
 
 import (

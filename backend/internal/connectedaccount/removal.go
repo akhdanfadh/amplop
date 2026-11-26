@@ -75,10 +75,10 @@ func NewRemovals(storage removalStorage, encryption opener, google revoker) *Rem
 // success returns [RevokeGone].
 //
 // DESIGN: the same Google account connected by another member shares the
-// grant, which revoking would end too (ADR006). The check runs here rather
-// than at the disconnect, so it sees connections made since. A member who
-// connects the same Google account between the check and Google's answer
-// still loses that connection; the window is one call to Google.
+// grant, which revoking would end too. The check runs here rather than at the
+// disconnect, so it sees connections made since. A member who connects the
+// same Google account between the check and Google's answer still loses that
+// connection; the window is one call to Google.
 func (r *Removals) Revoke(ctx context.Context, removalID int64) (RevokeOutcome, error) {
 	// 1. Read the removal; one already done leaves nothing to do.
 	removal, err := r.storage.ReadAccountRemoval(ctx, removalID)
