@@ -184,20 +184,6 @@ type PasswordResetLink struct {
 	ExpiresAt time.Time
 }
 
-type ProbeCounter struct {
-	ID    int32
-	Total int64
-}
-
-type ProbeEvent struct {
-	ID          int64
-	Note        string
-	Amount      int32
-	Highlighted bool
-	Tag         *string
-	CreatedAt   time.Time
-}
-
 type Registration struct {
 	ID   bool
 	Open bool

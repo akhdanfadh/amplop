@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-// The pattern the contract uses for "not blank", e.g. NewProbeEvent.note.
+// The pattern the contract uses for "not blank", e.g. NewSystemEmailSettings.host.
 const notBlank = String(/\S/);
 // The pattern emailAddress adds to an address field.
 const addressPattern = z.regexes.unicodeEmail;

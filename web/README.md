@@ -110,7 +110,6 @@ Put shared code in the folder for its responsibility:
   step's rule for when a sign-in has ended, account cache cleanup, and the
   one rule for a session that ends on an open page (`watchSessionEnd`,
   `useHeldWork`, `SessionEndedBanner`, `SignInAgain`).
-- `src/features/probe`: the probe demo form.
 - `src/features/totp`: two-factor setup (`useSetupFlow`), backup-code
   replacement, turning it off, and Security's two-factor section.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
@@ -833,8 +832,7 @@ sign-in page has closed, so another account cannot inherit them. The public
 setup status survives authentication cache cleanup. Account actions wait for a fresh session
 check when cached identity is being refreshed. Manual session checks attempt
 immediately despite the browser's offline indicator; editing or leaving the
-form invalidates their result. The original health
-and probe demo remains available at `/probe`.
+form invalidates their result.
 
 A new message is written in the compose window (DESIGN.md "Compose and
 reply"), which `_app`'s layout draws after the page, so it stays while
@@ -1840,9 +1838,7 @@ business failures can share a status, so use their type when adding
 different recovery actions. Type the constant you
 compare with the generated `ProblemType`, e.g.
 `const setupDoneType: ProblemType = "/api/v0/problems/setup-done"`, so a type
-the contract no longer lists fails type-checking. The probe form displays a
-received request reference for reporting failures, except under a refusal
-its fields show in full.
+the contract no longer lists fails type-checking.
 
 For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
@@ -2167,8 +2163,3 @@ const form = useAppForm({
   the value; then add it to
   `fieldComponents` in `app-form.ts`. Its browser test joins
   `app-form.browser.test.tsx`.
-
-The one form not yet on the kit, the probe demo (ADR031), still wires
-shadcn's `Field` components itself, with `blurKeepingSubmitErrors`
-(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`. The
-change that moves it deletes both.

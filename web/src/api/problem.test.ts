@@ -59,10 +59,10 @@ describe("uncertainOutcome", () => {
 describe("problemExplanation", () => {
   it("prefers the detail, trimmed", () => {
     const err = new ApiError("http", {
-      problem: { title: "Conflict", detail: " The counter is full. " },
+      problem: { title: "Conflict", detail: " Choose another name. " },
     });
 
-    expect(problemExplanation(err)).toBe("The counter is full.");
+    expect(problemExplanation(err)).toBe("Choose another name.");
   });
 
   it("falls back to the title", () => {

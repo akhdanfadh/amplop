@@ -4,10 +4,7 @@ An open-source, self-hostable, multi-user webmail client: one web
 interface for several email accounts, e.g. Gmail, Outlook, or a private
 IMAP server.
 
-inbok is in early development and has no email features yet. The code is
-a working skeleton: a Go API backed by PostgreSQL, a React browser app,
-first-administrator setup, and one example database write, the probe, which
-is removed before the first release.
+inbok is in early development, and Gmail is its only provider so far.
 
 ## Requirements
 

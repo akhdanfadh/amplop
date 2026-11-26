@@ -128,7 +128,7 @@ The web app reads these from the contract; keep them stable:
 ## Web
 
 - Writes go through generated mutation hooks, e.g.
-  `useCreateProbeEvent()`; `useQuery` is for GET operations. Mail
+  `useCreateLabel()`; `useQuery` is for GET operations. Mail
   actions are the exception: `runAction` (`web/src/features/mail/actions.ts`)
   writes through the mail's TanStack DB collection, so every list shows
   the change at once and a refusal puts it back (ADR031).

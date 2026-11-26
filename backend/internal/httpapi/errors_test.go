@@ -23,7 +23,7 @@ import (
 	"inbok/internal/session"
 )
 
-type probeInput struct {
+type failingInput struct {
 	Body struct {
 		Note     string `json:"note" minLength:"1"`
 		Password string `json:"password" maxLength:"4"`
@@ -41,11 +41,11 @@ var (
 func errorAPI(logger *slog.Logger) *API {
 	a := New(logger, Services{})
 	huma.Register(a.api, huma.Operation{
-		OperationID: "postProbe",
+		OperationID: "postFailing",
 		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Method:      http.MethodPost,
-		Path:        "/probe",
-	}, func(_ context.Context, in *probeInput) (*struct{}, error) {
+		Path:        "/failing",
+	}, func(_ context.Context, in *failingInput) (*struct{}, error) {
 		switch in.Body.Note {
 		case "raw":
 			return nil, errors.New("pq: connection refused to 10.0.0.5:5432")
@@ -74,7 +74,7 @@ func errorAPI(logger *slog.Logger) *API {
 }
 
 func post(a *API, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe", strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/failing", strings.NewReader(body))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
 
@@ -259,7 +259,7 @@ func TestInputStatuses(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(c.body))
+			request := httptest.NewRequest(http.MethodPost, apiPrefix+testWritePath, strings.NewReader(c.body))
 			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", c.contentType)
 			if c.name == "timeout" {
@@ -267,7 +267,7 @@ func TestInputStatuses(t *testing.T) {
 			}
 
 			response := httptest.NewRecorder()
-			New(discard, Services{}).Handler().ServeHTTP(response, request)
+			newTestWriteAPI(discard, &testWrites{}).Handler().ServeHTTP(response, request)
 
 			require.Equal(t, c.status, response.Code)
 			body := decodeJSON(t, response.Body.Bytes())
@@ -283,10 +283,10 @@ func TestConcurrentErrors(t *testing.T) {
 	const concurrentAPIs = 8
 	const requestsPerAPI = 10
 
-	a := New(discard, Services{})
+	a := newTestWriteAPI(discard, &testWrites{})
 	locals := make([]*API, concurrentAPIs)
 	for i := range locals {
-		locals[i] = New(discard, Services{})
+		locals[i] = newTestWriteAPI(discard, &testWrites{})
 	}
 
 	var group sync.WaitGroup
@@ -297,7 +297,7 @@ func TestConcurrentErrors(t *testing.T) {
 		group.Go(func() {
 			for _, api := range []*API{a, local} {
 				for range requestsPerAPI {
-					request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+					request := httptest.NewRequest(http.MethodPost, apiPrefix+testWritePath, strings.NewReader(`{}`))
 					request.RemoteAddr = client
 					request.Header.Set("Origin", "http://"+request.Host)
 					response := httptest.NewRecorder()
@@ -312,11 +312,11 @@ func TestConcurrentErrors(t *testing.T) {
 }
 
 func TestErrorNegotiation(t *testing.T) {
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+	request := httptest.NewRequest(http.MethodPost, apiPrefix+testWritePath, strings.NewReader(`{}`))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Accept", "text/html")
 	response := httptest.NewRecorder()
-	New(discard, Services{}).Handler().ServeHTTP(response, request)
+	newTestWriteAPI(discard, &testWrites{}).Handler().ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code)
 	assert.Equal(t, problemContentType, response.Header().Get("Content-Type"))

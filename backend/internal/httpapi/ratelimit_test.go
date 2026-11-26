@@ -136,7 +136,7 @@ func TestRateLimitedOperations(t *testing.T) {
 		}
 	}
 	assert.ElementsMatch(t, []string{
-		"createProbeEvent", "createFirstAdmin", "createSession", "createSessionWithCode", "redeemEmailVerification",
+		"createFirstAdmin", "createSession", "createSessionWithCode", "redeemEmailVerification",
 		"requestRegistrationLink", "redeemRegistrationLink", "requestPasswordResetLink", "redeemPasswordResetLink",
 	}, limited)
 
@@ -146,9 +146,10 @@ func TestRateLimitedOperations(t *testing.T) {
 	assert.Contains(t, doc.Components.Schemas.Map()[problemTypeSchemaName].Enum, tooManyRequestsType)
 }
 
-// testAPI returns an API whose rate limit reads a clock the test moves.
+// testAPI returns an API with the test-only write whose rate limit reads
+// a clock the test moves.
 func testAPI() (*API, *testClock) {
-	api := New(discard, Services{})
+	api := newTestWriteAPI(discard, &testWrites{})
 	clock := &testClock{now: time.Now()}
 	api.limiter.now = clock.read
 	return api, clock
@@ -176,9 +177,9 @@ func TestWithRateLimit(t *testing.T) {
 	client := limitedClient.String()
 
 	for i := range requestBurst {
-		require.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, probeEventsPath, client, "").Code, "request %d", i+1)
+		require.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, testWritePath, client, "").Code, "request %d", i+1)
 	}
-	refused := sendEmpty(api, probeEventsPath, client, "")
+	refused := sendEmpty(api, testWritePath, client, "")
 
 	require.Equal(t, http.StatusTooManyRequests, refused.Code)
 	assert.Equal(t, "1", refused.Header().Get(retryAfterHeader))
@@ -188,12 +189,12 @@ func TestWithRateLimit(t *testing.T) {
 	assert.Equal(t, "Too many requests in a short time.", body["detail"])
 
 	// Another client, or another operation, is unaffected.
-	assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, probeEventsPath, otherClient.String(), "").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, testWritePath, otherClient.String(), "").Code)
 	assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, setupPath, client, "").Code)
 
 	// A second later, one more request fits.
 	clock.now = clock.now.Add(time.Second)
-	assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, probeEventsPath, client, "").Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, testWritePath, client, "").Code)
 }
 
 // The client is the address Gin trusts: the forwarded one from a trusted
@@ -206,20 +207,20 @@ func TestRateLimitBehindProxy(t *testing.T) {
 	// Each client behind the proxy has its own budget.
 	for i := range requestBurst + 1 {
 		forwarded := "198.51.100." + strconv.Itoa(i+1)
-		assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, probeEventsPath, proxy, forwarded).Code, forwarded)
+		assert.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, testWritePath, proxy, forwarded).Code, forwarded)
 	}
 
 	// Nor by rotating addresses within its IPv6 /64.
 	for i := range requestBurst {
 		forwarded := "2001:db8:1:2::" + strconv.Itoa(i+1)
-		require.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, probeEventsPath, proxy, forwarded).Code, forwarded)
+		require.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, testWritePath, proxy, forwarded).Code, forwarded)
 	}
-	assert.Equal(t, http.StatusTooManyRequests, sendEmpty(api, probeEventsPath, proxy, "2001:db8:1:2::99").Code)
+	assert.Equal(t, http.StatusTooManyRequests, sendEmpty(api, testWritePath, proxy, "2001:db8:1:2::99").Code)
 
 	// A peer that is not trusted cannot escape by forging the header.
 	for i := range requestBurst {
 		forwarded := "203.0.113." + strconv.Itoa(i+1)
-		require.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, probeEventsPath, stranger, forwarded).Code, forwarded)
+		require.Equal(t, http.StatusUnprocessableEntity, sendEmpty(api, testWritePath, stranger, forwarded).Code, forwarded)
 	}
-	assert.Equal(t, http.StatusTooManyRequests, sendEmpty(api, probeEventsPath, stranger, "203.0.113.99").Code)
+	assert.Equal(t, http.StatusTooManyRequests, sendEmpty(api, testWritePath, stranger, "203.0.113.99").Code)
 }

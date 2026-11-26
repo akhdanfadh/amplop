@@ -1,8 +1,8 @@
 import { CancelledError, MutationObserver, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
-  getCreateProbeEventMutationOptions,
   getGetHealthQueryOptions,
+  getRequestPasswordResetLinkMutationOptions,
   getSendMessageAgainMutationOptions,
   getSendMessageMutationOptions,
 } from "./generated/inbok";
@@ -309,11 +309,11 @@ describe("read retries", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("sends the probe write only once, even when its 503 includes Retry-After", async () => {
+  it("sends a plain write only once, even when its 503 includes Retry-After", async () => {
     const attempts = respond(httpStatus.unavailable, { "Retry-After": "3" });
-    const mutation = new MutationObserver(client(), getCreateProbeEventMutationOptions());
+    const mutation = new MutationObserver(client(), getRequestPasswordResetLinkMutationOptions());
     const result = mutation
-      .mutate({ data: { note: "ok", amount: 1, highlighted: false } })
+      .mutate({ data: { email: "ana@example.com" } })
       .catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(10_000);
 

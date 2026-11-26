@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as ConnectedAccountsRouteImport } from './routes/connected-accounts'
-import { Route as ProbeRouteImport } from './routes/probe'
 import { Route as SecurityRouteImport } from './routes/security'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppMailRouteImport } from './routes/_app/_mail'
@@ -54,11 +53,6 @@ const AuthRoute = AuthRouteImport.update({
 const ConnectedAccountsRoute = ConnectedAccountsRouteImport.update({
   id: '/connected-accounts',
   path: '/connected-accounts',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProbeRoute = ProbeRouteImport.update({
-  id: '/probe',
-  path: '/probe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SecurityRoute = SecurityRouteImport.update({
@@ -215,7 +209,6 @@ const AppMailMailOutboxIdRoute = AppMailMailOutboxIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
-  '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/reset-password': typeof AuthResetPasswordRoute
@@ -245,7 +238,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
-  '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
@@ -274,7 +266,6 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/connected-accounts': typeof ConnectedAccountsRoute
-  '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
   '/_app/_mail': typeof AppMailRouteWithChildren
   '/_app/settings': typeof AppSettingsRouteWithChildren
@@ -310,7 +301,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connected-accounts'
-    | '/probe'
     | '/security'
     | '/settings'
     | '/reset-password'
@@ -340,7 +330,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/connected-accounts'
-    | '/probe'
     | '/security'
     | '/reset-password'
     | '/setup'
@@ -368,7 +357,6 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_auth'
     | '/connected-accounts'
-    | '/probe'
     | '/security'
     | '/_app/_mail'
     | '/_app/settings'
@@ -404,7 +392,6 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
   ConnectedAccountsRoute: typeof ConnectedAccountsRoute
-  ProbeRoute: typeof ProbeRoute
   SecurityRoute: typeof SecurityRoute
 }
 
@@ -429,13 +416,6 @@ declare module '@tanstack/react-router' {
       path: '/connected-accounts'
       fullPath: '/connected-accounts'
       preLoaderRoute: typeof ConnectedAccountsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/probe': {
-      id: '/probe'
-      path: '/probe'
-      fullPath: '/probe'
-      preLoaderRoute: typeof ProbeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/security': {
@@ -776,7 +756,6 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
   ConnectedAccountsRoute: ConnectedAccountsRoute,
-  ProbeRoute: ProbeRoute,
   SecurityRoute: SecurityRoute,
 }
 export const routeTree = rootRouteImport

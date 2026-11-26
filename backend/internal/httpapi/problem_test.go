@@ -28,7 +28,7 @@ func TestProblemSchema(t *testing.T) {
 	require.NotNil(t, errors.MinItems)
 	assert.Equal(t, 1, *errors.MinItems)
 
-	response := postProbe(discard, &fakeProbes{}, `{"amount":11.5}`)
+	response := postTestWrite(discard, &testWrites{}, `{"amount":11.5}`)
 	var body any
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	result := &huma.ValidateResult{}

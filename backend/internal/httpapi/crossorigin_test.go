@@ -15,19 +15,19 @@ import (
 
 // Reject cross-site writes before they reach the service or body validation.
 func TestCrossOriginRejectsWrite(t *testing.T) {
-	probes := &fakeProbes{}
+	writes := &testWrites{}
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{"note":"private-note","amount":3,"highlighted":false}`))
+	request := httptest.NewRequest(http.MethodPost, apiPrefix+testWritePath, strings.NewReader(`{"note":"private-note","amount":3,"highlighted":false}`))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Sec-Fetch-Site", "cross-site")
 	request.Header.Set("Origin", "https://private-origin.example")
 	response := httptest.NewRecorder()
 
-	New(logger, Services{Probe: probes}).Handler().ServeHTTP(response, request)
+	newTestWriteAPI(logger, writes).Handler().ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusForbidden, response.Code)
-	assert.Empty(t, probes.added)
+	assert.Empty(t, writes.added)
 	assert.Equal(t, problemContentType, response.Header().Get("Content-Type"))
 	assert.NotEmpty(t, response.Header().Get(requestIDHeader))
 	assert.Contains(t, response.Header().Get("Vary"), "Sec-Fetch-Site")
@@ -61,22 +61,22 @@ func TestCrossOrigin(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			probes := &fakeProbes{}
-			request := httptest.NewRequest(http.MethodPost, "http://inbok.example/api/v0/probe/events", strings.NewReader(`{"note":"hello","amount":3,"highlighted":false}`))
+			writes := &testWrites{}
+			request := httptest.NewRequest(http.MethodPost, "http://inbok.example"+apiPrefix+testWritePath, strings.NewReader(`{"note":"hello","amount":3,"highlighted":false}`))
 			request.Header.Set("Content-Type", jsonContentType)
 			request.Header.Set("Sec-Fetch-Site", c.site)
 			request.Header.Set("Origin", c.origin)
 			response := httptest.NewRecorder()
 
-			New(discard, Services{Probe: probes}).Handler().ServeHTTP(response, request)
+			newTestWriteAPI(discard, writes).Handler().ServeHTTP(response, request)
 
 			require.Equal(t, c.status, response.Code, response.Body.String())
 			if c.status == http.StatusForbidden {
-				assert.Empty(t, probes.added)
+				assert.Empty(t, writes.added)
 				assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/cross-origin-request"`)
 				return
 			}
-			assert.Len(t, probes.added, 1)
+			assert.Len(t, writes.added, 1)
 		})
 	}
 }

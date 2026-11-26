@@ -1,7 +1,7 @@
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
-  getCreateProbeEventMutationOptions,
+  getRequestPasswordResetLinkMutationOptions,
   getGetHealthQueryOptions,
   getHealth,
 } from "./generated/inbok";
@@ -199,9 +199,9 @@ describe("request timeouts", () => {
       untilAborted<Response>(init?.signal),
     );
     vi.stubGlobal("fetch", fetch);
-    const mutation = new MutationObserver(client(), getCreateProbeEventMutationOptions());
+    const mutation = new MutationObserver(client(), getRequestPasswordResetLinkMutationOptions());
     const result = mutation
-      .mutate({ data: { note: "Keep this input", amount: 1, highlighted: false } })
+      .mutate({ data: { email: "ana@example.com" } })
       .catch((err: unknown) => err);
 
     await vi.advanceTimersByTimeAsync(attemptTimeoutMs);

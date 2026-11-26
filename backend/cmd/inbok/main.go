@@ -28,7 +28,6 @@ import (
 	"inbok/internal/messagecontent"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
-	"inbok/internal/probe"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/s3"
@@ -174,7 +173,6 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		CodeSignIn:              session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		Enrollment:              session.NewEnrollment(db, time.Now),
 		TOTP:                    totp.NewService(db, cfg.Encryption, sessions, totp.NewVerifier(time.Now), codeThrottle, time.Now),
-		Probe:                   probe.NewService(db),
 		Account:                 accounts,
 		Session:                 sessions,
 		FirstAdminSignIn:        sessions,

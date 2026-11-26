@@ -44,7 +44,6 @@ const visitorOperations: Record<VisitorOperation, true> = {
   "POST /api/v0/email-verifications/redeem": true,
   "POST /api/v0/password-reset/links": true,
   "POST /api/v0/password-reset/links/redeem": true,
-  "POST /api/v0/probe/events": true,
   "POST /api/v0/registration/links": true,
   "POST /api/v0/registration/links/redeem": true,
   "POST /api/v0/sessions": true,

@@ -55,18 +55,18 @@ func TestAPIDuplicateFields(t *testing.T) {
 	for _, contentType := range []string{"application/json", "application/vnd.inbok+json"} {
 		for _, c := range cases {
 			t.Run(contentType+"/"+c.name, func(t *testing.T) {
-				probes := &fakeProbes{}
+				writes := &testWrites{}
 				var logs bytes.Buffer
 				logger := slog.New(slog.NewTextHandler(&logs, nil))
-				request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(c.body))
+				request := httptest.NewRequest(http.MethodPost, apiPrefix+testWritePath, strings.NewReader(c.body))
 				request.Header.Set("Origin", "http://"+request.Host)
 				request.Header.Set("Content-Type", contentType)
 				response := httptest.NewRecorder()
 
-				New(logger, Services{Probe: probes}).Handler().ServeHTTP(response, request)
+				newTestWriteAPI(logger, writes).Handler().ServeHTTP(response, request)
 
 				require.Equal(t, c.status, response.Code, response.Body.String())
-				assert.Empty(t, probes.added)
+				assert.Empty(t, writes.added)
 				assert.Equal(t, problemContentType, response.Header().Get("Content-Type"))
 				body := decodeJSON(t, response.Body.Bytes())
 				assert.InDelta(t, c.status, body["status"], 0)

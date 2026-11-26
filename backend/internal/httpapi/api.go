@@ -43,7 +43,6 @@ type Services struct {
 	CodeSignIn              codeSignInService
 	Enrollment              enrollmentService
 	TOTP                    totpService
-	Probe                   probeService
 	Account                 accountService
 	Session                 sessionService
 	FirstAdminSignIn        firstAdminSignIn
@@ -134,7 +133,6 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	api.UseMiddleware(withRateLimit(limiter), withFetchDest(), withAccess(api, services.Session))
 
 	registerHealth(api)
-	registerProbe(api, services.Probe)
 	registerAccount(api, services.Account, services.Throttle, services.FirstAdminSignIn)
 	registerSession(api, services.Session, services.CodeSignIn)
 	registerTOTP(api, services.TOTP, services.Enrollment, services.Backups, services.Disabler)

@@ -22,7 +22,7 @@ func TestSecurityHeaders(t *testing.T) {
 		{http.MethodGet, "/assets/index-BrBO-kCw.js", false},
 		{http.MethodGet, "/favicon.ico", false},
 		// Refused by the cross-origin check, which runs before routing.
-		{http.MethodPost, "/api/v0/probe/events", false},
+		{http.MethodPost, "/api/v0/sessions", false},
 		{http.MethodPost, "/security", false},
 		// Refused by the web app as a 405.
 		{http.MethodPost, "/security", true},

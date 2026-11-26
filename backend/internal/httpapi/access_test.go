@@ -163,7 +163,6 @@ func TestAccessDeclarations(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
 	for _, op := range []*huma.Operation{
 		doc.Paths["/health"].Get,
-		doc.Paths["/probe/events"].Post,
 		doc.Paths["/setup"].Get, doc.Paths["/setup"].Post,
 		doc.Paths["/sessions"].Post,
 	} {

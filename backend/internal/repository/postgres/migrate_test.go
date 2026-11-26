@@ -6,14 +6,12 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +47,7 @@ func TestMigrate(t *testing.T) {
 	}
 
 	logs := out.String()
-	assert.Contains(t, logs, `msg="applied migration" file=00001_create_probe.sql`)
+	assert.Contains(t, logs, `msg="applied migration" file=00002_create_users.sql`)
 	assert.Contains(t, logs, `msg="database up to date"`)
 	assert.Contains(t, logs, `msg="workflow tables up to date"`)
 	requireWorkflowTables(t, url)
@@ -58,10 +56,10 @@ func TestMigrate(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close(t.Context())
 
-	var total int64
-	err = conn.QueryRow(t.Context(), "SELECT total FROM probe_counter WHERE id = 1").Scan(&total)
+	var users int64
+	err = conn.QueryRow(t.Context(), "SELECT count(*) FROM users").Scan(&users)
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), total)
+	assert.Equal(t, int64(0), users)
 }
 
 // A database migrated before inbok used DBOS, e.g. a running install
@@ -147,8 +145,8 @@ func openWorkflowTables(ctx context.Context, url string) error {
 	return dbos.Shutdown(dbosCtx, time.Second)
 }
 
-// Every Down section works: undoing all migrations removes the probe
-// tables, and the files apply again afterwards.
+// Every Down section works: undoing all migrations removes the tables,
+// and the files apply again afterwards.
 func TestMigrateDown(t *testing.T) {
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
@@ -160,7 +158,7 @@ func TestMigrateDown(t *testing.T) {
 	defer conn.Close(t.Context())
 
 	var tables int
-	err = conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_tables WHERE tablename IN ('probe_counter', 'probe_events')").Scan(&tables)
+	err = conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'goose_db_version'").Scan(&tables)
 	require.NoError(t, err)
 	assert.Equal(t, 0, tables)
 
@@ -182,41 +180,4 @@ func migratedProvider(t *testing.T, url string) *goose.Provider {
 	provider, err := newProvider(db)
 	require.NoError(t, err)
 	return provider
-}
-
-// The database rejects rows the API would reject.
-func TestProbeChecks(t *testing.T) {
-	conn := migrated(t)
-
-	const insert = "INSERT INTO probe_events (note, amount, highlighted, tag) VALUES ($1, $2, false, $3)"
-	valid := func(tag any) error {
-		_, err := conn.Exec(t.Context(), insert, "hello", 1, tag)
-		return err
-	}
-	require.NoError(t, valid(nil), "no tag")
-	require.NoError(t, valid(strings.Repeat("t", 40)), "40-character tag")
-
-	cases := []struct {
-		name, sql string
-		args      []any
-	}{
-		{"blank note", insert, []any{" \t\n", 1, nil}},
-		{"long note", insert, []any{strings.Repeat("n", 121), 1, nil}},
-		{"zero amount", insert, []any{"hello", 0, nil}},
-		{"large amount", insert, []any{"hello", 11, nil}},
-		{"empty tag", insert, []any{"hello", 1, ""}},
-		{"long tag", insert, []any{"hello", 1, strings.Repeat("t", 41)}},
-		{"second counter", "INSERT INTO probe_counter (id, total) VALUES (2, 0)", nil},
-		{"negative total", "UPDATE probe_counter SET total = -1", nil},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, err := conn.Exec(t.Context(), c.sql, c.args...)
-
-			var pgErr *pgconn.PgError
-			require.ErrorAs(t, err, &pgErr)
-			assert.Equal(t, checkViolation, pgErr.Code)
-		})
-	}
 }

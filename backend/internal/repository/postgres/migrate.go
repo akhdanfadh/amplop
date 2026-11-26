@@ -20,7 +20,7 @@ import (
 )
 
 // migrations holds the SQL files Goose applies, ordered by their number
-// prefix, e.g. 00001_create_probe.sql. They are built into the binary.
+// prefix, e.g. 00002_create_users.sql. They are built into the binary.
 //
 //go:embed migrations/*.sql
 var migrations embed.FS

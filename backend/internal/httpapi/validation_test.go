@@ -137,8 +137,8 @@ func TestValidationDetails(t *testing.T) {
 
 // A fraction beyond a bound gets one range correction without echoing its value.
 func TestNumericCorrections(t *testing.T) {
-	probes := &fakeProbes{}
-	response := postProbe(discard, probes, `{"note":"ok","amount":11.5,"highlighted":false}`)
+	writes := &testWrites{}
+	response := postTestWrite(discard, writes, `{"note":"ok","amount":11.5,"highlighted":false}`)
 
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	var body struct {
@@ -153,7 +153,7 @@ func TestNumericCorrections(t *testing.T) {
 	assert.Equal(t, []string{"Enter a whole number from 1 to 10."}, messages)
 	assert.NotContains(t, response.Body.String(), "11.5", "response echoes rejected input")
 	assert.NotContains(t, response.Body.String(), `"value"`, "response echoes rejected input")
-	assert.Empty(t, probes.added, "rejected input reached the service")
+	assert.Empty(t, writes.added, "rejected input reached the service")
 }
 
 // A list over its maxItems gets the limit in words, as a length does.

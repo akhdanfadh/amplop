@@ -88,7 +88,7 @@ describe("ReceivedProblem", () => {
 
   it.each([
     "",
-    "/api/v0/problems/counter-full",
+    "/api/v0/problems/name-conflict",
     "../problems/taken",
     "?reason=taken",
     "#detail",

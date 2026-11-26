@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, type MockInstance } from "vite-plus/test";
-import { createProbeEvent, getFinishTOTPEnrollmentUrl } from "./generated/inbok";
+import { getFinishTOTPEnrollmentUrl, requestPasswordResetLink } from "./generated/inbok";
 import { ResponseHealthStatus } from "./generated/model";
 import { userMessage } from "./problem";
 import { ApiError, cookieReplacingPaths, onUnauthorized, transport } from "./transport";
@@ -58,7 +58,7 @@ describe("transport", () => {
   });
 
   it("labels Go's Problem Details with their status", async () => {
-    const problem = { status: 409, title: "Conflict", detail: "counter is full" };
+    const problem = { status: 409, title: "Conflict", detail: "name is taken" };
     answer(JSON.stringify(problem), 409, "application/problem+json");
 
     const err = await failure();
@@ -232,12 +232,9 @@ describe("received error facts", () => {
       throw new TypeError("Connection lost");
     });
 
-    const err: unknown = await createProbeEvent({
-      note: "Keep this input",
-      amount: 1,
-      highlighted: false,
-      tag: null,
-    }).catch((error: unknown) => error);
+    const err: unknown = await requestPasswordResetLink({ email: "ana@example.com" }).catch(
+      (error: unknown) => error,
+    );
 
     if (!(err instanceof ApiError)) throw new Error("Expected an API failure");
     expect(err.method).toBe("POST");
@@ -257,12 +254,9 @@ describe("received error facts", () => {
         }),
     );
 
-    const err: unknown = await createProbeEvent({
-      note: "Keep this input",
-      amount: 1,
-      highlighted: false,
-      tag: null,
-    }).catch((error: unknown) => error);
+    const err: unknown = await requestPasswordResetLink({ email: "ana@example.com" }).catch(
+      (error: unknown) => error,
+    );
 
     if (!(err instanceof ApiError)) throw new Error("Expected an API failure");
     expect(err.status).toBe(httpStatus.created);
@@ -274,9 +268,9 @@ describe("received error facts", () => {
 
   it("keeps actual status separate from the received problem and request ID", async () => {
     const problem = {
-      type: "/api/v0/problems/counter-full",
-      title: "Counter full",
-      detail: "The counter is full.",
+      type: "/api/v0/problems/name-conflict",
+      title: "Name conflict",
+      detail: "Choose another name.",
       status: httpStatus.conflict,
     };
     vi.stubGlobal(

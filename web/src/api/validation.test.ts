@@ -1,9 +1,17 @@
 import * as z from "zod";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
-import { NewProbeEvent, NewSession } from "./generated/model";
+import { NewSession, NewSystemEmailSettings } from "./generated/model";
 import { emailAddress, validationMessage } from "./validation";
 
-const valid = { note: "n", amount: 1, highlighted: false, tag: null };
+// System email settings hold one of each rule the contract uses: a
+// not-blank text, a length limit, a length range, and a bounded whole number.
+const valid = {
+  fromAddress: "mail@example.com",
+  fromName: "n",
+  host: "smtp.example.com",
+  port: 587,
+  security: "starttls",
+};
 
 beforeAll(() => {
   z.config({ customError: validationMessage });
@@ -16,19 +24,23 @@ function messages(schema: z.ZodType, value: unknown) {
 
 describe("validationMessage", () => {
   it.each([
-    ["a blank note", { note: "   " }, "Can't be blank."],
-    ["an empty note", { note: "" }, "Can't be blank."],
-    ["a note over 120 characters", { note: "x".repeat(121) }, "Must be at most 120 characters."],
-    ["an amount below 1", { amount: -98 }, "Enter a whole number from 1 to 10."],
-    ["an amount above 10", { amount: 11 }, "Enter a whole number from 1 to 10."],
-    ["an emptied amount", { amount: Number.NaN }, "Enter a whole number from 1 to 10."],
-    ["a fractional amount", { amount: 1.5 }, "Enter a whole number from 1 to 10."],
-    ["an empty tag", { tag: "" }, "Must be 1 to 40 characters."],
-    ["a tag over 40 characters", { tag: "t".repeat(41) }, "Must be 1 to 40 characters."],
-    ["a missing note", { note: undefined }, "Enter a valid value."],
-    ["a missing field", { highlighted: undefined }, "Enter a valid value."],
+    ["a blank host", { host: "   " }, "Can't be blank."],
+    ["an empty host", { host: "" }, "Can't be blank."],
+    ["a name over 64 characters", { fromName: "x".repeat(65) }, "Must be at most 64 characters."],
+    ["a port below 1", { port: 0 }, "Enter a whole number from 1 to 65535."],
+    ["a port above 65535", { port: 65536 }, "Enter a whole number from 1 to 65535."],
+    ["an emptied port", { port: Number.NaN }, "Enter a whole number from 1 to 65535."],
+    ["a fractional port", { port: 1.5 }, "Enter a whole number from 1 to 65535."],
+    ["a short address", { fromAddress: "ab" }, "Must be 3 to 254 characters."],
+    [
+      "an address over 254 characters",
+      { fromAddress: "a".repeat(255) },
+      "Must be 3 to 254 characters.",
+    ],
+    ["a missing host", { host: undefined }, "Enter a valid value."],
+    ["a missing field", { security: undefined }, "Enter a valid value."],
   ])("states the rule for %s", (_case, change, message) => {
-    expect(messages(NewProbeEvent, { ...valid, ...change })).toEqual([message]);
+    expect(messages(NewSystemEmailSettings, { ...valid, ...change })).toEqual([message]);
   });
 
   it.each([

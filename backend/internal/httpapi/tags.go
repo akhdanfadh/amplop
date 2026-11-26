@@ -20,7 +20,6 @@ const (
 	tagLabels            = "Labels"
 	tagRedirects         = "Redirects"
 	tagHealth            = "Health"
-	tagProbe             = "Probe"
 )
 
 // apiTags returns every tag an operation may list, each with what its
@@ -42,6 +41,5 @@ func apiTags() []*huma.Tag {
 		{Name: tagOutgoingMessages, Description: "Send messages from the signed-in account's connected accounts, follow their status, and send a failed one again."},
 		{Name: tagRedirects, Description: "Addresses another site sends the browser to, e.g. Google after its consent page. Clients never call them; the web app's generated client leaves them out."},
 		{Name: tagHealth, Description: "Whether the process answers requests."},
-		{Name: tagProbe, Description: "An example feature that exercises the whole stack. It goes before the first release."},
 	}
 }

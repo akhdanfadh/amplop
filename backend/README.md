@@ -887,32 +887,11 @@ server:
 go run ./cmd/inbok export ../api/generated/openapi.json
 ```
 
-## The probe
-
-The probe is an example database write, removed before the first release.
-It adds `amount` to a shared counter and records the entry, both in one
-transaction:
-
-```sh
-curl --fail-with-body -H 'Content-Type: application/json' \
-  -H 'Origin: http://127.0.0.1:8080' \
-  -d '{"note": "hello", "amount": 3, "highlighted": false}' \
-  http://127.0.0.1:8080/api/v0/probe/events
-```
-
-Expect HTTP 201 with the saved event and the new total, e.g.
-`{"data": {"event": {"id": 1, "note": "hello", ..., "tag": null}, "total": 3}}`.
-A body that breaks the contract gets a 422 listing rejected inputs, e.g.
-`{"location": "body.amount", "message": "Enter a valid value."}`. Past a
-total of 1000 it answers 409 with type `/api/v0/problems/counter-full`
-and detail `The counter is full.`; to empty it, run
-`go tool -modfile=tools.mod goose reset`, then `migrate` again.
-
 ## Errors
 
 Error responses use `application/problem+json`. They require `type`,
 `status`, `title`, and `detail`. The body status equals the HTTP status;
-the type identifies the condition, e.g. `/api/v0/problems/counter-full`.
+the type identifies the condition, e.g. `/api/v0/problems/setup-done`.
 These versioned paths work on each installation's own origin. `instance`
 is initially omitted; tracing uses the `X-Request-ID` header.
 
@@ -3571,11 +3550,11 @@ deployed database has applied; add a new one.
 
 Queries are SQL files in `backend/internal/repository/postgres/queries`.
 [SQLC](https://sqlc.dev) reads them together with the migrations and
-generates typed Go methods, e.g. `LockProbeCounter`, into
+generates typed Go methods, e.g. `LockSignInChallenge`, into
 `backend/internal/repository/postgres/sqlc`; there, `models.go` lists
 every table's columns. Every feature's queries share that one package, so
-a query's name repeats its table's name, e.g. `InsertProbeEvent` for
-`probe_events`. A query names every column it reads or returns, never
+a query's name repeats its table's name, e.g. `InsertSignInChallenge` for
+`sign_in_challenges`. A query names every column it reads or returns, never
 `*`, even when it takes them all: a later migration that adds a column
 then changes no query by surprise, and a reader sees what each query
 reads. SQLC still maps a list of every column to the table's model, e.g.
@@ -3597,7 +3576,6 @@ rules, and one package per technology that connects those rules to the
 outside world. An arrow means "imports":
 
 ```text
-httpapi --> probe <-- repository/postgres
 httpapi --> systememail <-- repository/postgres
                         <-- smtp
 httpapi --> emailverification <-- repository/postgres
@@ -3628,18 +3606,19 @@ httpapi --> messagecontent <-- s3
             messagecontent --> connectedaccount, mailsync
 ```
 
-- `probe`, like every feature package, holds the feature's types, its
+- `systememail`, like every feature package, holds the feature's types, its
   rules, its `Service`, and a `Storage` interface listing what it needs
   saved. It imports no Gin, Huma, pgx, or SQLC, and never imports
   `httpapi` or `repository/postgres`, so its tests need no server and no
   database.
 - `httpapi` registers every feature's operations and holds the shared
   middleware and error handling. For each feature it declares an
-  interface for what its operations call, e.g. `probeService`, so its
+  interface for what its operations call, e.g. `systemEmailService`, so its
   tests answer with fixed results instead of running the feature's rules.
 - `repository/postgres` implements every feature's `Storage` on one `DB`.
   A write that must save several features' data together is one `DB`
-  method running one transaction, as `UpdateCounter` does. `DB` method
+  method running one transaction, as `CompleteSignIn` does for a session
+  and the two-factor code it consumes. `DB` method
   names must be unique across features; when two clash, qualify the newer
   one.
 - `smtp`, like `repository/postgres`, is a technology package: it

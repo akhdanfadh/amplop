@@ -1,10 +1,10 @@
 import { MutationObserver, onlineManager, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { getCreateProbeEventMutationOptions } from "./generated/inbok";
+import { getRequestPasswordResetLinkMutationOptions } from "./generated/inbok";
 import { retryOptions } from "./retry";
 
 const clients: QueryClient[] = [];
-const event = { note: "Keep this input", amount: 1, highlighted: false, tag: null };
+const request = { email: "ana@example.com" };
 let wasOnline = true;
 
 // Mount Query's real connectivity subscriptions so reconnect can expose queued writes.
@@ -34,8 +34,8 @@ describe("offline writes", () => {
     onlineManager.setOnline(false);
     const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(new TypeError("Offline"));
     vi.stubGlobal("fetch", fetch);
-    const mutation = new MutationObserver(client(), getCreateProbeEventMutationOptions());
-    const result = mutation.mutate({ data: event }).catch((err: unknown) => err);
+    const mutation = new MutationObserver(client(), getRequestPasswordResetLinkMutationOptions());
+    const result = mutation.mutate({ data: request }).catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(fetch).toHaveBeenCalledOnce();
@@ -51,14 +51,12 @@ describe("offline writes", () => {
 
   it("can succeed when the offline indicator is wrong about API reachability", async () => {
     onlineManager.setOnline(false);
-    const body = {
-      data: { event: { ...event, id: 1, createdAt: "2026-10-26T00:00:00Z" }, total: 1 },
-    };
+    const body = { data: { status: "requested" } };
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify(body)));
     vi.stubGlobal("fetch", fetch);
-    const mutation = new MutationObserver(client(), getCreateProbeEventMutationOptions());
+    const mutation = new MutationObserver(client(), getRequestPasswordResetLinkMutationOptions());
 
-    await expect(mutation.mutate({ data: event })).resolves.toEqual(body);
+    await expect(mutation.mutate({ data: request })).resolves.toEqual(body);
     expect(mutation.getCurrentResult()).toMatchObject({ status: "success", isPaused: false });
 
     onlineManager.setOnline(true);
@@ -75,8 +73,8 @@ describe("offline writes", () => {
     });
     const fetch = vi.fn<typeof globalThis.fetch>(() => connection);
     vi.stubGlobal("fetch", fetch);
-    const mutation = new MutationObserver(client(), getCreateProbeEventMutationOptions());
-    const result = mutation.mutate({ data: event }).catch((err: unknown) => err);
+    const mutation = new MutationObserver(client(), getRequestPasswordResetLinkMutationOptions());
+    const result = mutation.mutate({ data: request }).catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(0);
     expect(fetch).toHaveBeenCalledOnce();
 
