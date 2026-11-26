@@ -466,7 +466,7 @@ The application checks setup status once per fresh page load and shares
 the result during navigation. Once it has seen setup done, it keeps that
 for the rest of the page load, since done never goes back: a reset of the
 query cache cannot bring back the loading view. Before setup is complete, every page
-redirects to `/setup`, including direct sign-in, demo, and unknown URLs.
+redirects to `/setup`, including direct sign-in and unknown URLs.
 The check attempts the API even when the browser reports offline. While it
 runs, the page shows the app's first-load view (above); a failed first
 check shows the app's failed-read state, whose Try again shows the loading

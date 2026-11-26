@@ -17,7 +17,7 @@
    },
    {
     "name": "From",
-    "value": "Asha Kartika <asha@example.co.id>"
+    "value": "Asha Kartika <asha@example.net>"
    },
    {
     "name": "To",
@@ -33,7 +33,7 @@
    },
    {
     "name": "Message-ID",
-    "value": "<inline-images@example.co.id>"
+    "value": "<inline-images@example.net>"
    },
    {
     "name": "MIME-Version",
@@ -59,8 +59,8 @@
      }
     ],
     "body": {
-     "size": 92,
-     "data": "PHA-TG9nbyA8aW1nIHNyYz0iY2lkOmxvZ29AZXhhbXBsZS5jby5pZCI-IGFuZCBjaGFydCA8aW1nIHNyYz0iY2lkOmNoYXJ0QGV4YW1wbGUuY28uaWQiPjwvcD4="
+     "size": 88,
+     "data": "PHA-TG9nbyA8aW1nIHNyYz0iY2lkOmxvZ29AZXhhbXBsZS5uZXQiPiBhbmQgY2hhcnQgPGltZyBzcmM9ImNpZDpjaGFydEBleGFtcGxlLm5ldCI-PC9wPg=="
     }
    },
    {
@@ -74,7 +74,7 @@
      },
      {
       "name": "Content-ID",
-      "value": "<logo@example.co.id>"
+      "value": "<logo@example.net>"
      },
      {
       "name": "Content-Disposition",
@@ -101,7 +101,7 @@
      },
      {
       "name": "Content-ID",
-      "value": "<chart@example.co.id>"
+      "value": "<chart@example.net>"
      },
      {
       "name": "Content-Transfer-Encoding",

@@ -215,17 +215,17 @@ describe("ConversationView", () => {
     await show([
       message(1, {
         unread: true,
-        from: [{ name: "Committee", address: "committee@example.co.id" }],
-        replyTo: [{ name: "Rina", address: "rina@gmail.com" }],
+        from: [{ name: "Committee", address: "committee@example.net" }],
+        replyTo: [{ name: "Rina", address: "rina@example.org" }],
       }),
       message(2, {
-        from: [{ name: "Newsletter", address: "news@example.co.id" }],
-        replyTo: [{ name: "Help", address: "help@EXAMPLE.co.id" }],
+        from: [{ name: "Newsletter", address: "news@example.net" }],
+        replyTo: [{ name: "Help", address: "help@EXAMPLE.net" }],
       }),
     ]);
 
     await expect
-      .element(page.getByText(/Replies go to rina@gmail\.com, not the sender\./))
+      .element(page.getByText(/Replies go to rina@example\.org, not the sender\./))
       .toBeVisible();
     expect(page.getByText(/Replies go to/).all()).toHaveLength(1);
   });

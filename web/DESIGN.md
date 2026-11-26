@@ -4,8 +4,6 @@ The rules for how inbok's web app looks, is laid out, and talks. Read this
 before changing any screen, component, or interface text. This file is
 what to do; the reasons sit beside the rules that need one.
 
-Status: decided 2026-11-11. Build new work to this file.
-
 ## Principles
 
 - **Calm chrome, colour for accounts.** Navigation, buttons, and surfaces

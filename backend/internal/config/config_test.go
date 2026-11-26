@@ -428,14 +428,14 @@ func TestLoadGoogleUnset(t *testing.T) {
 }
 
 func TestLoadGoogle(t *testing.T) {
-	setGoogle(t, " inbok.apps.googleusercontent.com\n", "GOCSPX-secret\n", "")
+	setGoogle(t, " inbok.apps.googleusercontent.com\n", "client-secret\n", "")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 
 	require.NotNil(t, cfg.Google)
 	assert.Equal(t, "inbok.apps.googleusercontent.com", cfg.Google.ClientID)
-	assert.Equal(t, "GOCSPX-secret", cfg.Google.ClientSecret)
+	assert.Equal(t, "client-secret", cfg.Google.ClientSecret)
 	assert.Nil(t, cfg.Google.BaseURL)
 }
 

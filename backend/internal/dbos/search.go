@@ -153,12 +153,12 @@ type searchRebuild interface {
 // rebuild nil it deletes the schedule instead, which an earlier start may
 // have saved. It returns DBOS's error saving or deleting the schedule.
 //
-// DESIGN: The nightly run tries to repair what live indexing cannot see
-// went wrong, e.g. its runs that gave up while Meilisearch was down. DBOS
-// does not make up a night the worker was down, and a run that fails or
-// waits leaves the repair to a later one. It rewrites every message each night, which a demo's mail
-// makes cheap; at a larger scale, compare first, e.g. counts, and rebuild
-// only the members that differ.
+// DESIGN: The nightly run tries to repair what live indexing cannot see went
+// wrong, e.g. its runs that gave up while Meilisearch was down. DBOS does not
+// make up a night the worker was down, and a run that fails or waits leaves
+// the repair to a later one. It rewrites every message each night, which a
+// small install's mail makes cheap; at a larger scale, compare first, e.g.
+// counts, and rebuild only the members that differ.
 func (w *Worker) registerSearchRebuild(rebuild searchRebuild) error {
 	if rebuild == nil {
 		return dbos.DeleteSchedule(w.ctx, searchRebuildSchedule)

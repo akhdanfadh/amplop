@@ -26,9 +26,9 @@ import (
 
 // MaxNameLength is how many characters a label's own name holds at most,
 // inbok's choice: Gmail's limit on a label's whole name, so no own name
-// passes that Gmail refuses alone (checked on inbok's test account,
-// 2026-11-16). A provider's code also checks the whole name, with the
-// names of the labels it is under.
+// passes that Gmail refuses alone (checked against Gmail, 2026-11-16). A
+// provider's code also checks the whole name, with the names of the labels it
+// is under.
 const MaxNameLength = 225
 
 // Errors of [Service] a caller shows the member. A [Provider] returns

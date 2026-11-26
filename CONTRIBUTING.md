@@ -94,11 +94,11 @@ since a version refuses to open another's data, so after
 
 Tests read Gmail's answers from fixtures in
 `backend/internal/google/testdata`; those in `recorded` are real answers.
-Record them only from inbok's test Gmail account, never a personal
+Record them only from a Gmail account made for testing, never a personal
 mailbox, on a trial stack with that account connected, and fetch only the
 messages made for the purpose:
 
-1. Write the message as raw MIME and put it into the test account with
+1. Write the message as raw MIME and put it into that account with
    Gmail's `messages.insert`, which the connected account's permission
    allows. It arrives as received mail without being sent anywhere.
 2. Fetch it with `messages.get` in `format=full`, and any part it sends by

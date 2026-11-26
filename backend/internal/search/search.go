@@ -20,7 +20,7 @@ type Document struct {
 	ThreadID           string    // the provider's thread; with the account, the message's conversation
 	InternalDate       time.Time // when the provider received it
 	Subject            string
-	From               string   // name and address, e.g. "Asha K <asha.k@example.co.id>"
+	From               string   // name and address, e.g. "Asha K <asha.k@example.net>"
 	To                 []string // each name and address
 	CC                 []string // each name and address
 	BodyText           string   // the text of the bodies a view shows; empty until the body is stored

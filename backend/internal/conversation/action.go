@@ -57,14 +57,14 @@ func (a Action) OnNewest() bool {
 	return a == ActionStar || a == ActionUnread
 }
 
-// MaxActionIDs is how many conversations one action or change reaches at most,
-// inbok's choice: half of what actionBudget fits at the slowest rate
-// measured, so Gmail at twice as slow still fits. Against inbok's test
-// account at actionConcurrency (2026-11-16), Gmail changed about 9
-// threads a second, 7 at its slowest (50 in 6.9 s); 100 in one action left
-// 42 unchanged at the budget. Each costs a provider call, e.g. a Gmail call
-// of 5, 10, or 20 of the member's 6,000 quota units a minute (Gmail's usage
-// limits). A client acts on more in requests of this many.
+// MaxActionIDs is how many conversations one action or change reaches at
+// most, inbok's choice: half of what actionBudget fits at the slowest rate
+// measured, so Gmail at twice as slow still fits. Against a Gmail account at
+// actionConcurrency (2026-11-16), Gmail changed about 9 threads a second, 7
+// at its slowest (50 in 6.9 s); 100 in one action left 42 unchanged at the
+// budget. Each costs a provider call, e.g. a Gmail call of 5, 10, or 20 of
+// the member's 6,000 quota units a minute (Gmail's usage limits). A client
+// acts on more in requests of this many.
 const MaxActionIDs = 25
 
 // Errors of [ActionService.Apply] a caller shows the member.

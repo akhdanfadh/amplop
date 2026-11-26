@@ -17,7 +17,7 @@ import (
 
 const (
 	testClientID = "inbok-test.apps.googleusercontent.com"
-	testSecret   = "GOCSPX-test"
+	testSecret   = "test-secret"
 	testRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 	testScopes   = "openid email https://www.googleapis.com/auth/gmail.modify"
 )
@@ -130,7 +130,7 @@ func TestEmulatorWrongVerifier(t *testing.T) {
 func TestEmulatorWrongSecret(t *testing.T) {
 	e, cfg := startTestEmulator(t)
 	back := e.Consent(t, cfg.AuthCodeURL("state-1"), "alex@example.com")
-	cfg.ClientSecret = "GOCSPX-wrong"
+	cfg.ClientSecret = "wrong-secret"
 
 	_, err := cfg.Exchange(t.Context(), back.Query().Get("code"))
 
@@ -168,10 +168,10 @@ func TestEmulatorProfile(t *testing.T) {
 	assert.NotZero(t, profile.HistoryId)
 }
 
-// Label changes, a member's own label's too, and Trash answer as Gmail
-// does, which inbok's patch makes so (observed on inbok's test account,
-// 2026-11-15): without history IDs, Trash takes SPAM off too, and untrash
-// puts nothing back, INBOX included.
+// Label changes, a member's own label's too, and Trash answer as Gmail does,
+// which inbok's patch makes so (observed on Gmail, 2026-11-15): without
+// history IDs, Trash takes SPAM off too, and untrash puts nothing back, INBOX
+// included.
 func TestEmulatorActions(t *testing.T) {
 	e, cfg := startTestEmulator(t)
 	token := connect(t, e, cfg, "alex@example.com")

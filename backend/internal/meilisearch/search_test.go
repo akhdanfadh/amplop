@@ -25,7 +25,7 @@ func TestSearchText(t *testing.T) {
 	newsletter.BodyText = "lunch tomorrow with the finance team"
 	budget := message("Budget report")
 	budget.BodyText = "the finance numbers"
-	budget.From = "Asha K <asha.k@example.co.id>"
+	budget.From = "Asha K <asha.k@example.net>"
 	weekly := message("Weekly report")
 	weekly.BodyText = "team lunch"
 	require.NoError(t, index.Upsert(t.Context(), []search.Document{newsletter, budget, weekly}))
@@ -36,7 +36,7 @@ func TestSearchText(t *testing.T) {
 		`"finance team"`:   newsletter.ID, // a phrase, not the two words apart
 		"report -budget":   weekly.ID,     // an excluded word
 		"asha":             budget.ID,     // the name part of an address
-		"example.co.id":    budget.ID,     // the domain of an address
+		"example.net":      budget.ID,     // the domain of an address
 		"tomorrow finance": newsletter.ID, // words from the body
 	}
 	for text, want := range cases {

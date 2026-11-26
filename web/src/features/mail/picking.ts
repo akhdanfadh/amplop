@@ -46,7 +46,7 @@ let entries = 0;
 // DESIGN: an entry, not a URL: the address holds where the member is,
 // never picked rows (DESIGN.md "Addresses"). An entry still under a
 // conversation opened since, e.g. by a click while picking, stays when
-// picking stops, and Back passes it on the way: accepted for the demo.
+// picking stops, and Back passes it on the way: an accepted limit.
 export function usePicking(key: string): Picking {
   const router = useRouter();
   const [picked, setPicked] = useState<{ key: string; ids: ReadonlySet<Key> }>({

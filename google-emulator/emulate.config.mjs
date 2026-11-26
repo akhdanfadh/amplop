@@ -6,7 +6,7 @@
 // real Google client secret put in .env never reaches the emulator.
 // .env.example carries the same two values.
 const clientID = "inbok-dev.apps.googleusercontent.com";
-const clientSecret = "GOCSPX-inbok-dev";
+const clientSecret = "inbok-dev-secret";
 
 // inbok's callback: its public URL and one fixed path. The path must match
 // the one inbok's API serves. URL resolution drops a trailing slash and

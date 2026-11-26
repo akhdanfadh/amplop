@@ -18,22 +18,21 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// Gmail's limits on a label's whole name, with the names of the labels it
-// is under: it refuses one over 225 characters with a 400, and fails one
-// over 255 bytes of UTF-8 with a 500 (checked on inbok's test account,
-// 2026-11-16). inbok checks both before calling, so a long name is the
-// member's to fix rather than a failure. It counts characters as Unicode
-// code points; whether Gmail counts one outside the Basic Multilingual
-// Plane, e.g. an emoji, as one or two is unchecked, and the byte limit
-// binds first for a name of them alone.
+// Gmail's limits on a label's whole name, with the names of the labels it is
+// under: it refuses one over 225 characters with a 400, and fails one over
+// 255 bytes of UTF-8 with a 500 (checked against Gmail, 2026-11-16). inbok
+// checks both before calling, so a long name is the member's to fix rather
+// than a failure. It counts characters as Unicode code points; whether Gmail
+// counts one outside the Basic Multilingual Plane, e.g. an emoji, as one or
+// two is unchecked, and the byte limit binds first for a name of them alone.
 const (
 	maxLabelChars = 225
 	maxLabelBytes = 255
 )
 
 // messageInvalidLabelName is the message of Gmail's 400 for a name it keeps
-// for its own labels, e.g. Inbox, Sent, or All Mail, in any case (checked on
-// inbok's test account, 2026-11-16).
+// for its own labels, e.g. Inbox, Sent, or All Mail, in any case (checked
+// against Gmail, 2026-11-16).
 //
 // NOTE: Gmail gives the same 400 for a blank or too long name, which
 // [label.ValidateName] and [fitsLabel] refuse first, and documents none of
@@ -143,13 +142,13 @@ func (c *Client) EditMailbox(ctx context.Context, token connectedaccount.AccessT
 // messages and deletes none. A label already gone counts as deleted. It
 // returns the errors of [label.Provider], and stops at the first failure.
 //
-// DESIGN: Gmail's API deletes only the label asked, leaving the labels
-// nested under it at the top, while its web app deletes them too (checked
-// on inbok's test account, 2026-11-16). inbok deletes them, as the web app
-// does, the deepest first, as JMAP asks a client to remove a mailbox's
-// children before it (mailboxHasChild, RFC 8621 section 2.5): a delete
-// that stops part way leaves every label above the one that failed, and
-// asking again finds the rest.
+// DESIGN: Gmail's API deletes only the label asked, leaving the labels nested
+// under it at the top, while its web app deletes them too (checked against
+// Gmail, 2026-11-16). inbok deletes them, as the web app does, the deepest
+// first, as JMAP asks a client to remove a mailbox's children before it
+// (mailboxHasChild, RFC 8621 section 2.5): a delete that stops part way
+// leaves every label above the one that failed, and asking again finds the
+// rest.
 func (c *Client) DeleteMailbox(ctx context.Context, token connectedaccount.AccessToken, id string) error {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
@@ -247,8 +246,8 @@ func fitsLabel(whole string) bool {
 
 // cleanLabelName returns name as Gmail saves it: each run of white space,
 // tabs and line breaks too, as one space, and none at either end (checked
-// on inbok's test account, 2026-11-16), so its length is checked as Gmail
-// will count it.
+// against Gmail, 2026-11-16), so its length is checked as Gmail will count
+// it.
 func cleanLabelName(name string) string {
 	return strings.Join(strings.Fields(name), " ")
 }

@@ -16,7 +16,7 @@ import (
 
 const (
 	flowClientID = "inbok-test.apps.googleusercontent.com"
-	flowSecret   = "GOCSPX-test"
+	flowSecret   = "test-secret"
 	flowRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 )
 

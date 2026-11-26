@@ -42,7 +42,7 @@ type Reply struct {
 //
 // DESIGN: another of the member's accounts has its own Gmail thread IDs, so a
 // reply from it carries only the headers and starts a new thread in that
-// account's Gmail, which does not thread by headers alone (real-Gmail trial);
+// account's Gmail, which does not thread by headers alone (observed on Gmail);
 // recipients' mail clients thread it by References.
 func (s *Service) Reply(ctx context.Context, userID int64, reply Reply) (Message, error) {
 	answered := reply.AnsweredMessageID

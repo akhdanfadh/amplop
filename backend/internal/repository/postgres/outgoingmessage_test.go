@@ -1158,8 +1158,8 @@ func TestOutgoingReply(t *testing.T) {
 
 	assert.Equal(t, "Re: Quarterly report", created.Subject)
 	assert.Equal(t, outgoingmessage.Threading{
-		InReplyTo:  "<report-m1@example.co.id>",
-		References: []string{"<thread@example.com>", "<request@example.com>", "<report-m1@example.co.id>"},
+		InReplyTo:  "<report-m1@example.net>",
+		References: []string{"<thread@example.com>", "<request@example.com>", "<report-m1@example.net>"},
 	}, created.Threading)
 	assert.Equal(t, "thread-m1", created.ProviderThreadID)
 	read, err := o.messages.Get(t.Context(), o.member, created.ID)

@@ -189,10 +189,7 @@ describe("Attachments", () => {
     await render(
       <Attachments
         attachments={[
-          part(
-            1,
-            "Laporan Keuangan Konsolidasi PT Nusantara Sejahtera Abadi Tbk Kuartal III 2026.pdf",
-          ),
+          part(1, "Consolidated Financial Statements of Example Holdings, Third Quarter 2026.pdf"),
           part(2, "a.pdf"),
         ]}
       />,
@@ -202,7 +199,7 @@ describe("Attachments", () => {
     await expect
       .element(page.getByRole("tooltip"))
       .toHaveTextContent(
-        "Laporan Keuangan Konsolidasi PT Nusantara Sejahtera Abadi Tbk Kuartal III 2026.pdf",
+        "Consolidated Financial Statements of Example Holdings, Third Quarter 2026.pdf",
       );
     await userEvent.keyboard("{Tab}");
     await expect.element(page.getByRole("link", { name: /^a\.pdf/ })).toHaveFocus();

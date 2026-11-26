@@ -87,7 +87,7 @@ func TestSearchConversations(t *testing.T) {
 	// é is two bytes and one unit; 😀 four bytes and two units.
 	subject := "Café 😀 invoice"
 	preview := "…pay the invoice"
-	budi := []mailsync.Address{{Name: "Budi", Address: "budi@example.co.id"}}
+	budi := []mailsync.Address{{Name: "Budi", Address: "budi@example.net"}}
 	searches := &fakeSearches{page: search.Page{Total: 37, Found: []search.Found{{
 		Conversation: conversation.Conversation{
 			ID:           conversationID,
@@ -124,15 +124,15 @@ func TestSearchConversations(t *testing.T) {
 		"conversation":{
 			"id":"0190a5f6-1c2d-7e3f-8a4b-5c6d7e8f9a0c","accountId":3,"date":"2026-11-03T08:00:00Z",
 			"subject":"Invoice","preview":"Thanks",
-			"latestFrom":[{"name":"Budi","address":"budi@example.co.id"}],
-			"participants":[{"name":"Budi","address":"budi@example.co.id"}],
+			"latestFrom":[{"name":"Budi","address":"budi@example.net"}],
+			"participants":[{"name":"Budi","address":"budi@example.net"}],
 			"messageCount":2,"unread":true,"starred":false,
 			"inbox":true,"sent":false,"allMail":true,"spam":false,"trash":false,
 			"labelIds":["0190a5f6-1c2d-7e3f-8a4b-5c6d7e8f9a0d"]
 		},
 		"match":{
 			"messageId":"0190a5f6-1c2d-7e3f-8a4b-5c6d7e8f9a0b","date":"2026-11-02T09:14:00Z",
-			"from":[{"name":"Budi","address":"budi@example.co.id"}],
+			"from":[{"name":"Budi","address":"budi@example.net"}],
 			"subject":"Café 😀 invoice","subjectMatches":[{"start":8,"length":7}],
 			"preview":"…pay the invoice","previewMatches":[{"start":9,"length":7}]
 		}
@@ -202,7 +202,7 @@ func TestSearchConversationsDefaults(t *testing.T) {
 func TestSearchConversationsFilters(t *testing.T) {
 	searches := &fakeSearches{}
 	api := searchAPI(searches)
-	query := "from=budi%40example.co.id&from=Asha.K%40example.com" +
+	query := "from=budi%40example.net&from=Asha.K%40example.com" +
 		"&since=2026-11-01T00%3A00%3A00%2B07%3A00&before=2026-12-01T00%3A00%3A00.5%2B07%3A00&has=attachment"
 
 	response := requestAuthenticated(api, http.MethodGet, "/conversations/search?"+query, "")
@@ -210,7 +210,7 @@ func TestSearchConversationsFilters(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	jakarta := time.FixedZone("", 7*60*60)
 	want := search.Request{
-		From:           []string{"budi@example.co.id", "Asha.K@example.com"},
+		From:           []string{"budi@example.net", "Asha.K@example.com"},
 		Since:          time.Date(2026, 11, 1, 0, 0, 0, 0, jakarta),
 		Before:         time.Date(2026, 12, 1, 0, 0, 0, 500_000_000, jakarta),
 		WithAttachment: true,

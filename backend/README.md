@@ -1431,8 +1431,8 @@ shown, so a better rule reaches stored mail without fetching it again:
 Reports say Gmail's `attachmentId` changes between `messages.get` calls,
 so a part is named by its message and part ID, and its bytes are fetched
 with the `attachmentId` of a fresh `messages.get`; an attachment's bytes
-may also come as `data` in that answer. Real Gmail, recorded from the test
-account in `internal/google/testdata/recorded`:
+may also come as `data` in that answer. Real Gmail, recorded from a Gmail
+account made for testing in `internal/google/testdata/recorded`:
 
 - converts a text part's inline `data` to UTF-8, from its declared
   charset, its `<meta>` charset, or else Latin-1, yet keeps its
@@ -3044,7 +3044,7 @@ whole names:
 - `DeleteMailbox` deletes the labels inside, the deepest first, then the
   label, with `labels.delete`, which takes a label off its messages and
   deletes none. Gmail's API deletes only the label asked, and its web app
-  deletes those inside too (checked on inbok's test account,
+  deletes those inside too (checked against Gmail,
   2026-11-16); inbok does as the web app does. A label already gone
   counts as deleted, so asking again finishes a delete that stopped.
 

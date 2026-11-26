@@ -13,8 +13,8 @@ import (
 
 // searchRebuildTimeout bounds how long inbok search rebuild waits for the
 // worker's rebuild, inbok's choice: a member's rebuild can wait about an
-// hour behind the member's live index run while it retries, and a demo's
-// mail rebuilds in minutes.
+// hour behind the member's live index run while it retries, and a small
+// install's mail rebuilds in minutes.
 const searchRebuildTimeout = 2 * time.Hour
 
 // searchRebuild asks the worker to rebuild every member's search index,

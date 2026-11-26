@@ -84,7 +84,7 @@ export const actionWords: Record<Action, ActionWords> = {
   },
   unspam: {
     // Gmail's own name, which members know, rather than DESIGN.md's verb
-    // and object (decided with the user, 2026-11-15).
+    // and object.
     label: "Not spam",
     icon: InboxIcon,
     failed: (count) => `Couldn't move ${them(count)} out of Spam`,

@@ -16,10 +16,9 @@ import (
 // message, an action's answer is read for: each message's labels (Gmail's
 // performance tips, "Partial response").
 //
-// NOTE: Gmail answers a label change and Trash without history IDs,
-// whatever the fields ask for (seen on inbok's test account, 2026-11-15),
-// so an action's updates carry no version; the action writes them at
-// [Client.Version] read before.
+// NOTE: Gmail answers a label change and Trash without history IDs, whatever
+// the fields ask for (seen on Gmail, 2026-11-15), so an action's updates
+// carry no version; the action writes them at [Client.Version] read before.
 const (
 	threadFields  = "messages(id,labelIds)"
 	messageFields = "id,labelIds"

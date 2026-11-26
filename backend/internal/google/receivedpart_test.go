@@ -239,18 +239,18 @@ func TestReceivedPartMissing(t *testing.T) {
 }
 
 // The fixtures in testdata/recorded are messages.get responses in the full
-// format, and one messages.attachments.get response, that real Gmail gave
-// for test messages inserted into a test account (2026-11-12), with the
-// IDs, the account's address, the project number, and the attachmentIds
-// replaced. Gmail converts a text part's inline data to UTF-8 from its
-// declared charset, its <meta> charset, or else Latin-1, while keeping its
-// Content-Type and size as sent; sends a long text part, and every file
-// and inline image however small, by attachmentId, as sent; decodes RFC
-// 2047 and RFC 2231 file names, rewriting the part's header fields to
-// match; and nests a forwarded message's parts under its message/rfc822
-// part. The line break before a boundary belongs to the boundary (RFC
-// 2046, section 5.1.1), so a body ends in a line break only when its
-// content has one of its own.
+// format, and one messages.attachments.get response, that real Gmail gave for
+// test messages inserted into a Gmail account made for testing (2026-11-12),
+// with the IDs, the account's address, the project number, and the
+// attachmentIds replaced. Gmail converts a text part's inline data to UTF-8
+// from its declared charset, its <meta> charset, or else Latin-1, while
+// keeping its Content-Type and size as sent; sends a long text part, and
+// every file and inline image however small, by attachmentId, as sent;
+// decodes RFC 2047 and RFC 2231 file names, rewriting the part's header
+// fields to match; and nests a forwarded message's parts under its
+// message/rfc822 part. The line break before a boundary belongs to the
+// boundary (RFC 2046, section 5.1.1), so a body ends in a line break only
+// when its content has one of its own.
 func TestReceivedPartRecorded(t *testing.T) {
 	tests := []struct {
 		fixture         string
@@ -310,7 +310,7 @@ func TestReceivedPartRecorded(t *testing.T) {
 		},
 		{
 			fixture:         "recorded/inline-images",
-			wantTexts:       map[string]string{"0": `<p>Logo <img src="cid:logo@example.co.id"> and chart <img src="cid:chart@example.co.id"></p>`},
+			wantTexts:       map[string]string{"0": `<p>Logo <img src="cid:logo@example.net"> and chart <img src="cid:chart@example.net"></p>`},
 			wantBodies:      []string{"0"},
 			wantAttachments: []string{},
 		},
@@ -348,7 +348,7 @@ func TestReceivedPartRecordedInline(t *testing.T) {
 
 	logo, chart := partByID(tree, "1"), partByID(tree, "2")
 	assert.Equal(t, messagecontent.KindInline, logo.Kind)
-	assert.Equal(t, "logo@example.co.id", logo.ContentID)
+	assert.Equal(t, "logo@example.net", logo.ContentID)
 	assert.Equal(t, messagecontent.KindInline, chart.Kind)
 	assert.Equal(t, "chart.png", chart.Filename)
 	assert.Equal(t, int64(300008), chart.Size)

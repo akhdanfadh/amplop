@@ -20,7 +20,7 @@ var testNow = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 
 const (
 	testClientID = "inbok-test.apps.googleusercontent.com"
-	testSecret   = "GOCSPX-test"
+	testSecret   = "test-secret"
 	testRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 	alexSubject  = "100000000000000000001"
 )
