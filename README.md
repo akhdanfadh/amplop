@@ -8,6 +8,10 @@ inbox, on your own server.
   <img alt="amplop's inbox: mail from two Gmail accounts in one list, with a conversation open beside it" src=".github/screenshots/inbox-light.png">
 </picture>
 
+amplop is for someone who runs their own server and wants their mail
+accounts in one inbox there, for themselves and the people they invite.
+It runs on one machine with Docker Compose.
+
 amplop is in early development: Gmail is its only provider so far, and
 there is no release yet, so expect breaking changes before 1.0.
 
@@ -102,7 +106,10 @@ backups, and using your own proxy instead of Caddy.
   Docker's volumes, as the [self-hosting
   guide](deploy/README.md#message-content) says.
 
-Calendar, contacts, and AI helpers that work on your mail are planned.
+## Roadmap
+
+The [roadmap](https://github.com/users/akhdanfadh/projects/2) shows
+what is planned, in order. Each card there is an idea, not a promise.
 
 ## How it is built
 
